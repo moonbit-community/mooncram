@@ -1,0 +1,9 @@
+import {
+  "moonbitlang/core/env",
+}
+
+///|
+fn main {
+  let name = @env.args().get(1).unwrap_or("World")
+  println("Hello, \{name}!")
+}
