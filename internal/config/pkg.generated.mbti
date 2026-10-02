@@ -1,0 +1,32 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/config"
+
+// Values
+pub fn default_config() -> Config
+
+pub fn parse_config(String, Config) -> Config raise
+
+pub fn positive_int(String) -> Int raise
+
+pub fn validate_target(String) -> Unit raise
+
+// Errors
+
+// Types and methods
+pub(all) struct Config {
+  stream : Stream
+  stdin : String?
+  env : Map[String, String]
+  target : String
+  timeout_ms : Int
+}
+
+pub(all) enum Stream {
+  Stdout
+  Stderr
+  Merged
+}
+
+// Type aliases
+
+// Traits

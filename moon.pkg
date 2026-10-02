@@ -1,0 +1,10 @@
+import {
+  "moonbit-community/mooncram/internal/cli",
+  "moonbitlang/async",
+  "moonbitlang/core/env",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "wasm+native"
+
+pkgtype(kind: "executable")

@@ -1,0 +1,13 @@
+import {
+  "moonbit-community/mooncram/internal/diagnostic",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/env",
+  "moonbitlang/x/path",
+}
+
+import {
+  "moonbit-community/mooncram/internal/diagnostic",
+  "moonbitlang/async",
+} for "test"
+
+supported_targets = "wasm+native"

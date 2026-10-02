@@ -1,0 +1,40 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/output"
+
+import {
+  "moonbit-community/cmark/cmark",
+}
+
+// Values
+pub fn actual_expectation(Captured, Expectation) -> Array[String]
+
+pub fn normalize_output(String) -> String
+
+pub fn output_lines(String) -> (Array[String], Bool)
+
+pub fn parse_expectation(ArrayView[@cmark.Node[String]], String) -> Expectation raise
+
+// Errors
+
+// Types and methods
+pub(all) struct Captured {
+  output : String
+  diagnostic : String
+  exit_code : Int
+}
+
+pub struct Expectation {
+  lines : Array[ExpectedLine]
+  exit_code : Int
+  no_eol : Bool
+}
+pub fn Expectation::matches(Self, Captured) -> Bool
+
+pub struct ExpectedLine {
+  raw : String
+  // private fields
+}
+
+// Type aliases
+
+// Traits

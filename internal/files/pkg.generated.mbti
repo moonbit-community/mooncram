@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/files"
+
+// Values
+pub async fn discover(Array[String]) -> Array[String]
+
+pub fn resolve_from(String, String) -> String
+
+pub async fn write_document(String, String, String) -> Unit
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

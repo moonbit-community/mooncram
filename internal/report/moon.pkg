@@ -1,0 +1,15 @@
+import {
+  "moonbit-community/mooncram/internal/markdown",
+  "moonbit-community/mooncram/internal/output",
+  "moonbit-community/chalk",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/diff",
+  "moonbitlang/core/env",
+}
+
+import {
+  "moonbit-community/mooncram/internal/config",
+  "moonbit-community/mooncram/internal/markdown",
+} for "test"
+
+supported_targets = "wasm+native"

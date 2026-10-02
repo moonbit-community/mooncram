@@ -1,0 +1,16 @@
+import {
+  "moonbit-community/mooncram/internal/config",
+  "moonbit-community/mooncram/internal/diagnostic",
+  "moonbit-community/mooncram/internal/execute",
+  "moonbit-community/mooncram/internal/files",
+  "moonbit-community/mooncram/internal/markdown",
+  "moonbit-community/mooncram/internal/output",
+  "moonbit-community/mooncram/internal/report",
+  "moonbit-community/mooncram/internal/update",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/x/path",
+}
+
+supported_targets = "wasm+native"

@@ -1,0 +1,36 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/markdown"
+
+import {
+  "moonbit-community/mooncram/internal/config",
+  "moonbit-community/mooncram/internal/output",
+}
+
+// Values
+pub fn parse_document(String, String, @config.Config) -> Document raise
+
+// Errors
+
+// Types and methods
+pub struct Case {
+  command : String
+  argv : Array[String]
+  line : Int
+  config : @config.Config
+  expected : @output.Expectation
+  replace_start : Int
+  replace_end : Int
+  prefix : String
+  newline : String
+  output_layout : Array[(String, String)]
+}
+
+pub struct Document {
+  path : String
+  source : String
+  cases : Array[Case]
+}
+
+// Type aliases
+
+// Traits

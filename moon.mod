@@ -13,7 +13,7 @@ name = "moonbit-community/mooncram"
 
 version = "0.1.0"
 
-readme = "README.mbt.md"
+readme = "README.md"
 
 repository = ""
 

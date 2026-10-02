@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/report"
+
+import {
+  "moonbit-community/mooncram/internal/markdown",
+  "moonbit-community/mooncram/internal/output",
+}
+
+// Values
+pub fn diff_lines(Array[String], Array[String], Bool) -> String
+
+pub fn failure_report(String, @markdown.Case, @output.Captured, Bool) -> String
+
+pub async fn use_color(String) -> Bool
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

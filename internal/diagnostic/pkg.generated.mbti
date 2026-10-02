@@ -1,0 +1,18 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/diagnostic"
+
+// Values
+pub fn error_text(Error) -> String
+
+pub fn located(String, Int, String) -> Failure
+
+// Errors
+pub(all) suberror Failure {
+  Failure(String)
+}
+
+// Types and methods
+
+// Type aliases
+
+// Traits

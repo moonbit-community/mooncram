@@ -44,7 +44,7 @@ def block(body, **config):
 
 def exercise(target):
     artifact = json.loads(run([
-        "moon", "run", "--build-only", "--target", target, "cmd/mooncram",
+        "moon", "run", "--build-only", "--target", target, ".",
     ]).stdout)["artifacts_path"][0]
     executable = ["moonrun", artifact, "--"] if target == "wasm" else [artifact]
     env = {
