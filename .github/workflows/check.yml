@@ -1,0 +1,64 @@
+name: check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit
+        uses: moonbit-community/setup-moonbit@04293a8a813bfd4b6c2fce22701b52ae1050d100
+
+      - name: Show MoonBit version
+        run: |
+          moon version --all
+          moonrun --version
+
+      - name: Update dependencies
+        run: moon update
+
+      - name: Check
+        run: |
+          moon check --target wasm --deny-warn
+          moon check --target native --deny-warn
+
+      - name: Check formatting
+        run: |
+          moon fmt
+          git diff --exit-code
+
+      - name: Check interfaces
+        run: |
+          moon info
+          git diff --exit-code
+
+      - name: Run unit tests
+        run: |
+          moon test --target wasm
+          moon test --target native
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run CLI integration tests
+        run: node tests/integration.mjs

@@ -208,14 +208,14 @@ moon check --target wasm
 moon check --target native
 moon test --target wasm
 moon test --target native
-python3 tests/integration.py
+node tests/integration.mjs
 moon info
 moon fmt
 ```
 
 The integration suite uses real scripts and local packages on both CLI
 backends, covering args, cwd, stdin, environment, output streams, large output,
-errors, timeouts, scanning, dry runs, and repeatable updates. Python 3 is only a
+errors, timeouts, scanning, dry runs, and repeatable updates. Node.js is only a
 test-driver dependency. Run one backend with `--target wasm` or `--target native`.
 
 Version 0.1 deliberately covers local scripts and packages. Remote package

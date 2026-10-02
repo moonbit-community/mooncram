@@ -15,10 +15,11 @@ async test "discovery sorts deduplicates and skips hidden build and symlink dire
     @files.resolve_from(dir, "alias.md"),
   )
   let paths = @files.discover([dir, @files.resolve_from(dir, "a.md")])
+  // Canonical paths can include a volume prefix on Windows.
   assert_eq(paths, [
-    @files.resolve_from(dir, "a.md"),
-    @files.resolve_from(dir, "b.md"),
-    @files.resolve_from(dir, "visible/test.md"),
+    @fs.realpath(@files.resolve_from(dir, "a.md")),
+    @fs.realpath(@files.resolve_from(dir, "b.md")),
+    @fs.realpath(@files.resolve_from(dir, "visible/test.md")),
   ])
 }
 
