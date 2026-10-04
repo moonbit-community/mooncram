@@ -1,10 +1,5 @@
 ///|
-#cfg(not(platform="windows"))
 async test "discovery sorts deduplicates and skips hidden build and symlink directories" {
-  // #cfg only distinguishes native Windows; check the runtime OS for Wasm too.
-  if !(@async.platform is Linux) {
-    return
-  }
   let dir = @fs.tmpdir(prefix="mooncram-discovery")
   defer @fs.rmdir(dir, recursive=true)
   for sub in ["visible", ".hidden", "_build", "target"] {
@@ -13,6 +8,7 @@ async test "discovery sorts deduplicates and skips hidden build and symlink dire
   }
   @fs.write_file(@files.resolve_from(dir, "a.md"), "")
   @fs.write_file(@files.resolve_from(dir, "b.md"), "")
+  @fs.write_file(@files.resolve_from(dir, ".hidden.md"), "")
   @fs.write_file(@files.resolve_from(dir, "ignore.txt"), "")
   @fs.symlink(target=dir, @files.resolve_from(dir, "cycle"))
   @fs.symlink(

@@ -237,6 +237,7 @@ function exercise(target) {
       fs.mkdirSync(child);
       fs.writeFileSync(join(child, "ignored.md"), "```mooncram\ninvalid\n```\n");
     }
+    fs.writeFileSync(join(scan, ".hidden.md"), "```mooncram\ninvalid\n```\n");
     fs.symlinkSync(scan, join(scan, "cycle"), DIRECTORY_LINK_TYPE);
     fs.writeFileSync(join(scan, "a.md"), block(`$ ${quoteArgument(packageDir)} setup\n`));
     fs.writeFileSync(join(scan, "z.md"), block(`$ ${quoteArgument(packageDir)} read\nside effect preserved\n`));
