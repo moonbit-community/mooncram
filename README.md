@@ -42,10 +42,11 @@ disables automatic color. Global options can appear before the subcommand or
 after paths. Use `--` before a path that starts with `-`.
 
 With no paths, scan the current directory. Directories are searched recursively
-for `.md` files, skipping hidden entries, `_build`, and `target`. Directory
-symlinks are never traversed. File symlinks are resolved and duplicate files are
-run once. Files run in sorted canonical path order, and cases run in document
-order. Commands share filesystem side effects and run serially.
+for `.md` files. Directory traversal skips names starting with `.` on every
+platform, entries with the Windows hidden attribute, `_build`, and `target`.
+Directory symlinks are never traversed. File symlinks are resolved and duplicate
+files are run once. Files run in sorted canonical path order, and cases run in
+document order. Commands share filesystem side effects and run serially.
 
 Exit status:
 

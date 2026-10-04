@@ -5,7 +5,8 @@ pub async fn discover(paths : Array[String]) -> Array[String] {
     match @fs.kind(path, follow_symlink=false) {
       Directory =>
         for name in @fs.readdir(path, include_hidden=false, sort=true) {
-          if name == "_build" || name == "target" {
+          // Windows hidden attributes do not cover dot-prefixed entries.
+          if name.has_prefix(".") || name == "_build" || name == "target" {
             continue
           }
           visit(resolve_from(path, name))
