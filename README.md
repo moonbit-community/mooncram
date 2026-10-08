@@ -1,11 +1,6 @@
 # mooncram
 
-Test MoonBit command examples directly in Markdown. `mooncram test` checks output
-and exit status; `mooncram update` replaces failing expectations in place.
-
-Requires a recent MoonBit toolchain with `moon`, `moonx`, `moonrun`, and
-`moonbitlang/async` Wasm support. The implementation is tested with Moon
-0.1.20260920. Native execution also requires a C toolchain.
+A simple and powerful testing toolkit for MoonBit CLI applications and Script
 
 ## Quick start
 
@@ -23,10 +18,6 @@ This is an executable example using [examples/hello.mbtx](examples/hello.mbtx):
 $ ./examples/hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
-
-Build the native CLI with `moon build --target native .`, then use the
-resulting `_build/native/debug/build/mooncram.exe` directly. The CLI
-itself defaults to the `wasm` backend when launched using `moon run`.
 
 ## Commands
 
@@ -183,43 +174,3 @@ that the source content has not changed, then replaces it atomically using a
 temporary file in the same directory. The replacement uses new-file permissions
 (`0644`, subject to umask); original permissions, inode identity, and extended
 filesystem metadata are not retained in this version.
-
-## Development
-
-The root package contains only `main.mbt`, which calls `internal/cli`. The
-implementation and its tests are organized by responsibility under `internal/`:
-
-| Package | Responsibility |
-| --- | --- |
-| `cli` | Argument parsing, command orchestration, and exit status |
-| `config` | Execution defaults and block configuration validation |
-| `markdown` | Test fence parsing, command tokenization, and source locations |
-| `output` | Output normalization, expectation matching, and rendering |
-| `execute` | Building commands, capturing streams, and enforcing timeouts |
-| `files` | Path resolution, file discovery, and atomic document writes |
-| `report` | Failure reports, diffs, and terminal colors |
-| `update` | Creating and applying expectation edits |
-| `diagnostic` | Shared errors and location-aware messages |
-
-Types live with the package that owns them. Internal packages expose only what
-their callers need; the root package has no public library API.
-
-```text
-moon check --target wasm
-moon check --target native
-moon test --target wasm
-moon test --target native
-node tests/integration.mjs
-moon info
-moon fmt
-```
-
-The integration suite uses real scripts and local packages on both CLI
-backends, covering args, cwd, stdin, environment, output streams, large output,
-errors, timeouts, scanning, dry runs, and repeatable updates. Node.js is only a
-test-driver dependency. Run one backend with `--target wasm` or `--target native`.
-
-Version 0.1 deliberately covers local scripts and packages. Remote package
-coordinates, arbitrary executables, inline scripts, shell state, parallel cases,
-automatic temporary workspaces, and scrut's full configuration are out of scope.
-Use explicit `.mbtx` setup cases when tests need files.

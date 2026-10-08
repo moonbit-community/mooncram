@@ -23,7 +23,7 @@ keywords = [ ]
 
 preferred_target = "wasm"
 
-description = "Test MoonBit command examples in Markdown"
+description = "A simple and powerful testing toolkit for MoonBit CLI applications and Script"
 
 import {
   "moonbitlang/async@0.22.4",
