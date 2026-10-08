@@ -117,9 +117,8 @@ function formatImports(imports) {
   return "import {\n" + imports.map(item => `  "${item}",\n`).join("") + "}\n";
 }
 
-function block(body, config = {}) {
-  const info = Object.keys(config).length ? " " + JSON.stringify(config) : "";
-  return "```mooncram" + info + "\n" + body + "```\n";
+function block(body) {
+  return "```mooncram\n" + body + "```\n";
 }
 
 // Mooncram treats backslashes as escapes inside double-quoted arguments.
@@ -173,7 +172,6 @@ function createProject(project) {
 function createDocuments(docs) {
   fs.mkdirSync(docs);
   fs.writeFileSync(join(docs, SCRIPT_FILENAME), SCRIPT_IMPORTS + PROGRAM);
-  fs.writeFileSync(join(docs, "input.txt"), "stdin contents\n");
   fs.writeFileSync(join(docs, "relative.txt"), "cwd contents\n");
 }
 
@@ -203,18 +201,13 @@ function argumentCases(program) {
 
 function contextCase(program) {
   return block(
-    `$ ${program} context\ntest\nyes\ncwd contents\nstdin contents\n\n` +
-      `$ ${program} context\ntest\nyes\ncwd contents\nstdin contents\n`,
-    { stdin: "./input.txt", env: { MODE: "test" } },
+    `$ ${program} context\nparent\nyes\ncwd contents\n\n` +
+      `$ ${program} context\nparent\nyes\ncwd contents\n`,
   );
 }
 
 function streamCases(program) {
-  return [
-    block(`$ ${program} streams\none\nthree\n[2]\n`),
-    block(`$ ${program} streams\ntwo\n[2]\n`, { stream: "stderr" }),
-    block(`$ ${program} streams\none\ntwo\nthree\n[2]\n`, { stream: "merged" }),
-  ].join("");
+  return block(`$ ${program} streams\none\nthree\n[2]\n`);
 }
 
 function programCases(program) {
@@ -228,15 +221,11 @@ function programCases(program) {
   ].join("");
 }
 
-function passingDocument(target) {
+function passingDocument() {
   return [
     block(`$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n`),
     ...[SCRIPT_COMMAND, LOCAL_PACKAGE].map(programCases),
-    block(`$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`, {
-      target: target === "native" ? "wasm" : "native",
-    }),
     block(`$ ${LOCAL_PACKAGE} large\no* (glob)\n`),
-    block(`$ ${LOCAL_PACKAGE} large\ne* (glob)\n`, { stream: "stderr" }),
   ].join("");
 }
 
@@ -283,10 +272,18 @@ function testCliArguments({ cli, docs }) {
   }
   const empty = writeDocument(docs, "empty.md", "No test blocks.\n");
   assert(cli(["test", empty], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
+  const legacy = writeDocument(
+    docs,
+    "legacy.md",
+    '```mooncram {"target":"native"}\nnot a command\n```\n' +
+      "```mooncram {\nnot a command\n```\n" +
+      "```mooncram trailing text\nnot a command\n```\n",
+  );
+  assert(cli(["test", legacy], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
 }
 
 function testPassingCases({ cli, docs, target }) {
-  const good = writeDocument(docs, "pass.md", passingDocument(target));
+  const good = writeDocument(docs, "pass.md", passingDocument());
   const result = cli(["test", good, "--target", target, "--color", "never"]);
   assert(result.stdout.includes("0 failed, 0 errors"));
   assert(!result.stdout.includes(ANSI_ESCAPE));
@@ -359,12 +356,11 @@ function testTimeouts({ cli, docs }) {
   // A deadline covers the build and executable together. Both managed
   // native artifacts and moonrun processes must be cancelled promptly.
   for (const backend of TARGETS) {
-    const slow = writeDocument(docs, "slow.md", block(`$ ${LOCAL_PACKAGE} slow\n`, {
-      target: backend,
-      timeout_ms: CASE_TIMEOUT_MS,
-    }));
+    const slow = writeDocument(docs, "slow.md", block(`$ ${LOCAL_PACKAGE} slow\n`));
     const start = performance.now();
-    const result = cli(["test", slow], { expected: EXIT_CODE.ERROR });
+    const result = cli([
+      "test", slow, "--target", backend, "--timeout-ms", String(CASE_TIMEOUT_MS),
+    ], { expected: EXIT_CODE.ERROR });
     assert(performance.now() - start < CANCELLATION_LIMIT_MS);
     assert(result.stderr.includes(`timed out after ${CASE_TIMEOUT_MS} ms`));
   }
@@ -395,7 +391,7 @@ function exercise(target) {
 
     testCliArguments(context);
     testPassingCases(context);
-    console.log(`${target}: scripts, packages, args, cwd, env, stdin, streams, large output passed`);
+    console.log(`${target}: scripts, packages, args, cwd, inherited env, stdin EOF, stdout and large dual-stream output passed`);
 
     testDiagnostics(context);
     testUpdates(context);
