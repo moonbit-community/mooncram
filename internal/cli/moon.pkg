@@ -1,5 +1,4 @@
 import {
-  "moonbit-community/mooncram/internal/config",
   "moonbit-community/mooncram/internal/diagnostic",
   "moonbit-community/mooncram/internal/execute",
   "moonbit-community/mooncram/internal/files",
@@ -10,6 +9,7 @@ import {
   "moonbitlang/async/fs",
   "moonbitlang/async/stdio",
   "moonbitlang/core/argparse",
+  "moonbitlang/core/string",
   "moonbitlang/x/path",
 }
 

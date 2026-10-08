@@ -3,8 +3,30 @@ priv struct Cli {
   update : Bool
   dry_run : Bool
   paths : Array[String]
-  config : @config.Config
+  target : String
+  timeout_ms : Int
   color : String
+}
+
+///|
+fn positive_int(text : String) -> Int raise {
+  if text.is_empty() || !text.iter().all(c => c >= '0' && c <= '9') {
+    raise @diagnostic.Failure("expected a positive integer, got '\{text}'")
+  }
+  let value = @string.parse_int(text) catch {
+    _ => raise @diagnostic.Failure("integer out of range: '\{text}'")
+  }
+  if value <= 0 {
+    raise @diagnostic.Failure("expected a positive integer, got '\{text}'")
+  }
+  value
+}
+
+///|
+fn validate_target(target : String) -> Unit raise {
+  if target != "wasm" && target != "native" {
+    raise @diagnostic.Failure("target must be wasm or native")
+  }
 }
 
 ///|
@@ -69,8 +91,8 @@ fn parse_cli(args : Array[String]) -> Cli raise {
     raise @diagnostic.Failure("expected test or update")
   }
   let target = sub.values["target"][0]
-  @config.validate_target(target)
-  let timeout_ms = @config.positive_int(sub.values["timeout-ms"][0])
+  validate_target(target)
+  let timeout_ms = positive_int(sub.values["timeout-ms"][0])
   let color = sub.values["color"][0]
   if color != "auto" && color != "always" && color != "never" {
     raise @diagnostic.Failure("color must be auto, always, or never")
@@ -84,7 +106,8 @@ fn parse_cli(args : Array[String]) -> Cli raise {
     } else {
       paths
     },
-    config: { ..@config.default_config(), target, timeout_ms, },
+    target,
+    timeout_ms,
     color,
   }
 }

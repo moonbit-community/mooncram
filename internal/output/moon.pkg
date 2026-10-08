@@ -7,7 +7,6 @@ import {
 }
 
 import {
-  "moonbit-community/mooncram/internal/config",
   "moonbit-community/mooncram/internal/diagnostic",
   "moonbit-community/mooncram/internal/markdown",
 } for "test"

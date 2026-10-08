@@ -54,8 +54,7 @@ pub fn failure_report(
     "--- expected\n+++ actual\n" + diff_lines(expected, observed, color),
   )
   if actual.diagnostic != "" {
-    let stream = if case.config.stream is Stderr { "stdout" } else { "stderr" }
-    result.write_string("--- diagnostic \{stream}\n\{actual.diagnostic}")
+    result.write_string("--- diagnostic stderr\n\{actual.diagnostic}")
     if !actual.diagnostic.has_suffix("\n") {
       result.write_string("\n")
     }

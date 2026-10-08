@@ -15,16 +15,16 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 test "CLI defaults and options before or after paths" {
   let cli = parse_cli(["test"])
   assert_eq(cli.paths, ["."])
-  assert_eq(cli.config.target, "wasm")
-  assert_eq(cli.config.timeout_ms, 60000)
+  assert_eq(cli.target, "wasm")
+  assert_eq(cli.timeout_ms, 60000)
   let cli = parse_cli([
     "--target", "native", "update", "one.md", "--dry-run", "two", "--timeout-ms",
     "42", "--color", "never",
   ])
   assert_true(cli.update && cli.dry_run)
   assert_eq(cli.paths, ["one.md", "two"])
-  assert_eq(cli.config.target, "native")
-  assert_eq(cli.config.timeout_ms, 42)
+  assert_eq(cli.target, "native")
+  assert_eq(cli.timeout_ms, 42)
   assert_eq(cli.color, "never")
   for
     args in [

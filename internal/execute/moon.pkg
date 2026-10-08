@@ -1,5 +1,4 @@
 import {
-  "moonbit-community/mooncram/internal/config",
   "moonbit-community/mooncram/internal/diagnostic",
   "moonbit-community/mooncram/internal/files",
   "moonbit-community/mooncram/internal/markdown",

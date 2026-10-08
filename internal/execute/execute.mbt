@@ -5,7 +5,6 @@ async fn capture(
   program : String,
   args : Array[String],
   cwd : String,
-  config : @config.Config,
 ) -> @output.Captured {
   let (out_reader, out_writer) = @process.read_from_process()
   defer out_reader.close()
@@ -13,42 +12,23 @@ async fn capture(
   let (err_reader, err_writer) = @process.read_from_process()
   defer err_reader.close()
   defer err_writer.close()
-  let input = match config.stdin {
-    Some(file) => @process.redirect_from_file(@files.resolve_from(cwd, file))
-    None => {
-      let (input, writer) = @process.write_to_process()
-      writer.close()
-      input
-    }
-  }
+  let (input, input_writer) = @process.write_to_process()
+  input_writer.close()
   @async.with_task_group(group => {
     let stdout = group.spawn(() => out_reader.read_all().text())
-    let stderr = if config.stream is Merged {
-      err_writer.close()
-      None
-    } else {
-      Some(group.spawn(() => err_reader.read_all().text()))
-    }
+    let stderr = group.spawn(() => err_reader.read_all().text())
     let code = @process.run(
       program,
       args,
       cwd~,
-      extra_env=config.env,
       stdin=input,
       stdout=out_writer,
-      stderr=if config.stream is Merged { out_writer } else { err_writer },
+      stderr=err_writer,
       cancel_handler=@process.hard_cancel(),
     )
     let out = @output.normalize_output(stdout.wait())
-    let err = match stderr {
-      Some(task) => @output.normalize_output(task.wait())
-      None => ""
-    }
-    if config.stream is Stderr {
-      { output: err, diagnostic: out, exit_code: code, }
-    } else {
-      { output: out, diagnostic: err, exit_code: code, }
-    }
+    let err = @output.normalize_output(stderr.wait())
+    { output: out, diagnostic: err, exit_code: code, }
   })
 }
 
@@ -56,9 +36,11 @@ async fn capture(
 pub async fn execute_case(
   case : @markdown.Case,
   cwd : String,
+  target~ : String,
+  timeout_ms~ : Int,
 ) -> @output.Captured {
   @async.with_timeout(
-    case.config.timeout_ms,
+    timeout_ms,
     () => {
       let executable = @files.resolve_from(cwd, case.argv[0])
       let args = case.argv[1:].to_owned()
@@ -70,10 +52,9 @@ pub async fn execute_case(
           build_artifact(
             ["run", "--build-only", "--target", "wasm", executable],
             cwd,
-            case.config,
           ),
         )
-        capture("moonx", [executable, "--"] + args, cwd, case.config)
+        capture("moonx", [executable, "--"] + args, cwd)
       } else if kind == Directory {
         if !@fs.exists(@files.resolve_from(executable, "moon.pkg")) &&
           !@fs.exists(@files.resolve_from(executable, "moon.pkg.json")) {
@@ -85,21 +66,14 @@ pub async fn execute_case(
         // mixed into the executable's expected stdout/stderr.
         let artifact = build_artifact(
           [
-            "-C",
-            executable,
-            "run",
-            "--build-only",
-            "--target",
-            case.config.target,
-            executable,
+            "-C", executable, "run", "--build-only", "--target", target, executable,
           ],
           cwd,
-          case.config,
         )
-        if case.config.target == "wasm" {
-          capture("moonrun", [artifact, "--"] + args, cwd, case.config)
+        if target == "wasm" {
+          capture("moonrun", [artifact, "--"] + args, cwd)
         } else {
-          capture(artifact, args, cwd, case.config)
+          capture(artifact, args, cwd)
         }
       } else {
         raise @diagnostic.Failure(
@@ -108,22 +82,14 @@ pub async fn execute_case(
       }
     },
     error=@diagnostic.Failure(
-      "timed out after \{case.config.timeout_ms} ms (including build)",
+      "timed out after \{timeout_ms} ms (including build)",
     ),
   )
 }
 
 ///|
-async fn build_artifact(
-  args : Array[String],
-  cwd : String,
-  config : @config.Config,
-) -> String {
-  let build = capture("moon", args, cwd, {
-    ..config,
-    stream: Stdout,
-    stdin: None,
-  })
+async fn build_artifact(args : Array[String], cwd : String) -> String {
+  let build = capture("moon", args, cwd)
   if build.exit_code != 0 {
     raise @diagnostic.Failure(
       "build failed (exit \{build.exit_code})\n\{build.output}\{build.diagnostic}",
