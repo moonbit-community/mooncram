@@ -33,7 +33,7 @@ moon run . -- update examples --dry-run
 
 | 命令 | 行为 |
 | --- | --- |
-| `test` | 执行用例，将选定输出流和退出状态与预期结果比较。 |
+| `test` | 执行用例，将 stdout 和退出状态与预期结果比较。 |
 | `update` | 执行相同的用例，将不匹配的预期结果替换为实际结果的表示。 |
 | `update --dry-run` | 执行用例并打印拟议的文档变更，不写入变更。 |
 | `help`、`-h`、`--help` | 向 stdout 打印对应帮助，以 `0` 退出，不发现文件或执行用例。 |
@@ -75,7 +75,7 @@ mooncram test -- -example.md
 ```
 
 mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展开，展开发生在 CLI
-收到参数之前。当前没有项目配置文件：默认值由 CLI 和各围栏的配置提供。
+收到参数之前。当前没有项目配置或围栏配置：目标后端和超时由 CLI 选项控制。
 
 ## 2. 文件发现与执行顺序
 
@@ -101,8 +101,8 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 文件发现错误。
 
 文档按排序后的规范路径依次执行，不受输入参数排列顺序影响。用例按文档顺序
-串行执行。先前用例对文件系统的修改对后续用例可见；每个进程仍分别使用自己的
-配置环境和工作目录启动。
+串行执行。先前用例对文件系统的修改对后续用例可见；每个进程在规范文档所在目录
+启动，并原样继承 mooncram 的环境。
 
 只要其他文档包含用例，允许某个文档不包含用例。如果没有尝试执行任何用例，
 也没有记录任何错误，CLI 会报告 `ERROR no mooncram cases found`，
@@ -112,15 +112,16 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 
 文档按 UTF-8 读取，解码失败属于文档错误。
 Markdown 由 `cmark` 按结构解析，并保留源码位置和排版信息。
-只有起始围栏使用反引号、语言名严格为 `mooncram` 的围栏代码块才会被处理，
-语言名区分大小写。符合 Markdown 语法的更长反引号围栏也有效。
+只有起始围栏使用反引号、语言名严格为 `mooncram` 且之后仅有可选空白的围栏代码块
+才会被处理，语言名区分大小写。符合 Markdown 语法的更长反引号围栏也有效。
 
-其他语言代码块、缩进代码块、波浪号围栏，以及更大示例代码块内部看似围栏的文本
-都会被忽略。支持引用块和列表内的用例；Markdown 容器前缀不属于命令或输出。
-mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
+其他语言代码块、缩进代码块、波浪号围栏、更大示例代码块内部看似围栏的文本，
+以及带任何非空白尾随文本的 `mooncram` 围栏都会被静默忽略。后者包括有效或无效的
+旧版 JSON 配置及任意其他文本。支持引用块和列表内的用例；Markdown 容器前缀
+不属于命令或输出。mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
 
 符合条件的围栏必须闭合，并且至少包含一个用例。未闭合或为空的测试围栏会造成
-文档解析错误。语言名之后的可选文本按代码块配置解析，见第 5 节。
+文档解析错误。被忽略的围栏不会产生 mooncram 解析错误。
 
 ````markdown
 ```mooncram
@@ -147,7 +148,7 @@ my-cli * (glob)
 如果输出行看起来像命令，应使用 `(escaped)` 表示。仅在以 `$ ` 开头的行后面
 追加 `(equal)`，不能阻止它被识别为下一条命令。
 
-执行某个文档中的任何用例之前，会先解析整个文档，包括所有命令、配置和预期结果。
+执行某个文档中的任何用例之前，会先解析整个文档，包括所有命令和预期结果。
 只要有解析错误，该文档的所有用例都不会执行，包括错误位置之前的用例。
 后续文档仍会继续处理。报告中的行号从 1 开始，对应原始 Markdown 文档中的位置。
 
@@ -185,42 +186,7 @@ my-cli * (glob)
 其余参数会转发给被测程序，因此程序自己的 `--version` 或 `--target`
 不会被解释为 mooncram 选项。
 
-## 5. 代码块配置与优先级
-
-`mooncram` 后面可以跟一个 JSON 对象，配置作用于该围栏内的所有用例。
-每个围栏都独立地从 CLI 默认配置开始，前一个围栏的配置不会延续到下一个围栏。
-
-````markdown
-```mooncram {"stream":"stderr","stdin":"./input.txt","env":{"MODE":"test"},"target":"native","timeout_ms":120000}
-$ ./cmd/main --invalid
-unknown option: --invalid
-[2]
-```
-````
-
-| 字段 | 默认值 | 可接受的值 |
-| --- | --- | --- |
-| `stream` | `"stdout"` | 仅接受 `"stdout"`、`"stderr"` 或 `"merged"`。 |
-| `stdin` | 立即 EOF | 不含 NUL 的非空路径字符串。 |
-| `env` | `{}` | 值全部为字符串的 JSON 对象。 |
-| `target` | CLI 的 `--target` | 仅接受 `"wasm"` 或 `"native"`。 |
-| `timeout_ms` | CLI 的 `--timeout-ms` | 数值为整数、范围在 `1..2147483647` 内的 JSON number。 |
-
-空配置文本和 `{}` 会保留默认值。无效 JSON、非对象配置、未知字段或值类型错误，
-都会产生定位到起始围栏的解析错误。不能使用 `null` 重置字段。
-对于 `timeout_ms`，`1000.0` 等 JSON 数字只要数值为整数就是有效值；
-CLI 超时参数只接受数字字符的限制是另一条独立规则。
-
-环境变量名不能为空，且不能含 `=` 或 NUL。值不能含 NUL，但可以是空字符串。
-该映射会覆盖构建进程和执行进程继承的对应变量，其他变量继续继承。
-不提供删除环境变量的操作。
-
-命令路径、标准输入文件路径，以及构建和被测程序的工作目录，都以规范文档的父目录
-为基准。标准输入文件会为每个用例重新打开。没有 `stdin` 配置时，被测程序立即
-读到 EOF，不会读取 mooncram 的交互式标准输入。即使配置了输入文件，构建预检查
-也始终接收 EOF。
-
-## 6. 构建、执行、输出捕获与超时
+## 5. 构建、执行、输出捕获与超时
 
 mooncram 使用外部 MoonBit 工具。构建用例需要 `moon`；脚本还需要 `moonx`，
 Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
@@ -234,7 +200,7 @@ Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 | Wasm 包 | `moon -C <package> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | 原生包 | `moon -C <package> run --build-only --target native <package>` | `<artifact> <args...>` |
 
-脚本始终使用 Wasm，即使 CLI 或围栏配置指定了 `native`。
+脚本始终使用 Wasm，即使 CLI 指定了 `native`。
 mooncram 为每个用例请求一次构建，是否复用已有构建由底层工具决定。
 脚本在运行 `moonx` 之前先进行编译预检查，因此预检查的编译失败不会被接受为
 程序的预期退出状态。
@@ -245,17 +211,13 @@ mooncram 为每个用例请求一次构建，是否复用已有构建由底层�
 构建退出状态非零、JSON 无效或产物数组缺失／无效，都属于执行错误。
 构建错误诊断会包含构建的 stdout 和 stderr；成功构建的输出不属于程序预期结果。
 
-程序的两个输出流会并发读取，直到结束，并完整缓存在内存中：
+stdout 和 stderr 会并发读取，直到结束，并完整缓存在内存中，以避免任一管道产生
+大量输出时死锁。预期结果始终与 stdout 比较；stderr 不参与匹配，但会保留用于
+不匹配时的诊断。两个流都必须能够成功解码。当前没有可配置的输出大小上限，
+也不实时转发程序输出。
 
-| `stream` | 参与比较的输出 | 另一个流 |
-| --- | --- | --- |
-| `stdout` | stdout | 保留 stderr，用于不匹配时的诊断。 |
-| `stderr` | stderr | 保留 stdout，用于不匹配时的诊断。 |
-| `merged` | stdout 和 stderr 连接到同一个操作系统管道 | 没有独立的诊断流。 |
-
-合并模式保留字节到达共同管道的顺序，程序自身的缓冲可能影响这一顺序。
-分离模式不提供两个流之间的合并顺序。未选中的流不影响匹配，但仍会被读取，
-且必须能够成功解码。当前没有可配置的输出大小上限，也不实时转发程序输出。
+构建进程和被测程序原样继承 mooncram 的环境，工作目录是规范文档的父目录。
+每个进程都从 stdin 立即读到 EOF，不会读取 mooncram 的交互式输入。
 
 捕获到的输出必须是有效 UTF-8。任一捕获流中出现无效 UTF-8 都会导致执行错误。
 比较和报告前会把每个 CRLF 规范化为 LF。独立的 CR、NUL、ANSI 转义、行尾空格、
@@ -270,12 +232,12 @@ mooncram 为每个用例请求一次构建，是否复用已有构建由底层�
 用例以调用者的权限，在实际文档目录中执行本地代码。mooncram 不提供沙箱或临时
 工作区隔离。`test` 和 `update --dry-run` 也遵循这一规则。
 
-## 7. 预期结果、逐行匹配与退出状态
+## 6. 预期结果、逐行匹配与退出状态
 
 只有以下条件全部满足，用例才会通过：
 
 1. 程序退出状态相同。
-2. 选定输出流的输出行数相同。
+2. stdout 的输出行数相同。
 3. 每个对应输出行都满足该行的匹配规则。
 4. 最后一个输出行是否缺少换行符的状态相同。
 
@@ -297,7 +259,7 @@ mooncram 为每个用例请求一次构建，是否复用已有构建由底层�
 | `"hello"` | `hello (no-eol)` |
 | `"hello\n\n"` | 一行 `hello`，后跟一行 `"" (escaped)`。 |
 
-### 7.1 输出注解
+### 6.1 输出注解
 
 注解是区分大小写的后缀，其中包括用于分隔的 ASCII 空格。
 注解之后如果还有行尾空格，它就不再是后缀。
@@ -337,7 +299,7 @@ final text (no-eol)
 ```
 ````
 
-### 7.2 Glob 与正则表达式细节
+### 6.2 Glob 与正则表达式细节
 
 Glob 按 Unicode 字符而非字节工作。`*` 匹配零个或多个字符，`?` 匹配一个字符，
 字符集合和范围包括 `[abc]`、`[a-z]`、`[!a-z]` 和 `[^a-z]`。
@@ -350,7 +312,7 @@ Glob 按 Unicode 字符而非字节工作。`*` 匹配零个或多个字符，`?
 这也会约束 `foo|bar` 等分支匹配。支持的正则语法和编译诊断由已安装的 MoonBit
 标准库决定。无效模式属于文档解析错误。Glob 和正则匹配都不会跨越多个输出行。
 
-## 8. 报告与颜色
+## 7. 报告与颜色
 
 通过的用例不打印独立报告。预期结果不匹配时，`test`、`update` 和试运行均会向
 **stdout** 打印报告：
@@ -366,9 +328,8 @@ FAIL <canonical-file>:<command-line>
 
 差异使用三行上下文。实际结果一侧使用预期结果语法呈现，包括转义、`(no-eol)`、
 非零状态标记以及保留的匹配模式，不是原始程序输出的直接转储。
-如果未选中的输出流非空，报告会追加 `--- diagnostic stderr` 或
-`--- diagnostic stdout`，以及该流规范化后的文本，并确保末尾有换行符。
-通过的用例不会打印这个诊断流。
+如果 stderr 非空，报告会追加 `--- diagnostic stderr` 及其规范化后的文本，
+并确保末尾有换行符。通过的用例不会打印诊断 stderr。
 
 错误写入 **stderr**：
 
@@ -394,11 +355,11 @@ FAIL <canonical-file>:<command-line>
 汇总和 `ERROR` 前缀不着色。颜色选项不会移除被测程序输出的 ANSI 字节，
 也不会控制程序自身的颜色策略。
 
-## 9. 更新结果的生成与保留规则
+## 8. 更新结果的生成与保留规则
 
 `update` 与 `test` 使用相同的解析、执行、比较和失败报告逻辑。
 只有不匹配的用例才会生成编辑，通过的用例保持原样。
-编辑仅替换命令之后的预期结果区间，保留命令、围栏、配置、周围正文和分隔行。
+编辑仅替换命令之后的预期结果区间，保留命令、围栏、周围正文和分隔行。
 
 对于索引为 `i` 的实际输出行，生成结果时会先尝试保留同一索引位置的原有预期，
 前提是该行的匹配器仍然匹配。这可以在其他行或退出状态失败时，继续保留有效的
@@ -428,7 +389,7 @@ glob、正则模式以及显式的精确匹配或转义写法。裸空行，以�
 文档差异与单个用例的失败报告都会打印。试运行不会替换文档，也不会执行最后的
 源码复核和写入流程，但仍会构建并运行每个用例，因此程序副作用和构建产物仍然可能产生。
 
-## 10. 错误隔离与安全替换
+## 9. 错误隔离与安全替换
 
 单个用例执行出错后，同一文档中的后续用例仍会执行。
 但是，只要出现执行、构建或超时错误，该文档的**所有**预期结果编辑都会被取消。
@@ -460,7 +421,7 @@ Not updating <canonical-file>: execution errors in this document
 在 Unix 上，新文件使用 `0644` 权限并受 umask 影响；文件系统库在 Windows
 上忽略这个权限参数。
 
-## 11. 计数、汇总与进程退出状态
+## 10. 计数、汇总与进程退出状态
 
 处理完所有已发现文件后，正常汇总写入 stdout：
 
@@ -500,14 +461,14 @@ Not updating <canonical-file>: execution errors in this document
 均为零时使用。参数或文件发现失败、帮助／版本请求，以及这个无用例分支都不会
 打印正常汇总。以上状态属于 mooncram 自身，与被测程序的预期退出状态相互独立。
 
-## 12. 实现与验证索引
+## 11. 实现与验证索引
 
 | 行为 | 实现 | 现有验证 |
 | --- | --- | --- |
 | 入口与参数 | [main.mbt](../main.mbt)、[cli/cli.mbt](cli/cli.mbt)、[cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
 | 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
-| Markdown、命令与配置 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command.mbt](markdown/command.mbt)、[config/config.mbt](config/config.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 | 报告与局部编辑 | [report/report.mbt](report/report.mbt)、[update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |

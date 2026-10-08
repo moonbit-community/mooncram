@@ -36,7 +36,7 @@ arguments. A later `--` can terminate mooncram's own option parsing.
 
 | Command | Behavior |
 | --- | --- |
-| `test` | Execute cases and compare their selected output stream and exit status with the expectations. |
+| `test` | Execute cases and compare stdout and exit status with the expectations. |
 | `update` | Execute the same cases and replace failing expectations with representations of the observed results. |
 | `update --dry-run` | Execute cases and print proposed document changes without writing them. |
 | `help`, `-h`, `--help` | Print the relevant help to stdout and exit with `0`, without discovering or executing cases. |
@@ -83,8 +83,8 @@ mooncram test -- -example.md
 ```
 
 Mooncram does not expand path globs itself. Expansion by the shell launching
-mooncram happens before the CLI receives its arguments. There is no project
-configuration file: defaults come from the CLI and individual fence settings.
+mooncram happens before the CLI receives its arguments. There is no project or
+fence configuration: target and timeout are controlled by the CLI options.
 
 ## 2. File discovery and ordering
 
@@ -114,8 +114,8 @@ with status `2`; already discovered files are not executed. Symlinks ending in
 
 Documents run in sorted canonical-path order, independently of argument order.
 Cases run serially in document order. Filesystem side effects from earlier
-cases remain visible to later cases. Each process still starts with its own
-configured environment and working directory.
+cases remain visible to later cases. Each process starts in the canonical
+document's directory and inherits mooncram's environment unchanged.
 
 A document without cases is allowed when other documents contain cases. If
 there are no attempted cases and no recorded errors, the CLI reports
@@ -126,17 +126,19 @@ there are no attempted cases and no recorded errors, the CLI reports
 Documents are read as UTF-8; decoding failures are document errors. Markdown
 is parsed structurally with `cmark`, with source locations and layout retained.
 Only fenced code blocks with a backtick opening fence and the exact,
-case-sensitive language name `mooncram` are considered. Valid longer backtick
-fences work as well as triple backticks.
+case-sensitive language name `mooncram`, followed only by optional whitespace,
+are considered. Valid longer backtick fences work as well as triple backticks.
 
-Other languages, indented code blocks, tilde fences, and apparent fences inside
-larger code examples are ignored. Cases inside block quotes and lists are
-supported; the Markdown container prefix is not part of the command or output.
-Normal Markdown fence indentation rules apply before mooncram parses lines.
+Other languages, indented code blocks, tilde fences, apparent fences inside
+larger code examples, and `mooncram` fences with any non-whitespace trailing
+text are silently ignored. This includes valid or invalid former JSON settings
+and arbitrary trailing text. Cases inside block quotes and lists are supported;
+the Markdown container prefix is not part of the command or output. Normal
+Markdown fence indentation rules apply before mooncram parses lines.
 
 An eligible fence must have a closing fence and at least one case. An unclosed
-or empty eligible fence is a document parsing error. The optional text after
-the language name is parsed as block configuration (section 5).
+or empty eligible fence is a document parsing error. Ignored fences do not
+produce mooncram parsing errors.
 
 ````markdown
 ```mooncram
@@ -166,8 +168,8 @@ A line of output that would look like a command must use `(escaped)`. Merely
 adding `(equal)` to a line starting with `$ ` does not prevent it from being
 recognized as another command.
 
-The whole document, including all commands, configurations, and expectations,
-is parsed before executing any case in that document. A parsing error prevents
+The whole document, including all commands and expectations, is parsed before
+executing any case in that document. A parsing error prevents
 every case in that document from running, even cases before the error. Later
 documents are still processed. Reported source line numbers are one-based
 positions in the original Markdown document.
@@ -211,46 +213,7 @@ nonexecutable packages are execution/build errors, not output mismatches.
 Remaining arguments are forwarded to the tested program, so its `--version`
 or `--target` is not interpreted as a mooncram option.
 
-## 5. Block configuration and precedence
-
-An optional JSON object after `mooncram` applies to every case in that fence.
-Each fence starts from the CLI defaults independently; settings do not carry
-over from preceding fences.
-
-````markdown
-```mooncram {"stream":"stderr","stdin":"./input.txt","env":{"MODE":"test"},"target":"native","timeout_ms":120000}
-$ ./cmd/main --invalid
-unknown option: --invalid
-[2]
-```
-````
-
-| Field | Default | Accepted value |
-| --- | --- | --- |
-| `stream` | `"stdout"` | Exactly `"stdout"`, `"stderr"`, or `"merged"`. |
-| `stdin` | Immediate EOF | Nonempty string path without NUL. |
-| `env` | `{}` | JSON object whose values are strings. |
-| `target` | CLI `--target` | Exactly `"wasm"` or `"native"`. |
-| `timeout_ms` | CLI `--timeout-ms` | JSON number with integral value in `1..2147483647`. |
-
-Empty settings text and `{}` retain defaults. Invalid JSON, a non-object
-configuration, unknown fields, and incorrect value types are parsing errors
-located at the opening fence. Fields cannot be reset with `null`. JSON numeric
-values such as `1000.0` are valid for `timeout_ms` if their numeric value is an
-integer; the CLI's digit-only timeout syntax is a separate rule.
-
-Environment names must be nonempty and contain neither `=` nor NUL. Values
-must not contain NUL; empty string values are valid. The mapping overrides
-inherited variables for both build and execution processes; other variables
-remain inherited. It does not provide an unset-variable operation.
-
-Command paths, stdin paths, and the working directory of builds and programs
-all use the canonical document's parent directory as their base. A stdin file
-is reopened for each case. Without `stdin`, the tested program receives immediate
-EOF rather than mooncram's interactive stdin. Build preflights always receive
-EOF, even when the block configures an input file.
-
-## 6. Build, execution, capture, and timeout
+## 5. Build, execution, capture, and timeout
 
 Mooncram uses external MoonBit tools. `moon` must be available to build cases;
 scripts also require `moonx`, Wasm packages require `moonrun`, and native
@@ -266,7 +229,7 @@ items are placeholders, not shell syntax:
 | Wasm package | `moon -C <package> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | Native package | `moon -C <package> run --build-only --target native <package>` | `<artifact> <args...>` |
 
-Scripts always use Wasm, including when CLI or fence settings specify `native`.
+Scripts always use Wasm, including when the CLI specifies `native`.
 Mooncram requests a build for every case; any build reuse is performed by the
 underlying tools. Script preflight checks compilation before `moonx` runs so
 that preflight compiler failures cannot be accepted as expected program exits.
@@ -279,19 +242,15 @@ Nonzero build status, invalid JSON, or a missing/invalid artifact array is an
 execution error. Build stdout/stderr are included in build-error diagnostics;
 successful build output is not part of the program expectation.
 
-Both program streams are drained concurrently and buffered to completion:
+Stdout and stderr are drained concurrently and buffered to completion, avoiding
+deadlock when either pipe carries large output. Stdout is always compared with
+the expectation. Stderr does not affect matching and is retained for mismatch
+diagnostics. Both streams must decode successfully. There is no configured
+output-size limit or live relay of program output.
 
-| `stream` | Compared output | Other stream |
-| --- | --- | --- |
-| `stdout` | stdout | stderr retained for mismatch diagnostics. |
-| `stderr` | stderr | stdout retained for mismatch diagnostics. |
-| `merged` | stdout and stderr connected to the same OS pipe | No separate diagnostic stream. |
-
-Merged mode preserves the order in which bytes reach the common pipe. Program
-buffering can affect that order. Separate streams have no combined ordering.
-The unselected stream does not affect matching, but it is still read and must
-decode successfully. There is no configured output-size limit or live relay of
-program output.
+Builds and tested programs inherit mooncram's environment unchanged. Their
+working directory is the canonical document's parent directory. Every process
+receives immediate EOF on stdin rather than mooncram's interactive input.
 
 Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
 is an execution error. Every CRLF pair is normalized to LF before comparison
@@ -310,12 +269,12 @@ Cases execute local code with the invoking user's permissions, in the actual
 document directory. Mooncram provides no sandbox or temporary workspace
 isolation. This also applies to `test` and `update --dry-run`.
 
-## 7. Expectations, line matching, and exit status
+## 6. Expectations, line matching, and exit status
 
 A case passes only when all of the following match:
 
 1. Program exit status.
-2. Number of output lines in the selected stream.
+2. Number of stdout lines.
 3. Every corresponding output line's matcher.
 4. Whether the final output line lacks a newline.
 
@@ -340,7 +299,7 @@ and a nonempty final line without a newline are distinct:
 | `"hello"` | `hello (no-eol)` |
 | `"hello\n\n"` | `hello` followed by `"" (escaped)`. |
 
-### 7.1 Output annotations
+### 6.1 Output annotations
 
 Annotations are case-sensitive suffixes, including the separating ASCII
 space. Trailing spaces after an annotation stop it from being a suffix.
@@ -381,7 +340,7 @@ final text (no-eol)
 ```
 ````
 
-### 7.2 Glob and regex details
+### 6.2 Glob and regex details
 
 Globs operate on Unicode characters, not bytes. `*` matches zero or more
 characters, `?` matches one character, and sets/ranges include `[abc]`, `[a-z]`,
@@ -397,7 +356,7 @@ equal the entire actual line. This also anchors alternatives such as
 installed MoonBit standard library. Invalid patterns are document parse errors.
 Neither glob nor regex matching spans multiple output lines.
 
-## 8. Reports and color
+## 7. Reports and color
 
 Passing cases produce no individual report. Expectation mismatches produce a report
 on **stdout** in both `test` and `update`, including dry runs:
@@ -413,10 +372,9 @@ FAIL <canonical-file>:<command-line>
 
 Diffs use three lines of context. The actual side is rendered in expectation
 syntax, including escaping, `(no-eol)`, nonzero status markers, and retained
-matching patterns. It is not a raw dump of program output. If an unselected
-stream is nonempty, the report appends `--- diagnostic stderr` or
-`--- diagnostic stdout` and that stream's normalized text, ensuring a final
-newline. Successful cases do not print that diagnostic stream.
+matching patterns. It is not a raw dump of program output. If stderr is
+nonempty, the report appends `--- diagnostic stderr` and its normalized text,
+ensuring a final newline. Successful cases do not print diagnostic stderr.
 
 Errors are written to **stderr**:
 
@@ -443,12 +401,12 @@ Color selection is evaluated once after discovery:
 Summaries and `ERROR` prefixes are not colorized. The color option does not
 strip ANSI bytes emitted by tested programs or control their own color policy.
 
-## 9. Update rendering and preservation
+## 8. Update rendering and preservation
 
 `update` uses the same parser, execution, comparisons, and failure reports as
 `test`. Only mismatching cases receive edits; passing cases remain untouched.
 Edits replace the expectation span after the command, leaving the command,
-fences, settings, surrounding prose, and separator lines in place.
+fences, surrounding prose, and separator lines in place.
 
 For each actual output line at index `i`, rendering first tries to retain the
 existing expectation at the same index if its matcher still matches. This
@@ -484,7 +442,7 @@ This is in addition to individual failure reports. Dry runs do not replace
 documents or perform the final source-recheck/write sequence. They still build
 and run every case, so program effects and build artifacts can be created.
 
-## 10. Error isolation and safe replacement
+## 9. Error isolation and safe replacement
 
 After a case execution error, later cases in the same document still run.
 However, any execution/build/timeout error suppresses **all** expectation edits
@@ -518,7 +476,7 @@ relationships, and extended metadata are not preserved. On Unix, the replacement
 uses new-file permissions `0644`, subject to umask; the filesystem library
 ignores this permission parameter on Windows.
 
-## 11. Counters, summaries, and process exit status
+## 10. Counters, summaries, and process exit status
 
 After processing all discovered files, normal summaries go to stdout:
 
@@ -560,14 +518,14 @@ Argument/discovery failures, help/version, and that no-cases path have no normal
 summary. These statuses belong to mooncram, independently of tested programs'
 expected exit statuses.
 
-## 12. Implementation and verification map
+## 11. Implementation and verification map
 
 | Behavior | Implementation | Existing verification |
 | --- | --- | --- |
 | Entry point and arguments | [main.mbt](../main.mbt), [cli/cli.mbt](cli/cli.mbt), [cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
 | Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
-| Markdown, commands, configuration | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command.mbt](markdown/command.mbt), [config/config.mbt](config/config.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 | Reports and local edits | [report/report.mbt](report/report.mbt), [update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
