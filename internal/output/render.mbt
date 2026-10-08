@@ -1,13 +1,17 @@
 ///|
-/// JSON strings make command/status/fence-looking lines and control characters
-/// unambiguous. Ordinary output stays readable.
+/// JSON strings make command/status/fence-looking lines, known annotation
+/// suffixes, and control characters unambiguous. Ordinary output stays readable.
 fn encode_output_line(text : String) -> String {
   let needs_escape = text == "" ||
     text.has_prefix(" ") ||
     text.has_prefix("$") ||
     text.has_prefix("[") ||
     text.contains("`") ||
-    text.contains(" (") ||
+    text.has_suffix(" (equal)") ||
+    text.has_suffix(" (escaped)") ||
+    text.has_suffix(" (glob)") ||
+    text.has_suffix(" (regex)") ||
+    text.has_suffix(" (no-eol)") ||
     text.iter().any(c => c < ' ' || c == '\u007f')
   if needs_escape {
     "\{Json::string(text).stringify()} (escaped)"

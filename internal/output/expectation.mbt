@@ -44,12 +44,6 @@ fn parse_expected_line(raw : String) -> ExpectedLine raise {
       },
     )
   } else {
-    // Reserve suffix annotations, including unsupported line repetitions.
-    if raw.has_suffix(")") && raw.contains(" (") {
-      raise @diagnostic.Failure(
-        "unknown output annotation; use (equal) or (escaped) for literal text",
-      )
-    }
     Equal(raw)
   }
   { raw, matcher, }
