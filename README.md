@@ -49,10 +49,12 @@ Exit status:
 
 ## Test blocks
 
-Only backtick fences whose language is exactly `mooncram` are tests. Other
-languages, tilde fences, and fences inside larger example fences are ignored.
-Tests inside block quotes and lists are supported. Empty or unclosed test fences
-are errors.
+Only backtick fences whose info string is `mooncram` followed by optional
+whitespace are tests. Any non-whitespace trailing text—including former JSON
+configuration syntax—causes the whole fence to be silently ignored. Other
+languages, tilde fences, and fences inside larger example fences are also
+ignored. Tests inside block quotes and lists are supported. Empty or unclosed
+recognized test fences are errors.
 
 Each `$ ` line starts a case. The command must name an existing local `.mbtx`
 file or a directory containing an executable MoonBit package (`is-main: true`).
@@ -62,8 +64,8 @@ program output. Scripts are first checked with a build-only invocation, then
 launched with `moonx`, so a compiler failure cannot become an expected program
 exit status. `.mbtx` uses Wasm regardless of `--target`.
 
-All relative command and stdin paths, and the program's working directory, are
-relative to the Markdown file's directory (the canonical file for symlinks).
+All relative command paths and the program's working directory are relative to
+the Markdown file's directory (the canonical file for symlinks).
 Arguments use single/double quotes and backslash escaping. Single quotes are
 literal; outside them a backslash quotes the next character. Quoted empty
 arguments are preserved. There is no variable, glob, tilde, or command
@@ -83,8 +85,8 @@ my-cli * (glob)
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
 otherwise it is `0`. Negative statuses denote termination by a signal as
-reported by the process library. No expected output lines means the selected
-stream must be empty.
+reported by the process library. No expected output lines means stdout must be
+empty.
 
 Bare empty lines at the beginning/end of a block or immediately before the next
 command are separators. Empty lines between nonempty expectations are output.
@@ -127,30 +129,16 @@ final text (no-eol)
 Output must be valid UTF-8. CRLF is normalized to LF for comparisons; standalone
 CR, empty lines, trailing spaces, and the final newline are preserved.
 
-## Block configuration
+## Execution behavior
 
-An optional JSON object after `mooncram` applies to every case in that block:
+Block-level configuration is not supported. `--target` selects the backend for
+all local package cases, and `--timeout-ms` supplies every case deadline;
+`.mbtx` scripts still use Wasm. A tested program inherits mooncram's environment
+unchanged and receives immediate EOF on stdin.
 
-````markdown
-```mooncram {"stream":"stderr","stdin":"./input.txt","env":{"MODE":"test"}}
-$ ./cmd/main --invalid
-unknown option: --invalid
-[2]
-```
-````
-
-| Field | Values/default |
-| --- | --- |
-| `stream` | `stdout` (default), `stderr`, or `merged` |
-| `stdin` | File path; default is immediate EOF; reopened for each case |
-| `env` | String-to-string mapping, overriding inherited environment variables |
-| `target` | `wasm` or `native` for local packages; overrides CLI target (default `wasm`) |
-| `timeout_ms` | Positive 32-bit integer; overrides CLI timeout (default `60000` ms) |
-
-Unknown fields and wrong value types are errors. Both output streams are read
-concurrently. `merged` connects stdout and stderr to one pipe, preserving pipe
-write order (program buffering still applies). For separate streams, the other
-stream is shown as diagnostic output on assertion failure.
+Stdout is always compared with the expectation. Stderr is drained concurrently
+to prevent pipe deadlocks and is shown as `diagnostic stderr` when an assertion
+fails. Both streams must be valid UTF-8 and have no configured size limit.
 
 The deadline includes builds and execution. On timeout the directly managed
 process is cancelled and the case is an execution error. Programs must manage
