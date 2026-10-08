@@ -102,7 +102,7 @@ function exercise(target) {
 
     assert(cli(["--help"]).stdout.includes("Usage: mooncram"));
     assert(cli(["update", "--help"]).stdout.includes("dry-run"));
-    assert(cli(["--version"]).stdout.includes("0.1.0"));
+    assert(cli(["--version"]).stdout.includes("0.0.1"));
     cli(["test", "--timeout-ms", "0"], { expected: 2 });
     cli(["test", "--target", "js"], { expected: 2 });
     cli(["test", "--color", "invalid"], { expected: 2 });
