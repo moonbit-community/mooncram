@@ -117,10 +117,28 @@ test "regex matches whole lines including alternations" {
     () => ignore(parse_example("$ ./a.mbtx\n[ (regex)\n")),
     "example.md:3: invalid regex",
   )
-  for suffix in ["(re)", "(?)", "(*)", "(+)"] {
-    assert_error_contains(
-      () => ignore(parse_example("$ ./a.mbtx\nx " + suffix + "\n")),
-      "unknown output annotation",
-    )
+}
+
+///|
+test "unknown output annotations match literal text" {
+  for suffix in ["(foo)", "(re)", "(?)", "(*)", "(+)"] {
+    let line = "hello " + suffix
+    assert_output(line + "\n", line + "\n", 0, true)
+    assert_output(line + "\n", "hello\n", 0, false)
+  }
+  assert_output("hello (glob) (foo)\n", "hello (glob) (foo)\n", 0, true)
+  assert_output("hello (glob) (foo)\n", "hello anything (foo)\n", 0, false)
+  assert_output("hello (foo) (no-eol)\n", "hello (foo)", 0, true)
+  assert_output("hello (foo) (no-eol)\n", "hello (foo)\n", 0, false)
+}
+
+///|
+test "annotation recognition requires exact suffix spelling" {
+  for
+    line in [
+      "hello (GLOB)", "hello (NO-EOL)", "hello (glob) ", "hello (no-eol) ", "hello(glob)",
+    ] {
+    assert_output(line + "\n", line + "\n", 0, true)
+    assert_output(line + "\n", "hello\n", 0, false)
   }
 }

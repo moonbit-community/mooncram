@@ -25,3 +25,16 @@ test "failure report includes location command diff exit and diagnostic stream" 
   }
   assert_true(!report.contains("\u001b"))
 }
+
+///|
+test "failure report keeps unknown suffixes literal and escapes known suffixes" {
+  let case = parse_example("$ ./a.mbtx\nold\n").cases[0]
+  let report = @report.failure_report(
+    "test.md",
+    case,
+    { output: "hello (foo)\nhello (glob)\n", diagnostic: "", exit_code: 0, },
+    false,
+  )
+  assert_true(report.contains("+hello (foo)\n"), msg=report)
+  assert_true(report.contains("+\"hello (glob)\" (escaped)\n"), msg=report)
+}

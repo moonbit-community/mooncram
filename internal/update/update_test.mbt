@@ -67,12 +67,63 @@ test "update special output round trips and is idempotent" {
 }
 
 ///|
-test "matching patterns and explicit equal lines survive partial failures" {
+test "updates keep ordinary parentheses literal and escape known suffixes" {
+  let doc = parse_example("$ ./a.mbtx\nold\n")
+  for
+    (line, rendered) in [
+      ("hello (foo)", "hello (foo)"),
+      ("hello (glob) (foo)", "hello (glob) (foo)"),
+      ("hello (note) tail", "hello (note) tail"),
+      ("hello (GLOB)", "hello (GLOB)"),
+      ("hello (glob) ", "hello (glob) "),
+      ("hello(glob)", "hello(glob)"),
+      ("hello (equal)", "\"hello (equal)\" (escaped)"),
+      ("hello (escaped)", "\"hello (escaped)\" (escaped)"),
+      ("hello (glob)", "\"hello (glob)\" (escaped)"),
+      ("hello (regex)", "\"hello (regex)\" (escaped)"),
+      ("hello (no-eol)", "\"hello (no-eol)\" (escaped)"),
+    ] {
+    for newline in ["\n", ""] {
+      let actual : @output.Captured = {
+        output: line + newline,
+        diagnostic: "",
+        exit_code: 0,
+      }
+      let expected_line = if newline == "" {
+        rendered + " (no-eol)"
+      } else {
+        rendered
+      }
+      let updated = @update.apply_edits(doc.source, [
+        @update.case_edit(doc.cases[0], actual),
+      ])
+      assert_eq(
+        updated,
+        doc.source.replace(old="old\n", new=expected_line + "\n"),
+      )
+      let parsed = @markdown.parse_document(
+        "example.md",
+        updated,
+        @config.default_config(),
+      )
+      assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
+      assert_eq(
+        @update.apply_edits(updated, [
+          @update.case_edit(parsed.cases[0], actual),
+        ]),
+        updated,
+      )
+    }
+  }
+}
+
+///|
+test "matching patterns and explicit output spellings survive partial failures" {
   let doc = parse_example(
-    "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n (equal)\n",
+    "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n (equal)\nhello (foo) (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
   )
   let actual : @output.Captured = {
-    output: "version 9\n123\nnew\n\n",
+    output: "version 9\n123\nnew\n\nhello (foo)\nhello (foo)\nhello (foo)\n",
     diagnostic: "",
     exit_code: 2,
   }
@@ -80,7 +131,9 @@ test "matching patterns and explicit equal lines survive partial failures" {
     @update.case_edit(doc.cases[0], actual),
   ])
   assert_true(
-    updated.contains("version * (glob)\n[0-9]+ (regex)\nnew\n (equal)\n[2]"),
+    updated.contains(
+      "version * (glob)\n[0-9]+ (regex)\nnew\n (equal)\nhello (foo) (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n[2]",
+    ),
   )
   assert_true(
     @markdown.parse_document("example.md", updated, @config.default_config()).cases[0].expected.matches(
