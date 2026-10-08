@@ -356,8 +356,10 @@ space. Trailing spaces after an annotation stop it from being a suffix.
 
 Only one matcher suffix is interpreted, after removing a final `(no-eol)`.
 For example, `literal (glob) (equal)` means the literal text `literal (glob)`.
-Otherwise, an unrecognized line ending in `)` and containing ` (` is rejected
-as an unknown annotation. Use `(equal)` or `(escaped)` for such literal text.
+Unknown parenthesized suffixes are ordinary text and match exactly. For example,
+`hello (foo)` and `hello (glob) (foo)` each match their entire literal line.
+`hello (foo) (no-eol)` matches `hello (foo)` without a terminating LF.
+Use `(equal)` or `(escaped)` to match a recognized annotation suffix literally.
 There are no optional-line, repetition, or line-skipping annotations.
 
 `(escaped)` supports control characters and syntax-looking output through JSON
@@ -457,10 +459,12 @@ separator/status ambiguity. Matching is by line index, not by searching for
 the same text elsewhere in the output.
 
 New exact output lines are JSON-escaped with `(escaped)` when they are empty,
-begin with a space, `$`, or `[`, contain a backtick or ` (`, or contain a control
-character below U+0020 or U+007F. Other lines are written literally. The last
-output line gets `(no-eol)` exactly when needed. A nonzero actual status appends
-`[N]`; zero requires no marker.
+begin with a space, `$`, or `[`, contain a backtick or a control character below
+U+0020 or U+007F, or end with a recognized annotation suffix: ` (equal)`,
+` (escaped)`, ` (glob)`, ` (regex)`, or ` (no-eol)`. Other lines, including unknown
+parenthesized suffixes, are written literally. The last output line gets
+`(no-eol)` exactly when needed. A nonzero actual status appends `[N]`; zero
+requires no marker.
 
 For replacement line `i`, an existing output line's Markdown container prefix
 and newline spelling are reused when available. Extra lines use the command

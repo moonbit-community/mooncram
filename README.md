@@ -102,9 +102,10 @@ the end of output. Thus empty output and a single newline remain distinct.
 | ` (no-eol)` | The final output line has no terminating newline; follows any other suffix |
 
 Glob `?` and sets match one Unicode character. Matching never repeats or skips
-output lines. Unknown annotations, malformed globs/regexes, and non-final
-`(no-eol)` are errors with file and line locations. Output ending in a literal
-parenthetical annotation should use `(equal)` or `(escaped)`.
+output lines. Unknown parenthesized suffixes such as `(foo)` or `(re)` are
+literal text and match exactly. Malformed globs/regexes and non-final `(no-eol)`
+are errors with file and line locations. To match output ending in a recognized
+annotation literally, use `(equal)` or `(escaped)`.
 
 `(escaped)` expects a complete JSON string. It can represent tabs, carriage
 returns, NUL, ANSI escapes, and output that looks like a command, fence, status,
