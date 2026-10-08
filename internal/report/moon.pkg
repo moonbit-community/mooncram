@@ -8,7 +8,6 @@ import {
 }
 
 import {
-  "moonbit-community/mooncram/internal/config",
   "moonbit-community/mooncram/internal/markdown",
 } for "test"
 

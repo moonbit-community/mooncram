@@ -47,11 +47,7 @@ fn collect_blocks(
 }
 
 ///|
-pub fn parse_document(
-  path : String,
-  source : String,
-  defaults : @config.Config,
-) -> Document raise {
+pub fn parse_document(path : String, source : String) -> Document raise {
   let markdown = @cmark.Doc::from_string(
     source,
     file=path,
@@ -72,12 +68,12 @@ pub fn parse_document(
       is Some(("mooncram", settings)) else {
       continue
     }
+    if !settings.trim().is_empty() {
+      continue
+    }
     let @cmark_base.LinePos(open_line, _) = block.meta.loc.first_line
     if layout.closing_fence is None {
       raise @diagnostic.located(path, open_line, "unclosed mooncram fence")
-    }
-    let config = @config.parse_config(settings, defaults) catch {
-      e => raise @diagnostic.located(path, open_line, @diagnostic.error_text(e))
     }
     let code = block.v.code.to_array()
     let before = cases.length()
@@ -129,7 +125,6 @@ pub fn parse_document(
         command: node.v,
         argv,
         line,
-        config,
         expected,
         replace_start: command_line.end,
         replace_end,

@@ -1,25 +1,16 @@
 ///|
 fn parse_example(body : String) -> @markdown.Document raise {
-  @markdown.parse_document(
-    "example.md",
-    "```mooncram\n" + body + "```\n",
-    @config.default_config(),
-  )
+  @markdown.parse_document("example.md", "```mooncram\n" + body + "```\n")
 }
 
 ///|
 test "quoted list Unicode CRLF source positions and local replacement" {
-  let source = "😀\r\n\r\n> - ```mooncram {\"stream\":\"stderr\"}\r\n>   $ ./hello.mbtx\r\n>   旧值\r\n>\r\n>   ```\r\nAfter\r\n"
-  let doc = @markdown.parse_document(
-    "unicode.md",
-    source,
-    @config.default_config(),
-  )
+  let source = "😀\r\n\r\n> - ```mooncram\r\n>   $ ./hello.mbtx\r\n>   旧值\r\n>\r\n>   ```\r\nAfter\r\n"
+  let doc = @markdown.parse_document("unicode.md", source)
   let case = doc.cases[0]
   assert_eq(case.line, 4)
   assert_eq(case.prefix, ">   ")
   assert_eq(case.newline, "\r\n")
-  assert_true(case.config.stream is Stderr)
   let updated = @update.apply_edits(source, [
     @update.case_edit(case, {
       output: "新值😀\n",
@@ -29,7 +20,7 @@ test "quoted list Unicode CRLF source positions and local replacement" {
   ])
   assert_eq(updated, source.replace(old="旧值", new="新值😀"))
   assert_eq(
-    @markdown.parse_document("unicode.md", updated, @config.default_config()).cases[0].expected.lines[0].raw,
+    @markdown.parse_document("unicode.md", updated).cases[0].expected.lines[0].raw,
     "新值😀",
   )
 }
@@ -37,11 +28,7 @@ test "quoted list Unicode CRLF source positions and local replacement" {
 ///|
 test "update special output round trips and is idempotent" {
   let source = "Intro\n\n```mooncram\n$ ./a.mbtx\nold\n\n$ ./b.mbtx\nkeep * (glob)\n```\nTail"
-  let doc = @markdown.parse_document(
-    "test.md",
-    source,
-    @config.default_config(),
-  )
+  let doc = @markdown.parse_document("test.md", source)
   for
     output in [
       "", "\n", "\n\n", "😀  \n", "$ ./other.mbtx\n[2]\n```\n", "x (regex)\n",
@@ -51,11 +38,7 @@ test "update special output round trips and is idempotent" {
     let updated = @update.apply_edits(source, [
       @update.case_edit(doc.cases[0], actual),
     ])
-    let parsed = @markdown.parse_document(
-      "test.md",
-      updated,
-      @config.default_config(),
-    )
+    let parsed = @markdown.parse_document("test.md", updated)
     assert_eq(parsed.cases.length(), 2)
     assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
     assert_eq(
@@ -101,11 +84,7 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
         updated,
         doc.source.replace(old="old\n", new=expected_line + "\n"),
       )
-      let parsed = @markdown.parse_document(
-        "example.md",
-        updated,
-        @config.default_config(),
-      )
+      let parsed = @markdown.parse_document("example.md", updated)
       assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
       assert_eq(
         @update.apply_edits(updated, [
@@ -136,7 +115,7 @@ test "matching patterns and explicit output spellings survive partial failures" 
     ),
   )
   assert_true(
-    @markdown.parse_document("example.md", updated, @config.default_config()).cases[0].expected.matches(
+    @markdown.parse_document("example.md", updated).cases[0].expected.matches(
       actual,
     ),
   )
@@ -163,7 +142,7 @@ test "retained blank and status-looking output is safe when it becomes final" {
       @update.case_edit(doc.cases[0], actual),
     ])
     assert_true(
-      @markdown.parse_document("example.md", updated, @config.default_config()).cases[0].expected.matches(
+      @markdown.parse_document("example.md", updated).cases[0].expected.matches(
         actual,
       ),
     )
@@ -173,11 +152,7 @@ test "retained blank and status-looking output is safe when it becomes final" {
 ///|
 test "existing container spelling and mixed line endings survive an update" {
   let source = "> ```mooncram\r\n>$ ./a.mbtx\n>keep * (glob)\r\n> old\n> ```\r\n"
-  let doc = @markdown.parse_document(
-    "mixed.md",
-    source,
-    @config.default_config(),
-  )
+  let doc = @markdown.parse_document("mixed.md", source)
   let actual : @output.Captured = {
     output: "keep me\nnew\n",
     diagnostic: "",
@@ -188,7 +163,7 @@ test "existing container spelling and mixed line endings survive an update" {
   ])
   assert_eq(updated, source.replace(old="> old", new="> new"))
   assert_true(
-    @markdown.parse_document("mixed.md", updated, @config.default_config()).cases[0].expected.matches(
+    @markdown.parse_document("mixed.md", updated).cases[0].expected.matches(
       actual,
     ),
   )
@@ -201,11 +176,7 @@ test "leading output spaces survive optional Markdown fence indentation" {
       "  ```mooncram\n$ ./a.mbtx\nold\n  ```\n", "  ```mooncram\n  $ ./a.mbtx\n  old\n  ```\n",
       ">   ```mooncram\n> $ ./a.mbtx\n> old\n>   ```\n", "1. ```mooncram\n   $ ./a.mbtx\n   old\n   ```\n",
     ] {
-    let doc = @markdown.parse_document(
-      "indent.md",
-      source,
-      @config.default_config(),
-    )
+    let doc = @markdown.parse_document("indent.md", source)
     let actual : @output.Captured = {
       output: "  leading\n   \nnext",
       diagnostic: "",
@@ -215,7 +186,7 @@ test "leading output spaces survive optional Markdown fence indentation" {
       @update.case_edit(doc.cases[0], actual),
     ])
     assert_true(
-      @markdown.parse_document("indent.md", updated, @config.default_config()).cases[0].expected.matches(
+      @markdown.parse_document("indent.md", updated).cases[0].expected.matches(
         actual,
       ),
       msg=updated,

@@ -3,7 +3,6 @@ pub struct Case {
   command : String
   argv : Array[String]
   line : Int
-  config : @config.Config
   expected : @output.Expectation
   // UTF-16 offsets into the original Markdown, including container prefixes.
   replace_start : Int

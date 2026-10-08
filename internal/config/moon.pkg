@@ -1,7 +1,0 @@
-import {
-  "moonbit-community/mooncram/internal/diagnostic",
-  "moonbitlang/core/json",
-  "moonbitlang/core/string",
-}
-
-supported_targets = "wasm+native"

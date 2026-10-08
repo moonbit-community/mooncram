@@ -1,10 +1,6 @@
 ///|
 fn parse_example(body : String) -> @markdown.Document raise {
-  @markdown.parse_document(
-    "example.md",
-    "```mooncram\n" + body + "```\n",
-    @config.default_config(),
-  )
+  @markdown.parse_document("example.md", "```mooncram\n" + body + "```\n")
 }
 
 ///|

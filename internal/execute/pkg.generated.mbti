@@ -7,7 +7,7 @@ import {
 }
 
 // Values
-pub async fn execute_case(@markdown.Case, String) -> @output.Captured
+pub async fn execute_case(@markdown.Case, String, target~ : String, timeout_ms~ : Int) -> @output.Captured
 
 // Errors
 

@@ -10,14 +10,19 @@ async fn run_cli(cli : Cli) -> Int {
     try {
       let source = @fs.read_file(file).text()
       // Parse the whole document before executing anything in it.
-      let document = @markdown.parse_document(file, source, cli.config)
+      let document = @markdown.parse_document(file, source)
       let cwd = @path.Path(file).dirname().to_string()
       let edits = []
       let mut document_error = false
       for case in document.cases {
         total += 1
         try {
-          let actual = @execute.execute_case(case, cwd)
+          let actual = @execute.execute_case(
+            case,
+            cwd,
+            target=cli.target,
+            timeout_ms=cli.timeout_ms,
+          )
           if !case.expected.matches(actual) {
             failed += 1
             @stdio.stdout.write(
