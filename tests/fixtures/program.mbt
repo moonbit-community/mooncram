@@ -11,8 +11,12 @@ async fn main {
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
     "echo" => @stdio.stdout.write(@stdio.stdin.read_all())
+    "check-env" => {
+      assert_eq(@env.get_env_var(args[2]), Some(args[3]))
+      println(args[3])
+    }
     "check-env-echo" => {
-      assert_eq(@env.get_env_var("MODE"), Some(args[2]))
+      assert_eq(@env.get_env_var(args.get(3).unwrap_or("MODE")), Some(args[2]))
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
     "read-file" => @stdio.stdout.write(@fs.read_file(args[2]))

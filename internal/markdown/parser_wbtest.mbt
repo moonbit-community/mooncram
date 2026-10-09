@@ -148,3 +148,108 @@ test "parent environment is a fallback and empty exports override it" {
     assert_eq(doc.cases[2].pipeline, [["./a.mbtx", ""]])
   }
 }
+
+///|
+test "Windows exports override parent values across casing and preserve snapshots" {
+  let source =
+    #|```mooncram
+    #|$ ./a.mbtx ${mOdE}
+    #|$ export MoDe=${mode}-doc
+    #|$ ./a.mbtx "${mODE}" ${MODE}
+    #|```
+    #|```mooncram
+    #|$ export mode=${Mode}-next
+    #|$ ./a.mbtx ${mode}
+    #|$ export MODE=
+    #|$ ./a.mbtx ${Mode}
+    #|```
+    #|
+  let queries = []
+  let doc = parse_document_with_env(
+    "windows.md",
+    source,
+    parent_lookup=name => {
+      queries.push(name)
+      if name == "MODE" {
+        Some("parent")
+      } else {
+        None
+      }
+    },
+    case_insensitive=true,
+  )
+  assert_eq(queries, ["MODE", "MODE"])
+  assert_eq(doc.cases.length(), 4)
+  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "parent"]])
+  assert_true(doc.cases[0].extra_env.is_empty())
+  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "parent-doc", "parent-doc"]])
+  assert_eq(doc.cases[1].extra_env, { "MODE": "parent-doc" })
+  assert_eq(doc.cases[2].pipeline, [["./a.mbtx", "parent-doc-next"]])
+  assert_eq(doc.cases[2].extra_env, { "MODE": "parent-doc-next" })
+  assert_eq(doc.cases[3].pipeline, [["./a.mbtx", ""]])
+  assert_eq(doc.cases[3].extra_env, { "MODE": "" })
+  assert_eq(doc.cases[1].command, "$ ./a.mbtx \"${mODE}\" ${MODE}")
+  doc.cases[2].extra_env["MODE"] = "changed"
+  assert_eq(doc.cases[1].extra_env, { "MODE": "parent-doc" })
+  assert_eq(doc.cases[3].extra_env, { "MODE": "" })
+}
+
+///|
+test "Windows mixed-case exports work without a parent value" {
+  let doc = parse_document_with_env(
+    "windows.md",
+    "```mooncram\n$ export New_Value=first\n$ ./a.mbtx ${new_VALUE}\n$ export nEW_vALUE=second\n$ ./a.mbtx ${New_Value}\n```\n",
+    parent_lookup=_ => None,
+    case_insensitive=true,
+  )
+  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "first"]])
+  assert_eq(doc.cases[0].extra_env, { "NEW_VALUE": "first" })
+  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "second"]])
+  assert_eq(doc.cases[1].extra_env, { "NEW_VALUE": "second" })
+  assert_error_contains(
+    () => {
+      ignore(
+        parse_document_with_env(
+          "windows.md",
+          "```mooncram\n$ ./a.mbtx ${New_Value}\n```\n",
+          parent_lookup=_ => None,
+          case_insensitive=true,
+        ),
+      )
+    },
+    "windows.md:2: undefined variable: New_Value",
+  )
+}
+
+///|
+test "Unix environment names remain distinct across casing" {
+  let parent = { "MODE": "upper", "mode": "lower" }
+  let doc = parse_document_with_env(
+    "unix.md",
+    "```mooncram\n$ ./a.mbtx ${MODE} ${mode}\n$ export Mode=mixed\n$ export mode=${mode}-doc\n$ ./a.mbtx ${MODE} ${mode} ${Mode}\n$ export MODE=\n$ ./a.mbtx ${MODE} ${mode} ${Mode}\n```\n",
+    parent_lookup=name => parent.get(name),
+    case_insensitive=false,
+  )
+  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "upper", "lower"]])
+  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "upper", "lower-doc", "mixed"]])
+  assert_eq(doc.cases[1].extra_env, { "Mode": "mixed", "mode": "lower-doc" })
+  assert_eq(doc.cases[2].pipeline, [["./a.mbtx", "", "lower-doc", "mixed"]])
+  assert_eq(doc.cases[2].extra_env, {
+    "Mode": "mixed",
+    "mode": "lower-doc",
+    "MODE": "",
+  })
+  assert_error_contains(
+    () => {
+      ignore(
+        parse_document_with_env(
+          "unix.md",
+          "```mooncram\n$ export Mode=value\n$ ./a.mbtx ${MODE}\n```\n",
+          parent_lookup=_ => None,
+          case_insensitive=false,
+        ),
+      )
+    },
+    "unix.md:3: undefined variable: MODE",
+  )
+}

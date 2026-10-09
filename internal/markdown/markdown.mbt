@@ -48,6 +48,30 @@ fn collect_blocks(
 
 ///|
 pub fn parse_document(path : String, source : String) -> Document raise {
+  parse_document_with_env(
+    path,
+    source,
+    parent_lookup=@env.get_env_var,
+    case_insensitive=@async.platform is Windows,
+  )
+}
+
+///|
+fn parse_document_with_env(
+  path : String,
+  source : String,
+  parent_lookup~ : (String) -> String?,
+  case_insensitive~ : Bool,
+) -> Document raise {
+  // Export names are ASCII. Normalize both storage and lookup so each Windows
+  // variable has one entry in every child-process environment snapshot.
+  let env_key = fn(name : String) {
+    if case_insensitive {
+      name.to_upper()
+    } else {
+      name
+    }
+  }
   let markdown = @cmark.Doc::from_string(
     source,
     file=path,
@@ -92,9 +116,10 @@ pub fn parse_document(path : String, source : String) -> Document raise {
         )
       }
       let command = @command.parse(node.v[1:].to_owned(), lookup=name => {
-        match extra_env.get(name) {
+        let key = env_key(name)
+        match extra_env.get(key) {
           Some(value) => Some(value)
-          None => @env.get_env_var(name)
+          None => parent_lookup(key)
         }
       }) catch {
         e => raise @diagnostic.located(path, line, @diagnostic.error_text(e))
@@ -120,7 +145,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
               path, output_line, "export does not accept expected output or an exit code",
             )
           }
-          extra_env[name] = value
+          extra_env[env_key(name)] = value
           i = next
           continue
         }

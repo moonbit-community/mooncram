@@ -355,6 +355,40 @@ function testExports({ cli, docs, target }) {
   }
 }
 
+function testExportCasing({ cli, docs, target }) {
+  const windows = process.platform === "win32";
+  const checkBoth = (name, reference, value) => [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
+    `$ ${program} check-env ${name} \${${reference}}\n${value || " (equal)"}\n`).join("");
+  const modeKey = windows ? "MODE" : "mode";
+  const newKey = windows ? "MOONCRAM_CASE_VALUE" : "Mooncram_Case_Value";
+  const source = block(
+    checkBoth("MODE", windows ? "mOdE" : "MODE", "parent") +
+    "$ export MoDe=${MODE}-doc\n" +
+    checkBoth(windows ? "MODE" : "MoDe", "MoDe", "parent-doc") +
+    "$ export mode=${MoDe}-next\n" +
+    checkBoth(modeKey, windows ? "mODE" : "mode", "parent-doc-next") +
+    "$ export Mooncram_Case_Value=first\n" +
+    checkBoth(newKey, "Mooncram_Case_Value", "first") +
+    "$ export mooncram_case_value=second\n" +
+    checkBoth(newKey, "Mooncram_Case_Value", windows ? "second" : "first") +
+    checkBoth(windows ? newKey : "mooncram_case_value", "mooncram_case_value", "second") +
+    [
+      [SCRIPT_COMMAND, LOCAL_PACKAGE, SCRIPT_COMMAND],
+      [LOCAL_PACKAGE, SCRIPT_COMMAND, LOCAL_PACKAGE],
+    ].map(([first, second, third]) =>
+      `$ ${first} check-env MODE \${MODE}|` +
+      `${second} check-env-echo \${mode} ${modeKey}|` +
+      `${third} check-env-echo \${Mooncram_Case_Value} ${newKey}\n` +
+      `${windows ? "parent-doc-next" : "parent"}\n`).join("") +
+    "$ export mode=\n" +
+    checkBoth(modeKey, windows ? "Mode" : "mode", "") +
+    (windows ? "" : checkBoth("MODE", "MODE", "parent")),
+  );
+  const document = writeDocument(docs, "exports-casing.md", source);
+  const cases = windows ? 16 : 18;
+  assert(cli(["test", document, "--target", target]).stdout.includes(`${cases} cases, 0 failed, 0 errors`));
+}
+
 function testBuildEnvironment({ cli, docs, directory, target }) {
   if (process.platform === "win32") return;
   const realMoon = process.env.PATH.split(delimiter).map(path => join(path, "moon"))
@@ -605,6 +639,7 @@ async function exercise(target) {
     testCliArguments(context);
     testPassingCases(context);
     testExports(context);
+    testExportCasing(context);
     testBuildEnvironment(context);
     console.log(`${target}: scripts, packages, args, document exports, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
 
