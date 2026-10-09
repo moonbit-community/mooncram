@@ -115,7 +115,8 @@ with status `2`; already discovered files are not executed. Symlinks ending in
 Documents run in sorted canonical-path order, independently of argument order.
 Cases run serially in document order. Filesystem side effects from earlier
 cases remain visible to later cases. Each process starts in the canonical
-document's directory and inherits mooncram's environment unchanged.
+document's directory and inherits mooncram's environment, overridden by the
+exports in effect for that case.
 
 A document without cases is allowed when other documents contain cases. If
 there are no attempted cases and no recorded errors, the CLI reports
@@ -136,8 +137,9 @@ and arbitrary trailing text. Cases inside block quotes and lists are supported;
 the Markdown container prefix is not part of the command or output. Normal
 Markdown fence indentation rules apply before mooncram parses lines.
 
-An eligible fence must have a closing fence and at least one case. An unclosed
-or empty eligible fence is a document parsing error. Ignored fences do not
+An eligible fence must have a closing fence and at least one command (an export
+also satisfies this requirement). An unclosed or empty eligible fence is a
+document parsing error. Ignored fences do not
 produce mooncram parsing errors.
 
 ````markdown
@@ -152,7 +154,8 @@ my-cli * (glob)
 
 Within the parsed code block:
 
-- A line beginning exactly with `$ ` starts a case. A line consisting only of
+- A line beginning exactly with `$ ` starts a command; an export sets the
+  environment and any other command starts a case. A line consisting only of
   `$` is also treated as a command start, then rejected as an empty command.
 - Before the first command, only completely empty lines are ignored. Any other
   line is an error. `$` followed only by a tab is not the `$ ` command prefix.
@@ -177,7 +180,12 @@ positions in the original Markdown document.
 ## 4. Command tokenization and executable selection
 
 The text after the leading `$` is tokenized directly into an array of argument
-vectors, one per pipeline segment. It is not passed to a shell.
+vectors, one per pipeline segment, or a single export assignment. It is not
+passed to a shell. The command parser returns
+`Command::Pipeline(Array[Array[String]])` or
+`Command::Export(name~ : String, value~ : String)`, with `Debug` and `Eq`.
+Its optional `lookup` callback resolves variables; without it references are
+undefined. Returned arguments and assignment values have already been expanded.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -188,6 +196,7 @@ vectors, one per pipeline segment. It is not passed to a shell.
 | Backslash outside single quotes | Quote exactly the next character, including inside double quotes. |
 | `''` or `""` | An empty argument, which is preserved. |
 | Adjacent quoted/unquoted fragments | Concatenated into the same argument; `a"b"c` becomes `abc`. |
+| `${NAME}` outside single quotes, with an unescaped `$` | Expand one environment variable; never split or recursively expand the result. |
 
 Backslash does not interpret C/JSON escape sequences: `\n` contributes `n`,
 not a newline, unless the backslash is inside single quotes. A trailing
@@ -202,9 +211,39 @@ $ ./producer.mbtx|./cmd/filter|./consumer.mbtx
 
 Unquoted `&`, `;`, `<`, `>`, backticks, `(`, and `)` are rejected wherever
 they occur in a word. Quoting or escaping them passes them literally. There
-is no variable, wildcard, tilde, or command substitution. For example, `'$HOME'`,
+is no wildcard or tilde expansion or command substitution. For example, `'$HOME'`,
 `*`, and `~` are literal arguments; `'$(cmd)'` is literal, while unquoted
 `$(cmd)` is rejected because of its parentheses.
+
+`$ export NAME=value` sets exactly one variable. The assignment is split at the
+first literal `=`; the name must match `[A-Za-z_][A-Za-z0-9_]*` and cannot contain
+variable references. Empty values and additional `=` characters are allowed.
+The value follows the argument quoting and expansion rules. Missing assignments,
+invalid names, extra arguments, and an `export` segment in any pipeline are
+parsing errors. An export accepts no expected output or exit code; any following
+nonempty expectation span is a parsing error. Blank separator lines are allowed.
+Exports do not count as cases, and export-only fences are valid. The existing
+no-cases error still applies when the entire run contains no actual cases.
+
+Exports take effect in source order across eligible blocks in one document and
+reset at the next document. Lookup first checks earlier document exports, then
+the parent process environment. An exported empty string is a defined value and
+overrides the parent. Self-reference reads the value before the assignment.
+Each actual case receives an independent `extra_env : Map[String, String]`
+snapshot. The original command text is retained for reports, update and dry-run.
+
+Only `${NAME}` references expand; `$NAME` is literal. Unquoted and double-quoted
+references expand, while single quotes and escaped dollar signs protect them.
+Expansion occurs once and never retokenizes: whitespace, quotes, `|` and even
+another `${NAME}` in the result remain inside the same argument. Empty results
+remain arguments; `prefix${NAME}suffix` concatenates into one argument. Undefined
+variables and invalid or unclosed references are document parsing errors, with
+file and source line numbers. The whole document must parse before any case runs.
+
+The first word of every pipeline segment cannot contain an expandable `${NAME}`;
+this is a parsing error even if the variable is defined. Single-quoted or escaped
+references may appear literally in executable paths. File paths passed as ordinary
+arguments follow the normal expansion rules.
 
 The first argument of each segment must be nonempty. It is resolved as a local
 path relative to the canonical Markdown file's directory, not searched through
@@ -261,8 +300,9 @@ must decode successfully. Mooncram waits for every segment to finish and uses
 the final segment's exit status, regardless of upstream statuses. There is no
 configured output-size limit or live relay of program output.
 
-Builds and tested programs inherit mooncram's environment unchanged. Their
-working directory is the canonical document's parent directory. Build processes
+Builds and every tested pipeline segment inherit mooncram's environment and
+override names using the case's export snapshot. Their working directory is the
+canonical document's parent directory. Build processes
 and the first pipeline segment receive immediate EOF on stdin rather than
 mooncram's interactive input. Later segments receive the preceding stdout.
 
@@ -512,7 +552,7 @@ For example:
 
 | Counter | Meaning |
 | --- | --- |
-| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes cases in documents that failed to parse. |
+| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports and cases in documents that failed to parse. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
 | `errors` | Caught per-case errors plus document read/parse/update errors. A parse failure counts as one document error. |
 | `updated` | Mismatching cases in documents successfully written, or eligible for a dry-run document diff. Counts cases, not files or changed lines. |
