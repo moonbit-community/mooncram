@@ -128,7 +128,7 @@ function block(body) {
 
 // Mooncram treats backslashes as escapes inside double-quoted arguments.
 function quoteArgument(value) {
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("$", "\\$")}"`;
 }
 
 function buildExecutable(target) {
@@ -294,6 +294,90 @@ function testPassingCases({ cli, docs, target }) {
   const result = cli(["test", good, "--target", target, "--color", "never"]);
   assert(result.stdout.includes("0 failed, 0 errors"));
   assert(!result.stdout.includes(ANSI_ESCAPE));
+}
+
+function testExports({ cli, docs, target }) {
+  const value = 'Moon Bit|\'"=value';
+  const args = '${MODE} ${VALUE} ${EMPTY} pre${VALUE}post ${NESTED} \\${UNDEFINED} $MODE';
+  const expected = JSON.stringify(["parent-doc", value, "", `pre${value}post`, "${UNDEFINED}", "${UNDEFINED}", "$MODE"]);
+  const source = [
+    block(`$ ${LOCAL_PACKAGE} args \${MODE}\n["parent"] (equal)\n`),
+    block('$ export MODE=${MODE}-doc\n' +
+      `$ export VALUE=${quoteArgument(value)}\n` +
+      "$ export EMPTY=\n$ export FILE=relative.txt\n$ export NESTED='${UNDEFINED}'\n"),
+    ...[SCRIPT_COMMAND, LOCAL_PACKAGE].map(program => block(
+      `$ ${program} args ${args}\n${expected} (equal)\n` +
+      `$ ${program} context\nparent-doc\nyes\ncwd contents\n` +
+      `$ ${program} read-file \${FILE}\ncwd contents\n`,
+    )),
+    block(`$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-env-echo \${MODE}|${SCRIPT_COMMAND} check-env-echo \${MODE}\nparent-doc\nyes\ncwd contents\n`),
+    block(`$ ${LOCAL_PACKAGE} context|${SCRIPT_COMMAND} check-env-echo \${MODE}|${LOCAL_PACKAGE} check-env-echo \${MODE}\nparent-doc\nyes\ncwd contents\n`),
+    block('$ export MODE=\n' + [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
+      `$ ${program} context\n\nyes\ncwd contents\n`).join("")),
+    block(`$ export MODE=final\n$ ${LOCAL_PACKAGE} context\nfinal\nyes\ncwd contents\n`),
+  ].join("\n");
+  const document = writeDocument(docs, "exports-main.md", source);
+  assert(cli(["test", document, "--target", target]).stdout.includes("12 cases, 0 failed, 0 errors"));
+
+  const isolated = writeDocument(docs, "exports-z-isolated.md", contextCase(LOCAL_PACKAGE));
+  assert(cli(["test", document, isolated, "--target", target]).stdout.includes("14 cases, 0 failed, 0 errors"));
+  const onlyExports = writeDocument(docs, "exports-only.md", block("$ export MODE=only\n"));
+  assert(cli(["test", onlyExports], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
+  assert(cli(["test", onlyExports, isolated, "--target", target]).stdout.includes("2 cases, 0 failed, 0 errors"));
+
+  const command = `$ ${SCRIPT_COMMAND} args \${MODE}`;
+  const prefix = block('$ export MODE=${MODE}-updated\n');
+  const original = prefix + block(`${command}\nwrong\n`);
+  const update = writeDocument(docs, "exports-update.md", original);
+  const dryRun = cli(["update", update, "--target", target, "--dry-run"]);
+  assert(dryRun.stdout.includes(command));
+  assert(dryRun.stdout.includes("1 cases, would update 1, 0 errors"));
+  assert.equal(fs.readFileSync(update, "utf8"), original);
+  cli(["update", update, "--target", target]);
+  assert.equal(fs.readFileSync(update, "utf8"), prefix + block(`${command}\n${JSON.stringify('["parent-updated"]')} (escaped)\n`));
+  cli(["test", update, "--target", target]);
+
+  const sideEffect = join(docs, "side-effect.txt");
+  for (const invalid of [
+    "export INVALID", "export A=x B=y", "export 1A=x",
+    `export A=x|${LOCAL_PACKAGE} hello`, `${LOCAL_PACKAGE} hello|export A=x`,
+    `${LOCAL_PACKAGE} args \${UNDEFINED}`, `${LOCAL_PACKAGE} args \${}`,
+    `${LOCAL_PACKAGE} args \${UNCLOSED`, `\${MODE}`, `${LOCAL_PACKAGE}|\${MODE}`,
+    "export A=x\noutput", "export A=x\n[0]",
+  ]) {
+    fs.rmSync(sideEffect, { force: true });
+    const bad = writeDocument(docs, "exports-error.md", block(`$ ${LOCAL_PACKAGE} setup\n$ ${invalid}\n`));
+    const before = fs.readFileSync(bad);
+    const result = cli(["update", bad, "--target", target], { expected: EXIT_CODE.ERROR });
+    assert(result.stderr.includes("exports-error.md:"));
+    assert(!fs.existsSync(sideEffect), "a case ran before the complete document was parsed");
+    assert.deepEqual(fs.readFileSync(bad), before);
+  }
+}
+
+function testBuildEnvironment({ cli, docs, directory, target }) {
+  if (process.platform === "win32") return;
+  const realMoon = process.env.PATH.split(delimiter).map(path => join(path, "moon"))
+    .find(path => fs.existsSync(path));
+  assert(realMoon);
+  const tools = join(directory, "build-env-tools");
+  fs.mkdirSync(tools);
+  const log = join(directory, "build-env.jsonl");
+  fs.writeFileSync(join(tools, "moon"), '#!/usr/bin/env node\n' +
+    'const fs = require("node:fs");\n' +
+    `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.env.MODE) + "\\n");\n` +
+    `const result = require("node:child_process").spawnSync(${JSON.stringify(realMoon)}, process.argv.slice(2), { stdio: "inherit" });\n` +
+    'process.exit(result.status ?? 2);\n', { mode: 0o755 });
+  const document = writeDocument(docs, "exports-build.md", block(
+    `$ export MODE=first\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
+    `$ export MODE=second\n$ ${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo\nHello, Moon Bit!\n`,
+  ));
+  const env = createEnvironment();
+  env.PATH = [tools, env.PATH].join(delimiter);
+  cli(["test", document, "--target", target], { env });
+  const modes = fs.readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  assert(modes.includes("first") && modes.includes("second"));
+  assert(modes.every(mode => mode === "first" || mode === "second"));
 }
 
 function testDiagnostics({ cli, docs, target }) {
@@ -520,7 +604,9 @@ async function exercise(target) {
 
     testCliArguments(context);
     testPassingCases(context);
-    console.log(`${target}: scripts, packages, args, cwd, inherited env, stdin EOF, stdout and large dual-stream output passed`);
+    testExports(context);
+    testBuildEnvironment(context);
+    console.log(`${target}: scripts, packages, args, document exports, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
 
     testDiagnostics(context);
     testUpdates(context);
