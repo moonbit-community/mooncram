@@ -56,7 +56,8 @@ languages, tilde fences, and fences inside larger example fences are also
 ignored. Tests inside block quotes and lists are supported. Empty or unclosed
 recognized test fences are errors.
 
-Each `$ ` line starts a case. Each pipeline segment must name an existing local
+Each `$ ` line starts a command. Except for `export`, each command starts a case.
+Each pipeline segment must name an existing local
 `.mbtx` file or a directory containing an executable MoonBit package
 (`is-main: true`).
 Local packages are built with `moon run --build-only` and their artifact is run
@@ -69,15 +70,35 @@ All relative command paths and the program's working directory are relative to
 the Markdown file's directory (the canonical file for symlinks).
 Arguments use single/double quotes and backslash escaping. Single quotes are
 literal; outside them a backslash quotes the next character. Quoted empty
-arguments are preserved. There is no variable, glob, tilde, or command
-substitution. Unquoted, unescaped `|` separates pipeline segments, with or
+arguments are preserved. `${NAME}` expands in unquoted or double-quoted
+arguments; single quotes and escaped dollar signs preserve it literally. `$NAME`
+is literal. There is no glob or tilde expansion or command substitution.
+Unquoted, unescaped `|` separates pipeline segments, with or
 without surrounding spaces. Empty segments (including `||`) are errors.
 Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors. Quote or
 escape these characters to pass them as ordinary arguments.
 
+`$ export NAME=value` sets one variable for subsequent commands in the same
+Markdown document, including later test blocks. Names must match
+`[A-Za-z_][A-Za-z0-9_]*`; values may be empty or contain additional `=` characters.
+Assignments can use `${NAME}` with the same quoting rules as arguments. Lookup
+uses earlier exports first, then the parent environment; self-reference reads the
+previous value, and an exported empty string overrides the parent value.
+Expansion happens once, without splitting: spaces, quotes and `|` in a value stay
+inside the original argument, and an empty result remains an argument.
+
+The first word of every pipeline segment is an executable path and cannot contain
+an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
+Undefined variables, invalid or unclosed references, invalid assignments, and
+`export` in a pipeline are parsing errors with file and line numbers. Exports
+have no expected output or exit code and do not count as cases. Export-only
+blocks are valid; a run with no actual cases still reports an error. Exports
+reset for each document. The entire document is parsed before any case runs.
+
 ````markdown
 ```mooncram
-$ ./hello.mbtx 'Moon Bit'
+$ export NAME='Moon Bit'
+$ ./hello.mbtx "${NAME}"
 Hello, Moon Bit!
 
 $ ./cmd/main --version
@@ -140,8 +161,9 @@ CR, empty lines, trailing spaces, and the final newline are preserved.
 
 Block-level configuration is not supported. `--target` selects the backend for
 all local package cases, and `--timeout-ms` supplies every case deadline;
-`.mbtx` scripts still use Wasm. A tested program inherits mooncram's environment
-unchanged. The first segment receives immediate EOF on stdin; later segments
+`.mbtx` scripts still use Wasm. Build processes and every pipeline segment
+inherit mooncram's environment with the case's document exports applied.
+The first segment receives immediate EOF on stdin; later segments
 receive the preceding segment's stdout as raw bytes.
 
 Only the final stdout is compared with the expectation. Every segment's stderr
