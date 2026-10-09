@@ -86,3 +86,65 @@ test "ignored legacy fences do not produce parse errors" {
     assert_eq(doc.cases.length(), 0)
   }
 }
+
+///|
+test "exports apply in document order across blocks with independent snapshots" {
+  let source = "```mooncram\n$ export MOONCRAM_TEST_VALUE=first\n```\n\n```mooncram\n$ ./a.mbtx ${MOONCRAM_TEST_VALUE}\n$ export MOONCRAM_TEST_VALUE=${MOONCRAM_TEST_VALUE}-second\n$ ./b.mbtx \"${MOONCRAM_TEST_VALUE}\"\n$ export MOONCRAM_TEST_VALUE=\n$ ./c.mbtx ${MOONCRAM_TEST_VALUE}\n```\n"
+  let doc = parse_document("exports.md", source)
+  assert_eq(doc.cases.length(), 3)
+  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "first"]])
+  assert_eq(doc.cases[1].pipeline, [["./b.mbtx", "first-second"]])
+  assert_eq(doc.cases[2].pipeline, [["./c.mbtx", ""]])
+  assert_eq(doc.cases[0].extra_env.get("MOONCRAM_TEST_VALUE"), Some("first"))
+  assert_eq(
+    doc.cases[1].extra_env.get("MOONCRAM_TEST_VALUE"),
+    Some("first-second"),
+  )
+  assert_eq(doc.cases[2].extra_env.get("MOONCRAM_TEST_VALUE"), Some(""))
+  assert_eq(doc.cases[0].command, "$ ./a.mbtx ${MOONCRAM_TEST_VALUE}")
+  // Mutating one saved map must not affect any other case.
+  doc.cases[0].extra_env["MOONCRAM_TEST_VALUE"] = "changed"
+  assert_eq(
+    doc.cases[1].extra_env.get("MOONCRAM_TEST_VALUE"),
+    Some("first-second"),
+  )
+  assert_true(parse_example("$ ./a.mbtx\n").cases[0].extra_env.is_empty())
+  assert_error_contains(
+    () => ignore(parse_example("$ ./a.mbtx ${MOONCRAM_TEST_VALUE}\n")),
+    "example.md:2: undefined variable: MOONCRAM_TEST_VALUE",
+  )
+}
+
+///|
+test "export-only blocks are legal and exports have no expectations" {
+  assert_eq(parse_example("$ export A=x\n\n$ export B=y\n").cases.length(), 0)
+  for output in ["hello", "[0]", "[2]", " (equal)"] {
+    assert_error_contains(
+      () => ignore(parse_example("$ export A=x\n" + output + "\n")),
+      "example.md:3: export does not accept expected output or an exit code",
+    )
+  }
+  for
+    command in [
+      "export A", "./a.mbtx ${UNDEFINED_MOONCRAM_TEST}", "./${PATH}.mbtx", "./a.mbtx|export A=x",
+      "./a.mbtx ${}",
+    ] {
+    assert_error_contains(
+      () => ignore(parse_example("$ " + command + "\n")),
+      "example.md:2:",
+    )
+  }
+}
+
+///|
+test "parent environment is a fallback and empty exports override it" {
+  if @env.get_env_var("PATH") is Some(path) {
+    let doc = parse_example(
+      "$ ./a.mbtx ${PATH}\n$ export PATH=${PATH}-suffix\n$ ./a.mbtx ${PATH}\n$ export PATH=\n$ ./a.mbtx ${PATH}\n",
+    )
+    assert_eq(doc.cases[0].pipeline, [["./a.mbtx", path]])
+    assert_true(doc.cases[0].extra_env.is_empty())
+    assert_eq(doc.cases[1].pipeline, [["./a.mbtx", path + "-suffix"]])
+    assert_eq(doc.cases[2].pipeline, [["./a.mbtx", ""]])
+  }
+}

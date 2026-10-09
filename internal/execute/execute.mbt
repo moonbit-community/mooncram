@@ -11,9 +11,11 @@ pub async fn execute_case(
       let commands = []
       // Preflight every segment before any tested program can produce effects.
       for argv in case.pipeline {
-        commands.push(prepare_command(argv, cwd, target~))
+        commands.push(
+          prepare_command(argv, cwd, target~, extra_env=case.extra_env),
+        )
       }
-      capture_pipeline(commands, cwd)
+      capture_pipeline(commands, cwd, extra_env=case.extra_env)
     },
     error=@diagnostic.Failure(
       "timed out after \{timeout_ms} ms (including build)",
@@ -26,6 +28,7 @@ async fn prepare_command(
   argv : Array[String],
   cwd : String,
   target~ : String,
+  extra_env~ : Map[String, String],
 ) -> Command {
   let executable = @files.resolve_from(cwd, argv[0])
   let args = argv[1:].to_owned()
@@ -36,6 +39,7 @@ async fn prepare_command(
       build_artifact(
         ["run", "--build-only", "--target", "wasm", executable],
         cwd,
+        extra_env~,
       ),
     )
     { program: "moonx", args: [executable, "--"] + args, }
@@ -49,6 +53,7 @@ async fn prepare_command(
     let artifact = build_artifact(
       ["-C", executable, "run", "--build-only", "--target", target, executable],
       cwd,
+      extra_env~,
     )
     if target == "wasm" {
       { program: "moonrun", args: [artifact, "--"] + args, }
@@ -63,8 +68,12 @@ async fn prepare_command(
 }
 
 ///|
-async fn build_artifact(args : Array[String], cwd : String) -> String {
-  let build = capture_pipeline([{ program: "moon", args, }], cwd)
+async fn build_artifact(
+  args : Array[String],
+  cwd : String,
+  extra_env~ : Map[String, String],
+) -> String {
+  let build = capture_pipeline([{ program: "moon", args, }], cwd, extra_env~)
   if build.exit_code != 0 {
     raise @diagnostic.Failure(
       "build failed (exit \{build.exit_code})\n\{build.output}\{build.diagnostic}",

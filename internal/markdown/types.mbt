@@ -2,6 +2,7 @@
 pub struct Case {
   command : String
   pipeline : Array[Array[String]]
+  extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation
   // UTF-16 offsets into the original Markdown, including container prefixes.
