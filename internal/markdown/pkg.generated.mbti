@@ -13,7 +13,7 @@ pub fn parse_document(String, String) -> Document raise
 // Types and methods
 pub struct Case {
   command : String
-  argv : Array[String]
+  pipeline : Array[Array[String]]
   line : Int
   expected : @output.Expectation
   replace_start : Int

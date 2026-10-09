@@ -2,7 +2,7 @@
 package "moonbit-community/mooncram/internal/markdown/command"
 
 // Values
-pub fn parse(String) -> Array[String] raise
+pub fn parse(String) -> Array[Array[String]] raise
 
 // Errors
 

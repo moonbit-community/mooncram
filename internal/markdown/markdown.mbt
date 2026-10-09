@@ -90,7 +90,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
           path, line, "expected a command starting with '$ '",
         )
       }
-      let argv = @command.parse(node.v[1:].to_owned()) catch {
+      let pipeline = @command.parse(node.v[1:].to_owned()) catch {
         e => raise @diagnostic.located(path, line, @diagnostic.error_text(e))
       }
       let mut next = i + 1
@@ -123,7 +123,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
       }
       cases.push({
         command: node.v,
-        argv,
+        pipeline,
         line,
         expected,
         replace_start: command_line.end,

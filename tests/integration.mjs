@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -70,6 +70,11 @@ const UPDATE_ERROR_CASES = [
   { command: "./missing.mbtx" },
   { command: `${quoteArgument(process.execPath)} hello` },
   { command: `${LOCAL_PACKAGE} invalid-utf8` },
+  { command: `${LOCAL_PACKAGE} hello | ../project/bad`, diagnostic: "build failed" },
+  { command: `${LOCAL_PACKAGE} hello | ./bad.mbtx`, diagnostic: "build failed" },
+  { command: `${LOCAL_PACKAGE} hello | ./missing.mbtx` },
+  { command: `${LOCAL_PACKAGE} hello | ${LOCAL_PACKAGE} invalid-utf8` },
+  { command: `${LOCAL_PACKAGE} invalid-utf8 | ${LOCAL_PACKAGE} echo` },
 ];
 const IGNORED_SCAN_DIRECTORIES = [".hidden", "_build", "target"];
 const SLOW_SIDE_EFFECT_FILENAME = "slow-finished.txt";
@@ -163,7 +168,9 @@ function writePackage(directory, config, source, filename = "main.mbt") {
 function createProject(project) {
   fs.mkdirSync(project, { recursive: true });
   fs.writeFileSync(join(project, "moon.mod"), MODULE_CONFIG);
-  fs.symlinkSync(join(ROOT, ".mooncakes"), join(project, ".mooncakes"), DIRECTORY_LINK_TYPE);
+  // Moon may prune dependencies unused by this fixture module. A symlink here
+  // would let fixture builds remove packages from the repository's cache.
+  fs.cpSync(join(ROOT, ".mooncakes"), join(project, ".mooncakes"), { recursive: true });
   const packageDir = join(project, "cmd");
   writePackage(packageDir, PACKAGE_IMPORTS + MAIN_PACKAGE_CONFIG, PROGRAM);
   return packageDir;
@@ -341,21 +348,117 @@ function testShellOperatorRejection({ cli, docs }) {
   const errorDoc = writeDocument(
     docs,
     "error.md",
-    block(`$ ${LOCAL_PACKAGE} hello\nwrong\n\n$ ${LOCAL_PACKAGE} hello | cat\n`),
+    block(`$ ${LOCAL_PACKAGE} setup\n\n$ ${LOCAL_PACKAGE} hello || cat\n`),
   );
   const before = fs.readFileSync(errorDoc);
-  assert(cli(["update", errorDoc], { expected: EXIT_CODE.ERROR }).stderr.includes("shell operator"));
+  const result = cli(["update", errorDoc], { expected: EXIT_CODE.ERROR });
+  assert(result.stderr.includes("error.md:4: empty pipeline segment"));
   assert.deepEqual(fs.readFileSync(errorDoc), before);
+}
+
+function testPipelines({ cli, docs, target }) {
+  const commands = [
+    [`${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo|${SCRIPT_COMMAND} echo`, "Hello, Moon Bit!\n"],
+    [`${LOCAL_PACKAGE} context | ${SCRIPT_COMMAND} echo`, "parent\nyes\ncwd contents\n"],
+    [`${LOCAL_PACKAGE} streams | ${LOCAL_PACKAGE} echo`, "one\nthree\n"],
+    [`${LOCAL_PACKAGE} hello | ${LOCAL_PACKAGE} streams`, "one\nthree\n[2]\n"],
+    [`${SCRIPT_COMMAND} raw | ${LOCAL_PACKAGE} echo | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
+    [`${LOCAL_PACKAGE} binary | ${SCRIPT_COMMAND} noisy-echo | ${LOCAL_PACKAGE} check-binary`, "all bytes preserved\n"],
+    // The final segment exits without reading its input. Upstream status is ignored.
+    [`${LOCAL_PACKAGE} binary | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
+  ];
+  const passing = writeDocument(docs, "pipeline.md",
+    commands.map(([command, output]) => block(`$ ${command}\n${output}`)).join("\n"));
+  cli(["test", passing, "--target", target]);
+
+  const diagnostic = writeDocument(docs, "pipeline-diagnostic.md", block(
+    `$ ${LOCAL_PACKAGE} streams | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last\nwrong\n`,
+  ));
+  const result = cli(["test", diagnostic, "--target", target], { expected: EXIT_CODE.FAILURE });
+  assert(result.stdout.includes("diagnostic stderr\ntwo\nmiddle\nlast\n"));
+  assert(result.stdout.includes("expected 0, actual 0"));
+
+  const command = `$ ${SCRIPT_COMMAND} streams|${LOCAL_PACKAGE} echo`;
+  const original = block(`${command}\nwrong\n`);
+  const update = writeDocument(docs, "pipeline-update.md", original);
+  const dryRun = cli(["update", update, "--target", target, "--dry-run"]);
+  assert(dryRun.stdout.includes(command));
+  assert.equal(fs.readFileSync(update, "utf8"), original);
+  cli(["update", update, "--target", target]);
+  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\none\nthree\n`));
+  cli(["test", update, "--target", target]);
+}
+
+function testPipelinePreflight({ cli, docs, target }) {
+  const sideEffect = join(docs, "side-effect.txt");
+  fs.rmSync(sideEffect, { force: true });
+  for (const downstream of ["../project/bad", "./bad.mbtx", "./missing.mbtx"]) {
+    const document = writeDocument(docs, "preflight.md", block(
+      `$ ${LOCAL_PACKAGE} setup | ${downstream}\n`,
+    ));
+    cli(["test", document, "--target", target], { expected: EXIT_CODE.ERROR });
+    assert(!fs.existsSync(sideEffect), "upstream ran before all builds succeeded");
+  }
+}
+
+function testPipelineStartupFailure({ cli, docs, directory, target }) {
+  // Remove moonx from PATH while keeping the build tools. The first package
+  // starts successfully, then starting the script must fail and cancel it.
+  const toolDirectories = process.env.PATH.split(delimiter);
+  const executableSuffix = process.platform === "win32" ? ".exe" : "";
+  const tools = join(directory, "tools");
+  fs.mkdirSync(tools);
+  for (const name of ["moon", "moonc", "moonrun"]) {
+    const filename = name + executableSuffix;
+    const source = toolDirectories.map(path => join(path, filename)).find(path => fs.existsSync(path));
+    assert(source, `missing ${name}`);
+    fs.symlinkSync(source, join(tools, filename));
+  }
+  const env = createEnvironment();
+  env.PATH = [tools, ...toolDirectories.filter(path => !fs.existsSync(join(path, "moonx" + executableSuffix)))].join(delimiter);
+  const original = block(
+    `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
+    `$ ${LOCAL_PACKAGE} slow slow-spawn.txt | ${SCRIPT_COMMAND} echo\n`,
+  );
+  const document = writeDocument(docs, "startup-error.md", original);
+  const start = performance.now();
+  const result = cli(["update", document, "--target", target], { env, expected: EXIT_CODE.ERROR });
+  assert(performance.now() - start < CANCELLATION_LIMIT_MS);
+  assert(result.stderr.includes("@process.spawn()"));
+  assert(result.stderr.includes("startup-error.md:5:"));
+  assert(result.stdout.includes("+Hello, Moon Bit!"));
+  assert(result.stderr.includes("Not updating"));
+  assert.equal(fs.readFileSync(document, "utf8"), original);
+}
+
+function testPipelineCaptureFailure({ cli, docs, target }) {
+  const original = block(
+    `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
+    `$ ${LOCAL_PACKAGE} slow slow-capture.txt | ${LOCAL_PACKAGE} invalid-stderr\n`,
+  );
+  const document = writeDocument(docs, "capture-error.md", original);
+  const start = performance.now();
+  const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
+  assert(performance.now() - start < CANCELLATION_LIMIT_MS);
+  assert(result.stderr.includes("Not updating"));
+  assert.equal(fs.readFileSync(document, "utf8"), original);
 }
 
 function assertNoSlowSideEffect(docs) {
   assert(!fs.existsSync(join(docs, SLOW_SIDE_EFFECT_FILENAME)));
+  for (const segment of ["first", "middle", "last", "spawn", "capture"]) {
+    assert(!fs.existsSync(join(docs, `slow-${segment}.txt`)));
+  }
 }
 
 function testTimeouts({ cli, docs }) {
   // A deadline covers the build and executable together. Both managed
   // native artifacts and moonrun processes must be cancelled promptly.
   for (const backend of TARGETS) {
+    // Warm both package backends so these checks reach running processes rather
+    // than timing out during a cold native build of the fixture's dependencies.
+    const warm = writeDocument(docs, "warm.md", block(`$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`));
+    cli(["test", warm, "--target", backend]);
     const slow = writeDocument(docs, "slow.md", block(`$ ${LOCAL_PACKAGE} slow\n`));
     const start = performance.now();
     const result = cli([
@@ -363,6 +466,32 @@ function testTimeouts({ cli, docs }) {
     ], { expected: EXIT_CODE.ERROR });
     assert(performance.now() - start < CANCELLATION_LIMIT_MS);
     assert(result.stderr.includes(`timed out after ${CASE_TIMEOUT_MS} ms`));
+    for (const segment of ["first", "middle", "last"]) {
+      fs.rmSync(join(docs, `slow-${segment}.txt.started`), { force: true });
+    }
+    const pipeline = writeDocument(docs, "slow-pipeline.md", block(
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} slow slow-last.txt\nwrong\n`,
+    ));
+    const original = fs.readFileSync(pipeline);
+    const pipelineStart = performance.now();
+    const cancelled = cli([
+      "update", pipeline, "--target", backend, "--timeout-ms", "1500",
+    ], { expected: EXIT_CODE.ERROR });
+    assert(performance.now() - pipelineStart < CANCELLATION_LIMIT_MS);
+    assert(cancelled.stderr.includes("timed out after 1500 ms"));
+    assert.deepEqual(fs.readFileSync(pipeline), original);
+    for (const segment of ["first", "middle", "last"]) {
+      assert(fs.existsSync(join(docs, `slow-${segment}.txt.started`)),
+        `${backend}: timeout must exercise a running ${segment} segment`);
+    }
+    // Even when the final segment has exited, upstream processes must be
+    // awaited and cancelled when the shared deadline expires.
+    const early = writeDocument(docs, "slow-upstream.md", block(
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`,
+    ));
+    assert(cli([
+      "test", early, "--target", backend, "--timeout-ms", "1500",
+    ], { expected: EXIT_CODE.ERROR }).stderr.includes("timed out after 1500 ms"));
   }
   assertNoSlowSideEffect(docs);
 }
@@ -382,7 +511,7 @@ function testDirectoryScanning({ cli, directory, packageDir, target }) {
   assert(implicit.stdout.includes("2 cases"));
 }
 
-function exercise(target) {
+async function exercise(target) {
   const executable = buildExecutable(target);
   const directory = createTemporaryDirectory(target);
   try {
@@ -398,11 +527,18 @@ function exercise(target) {
     console.log(`${target}: diagnostics, dry-run, local updates, escaping, pattern preservation passed`);
 
     testUpdateErrors(context);
+    testPipelines(context);
+    testPipelinePreflight(context);
+    testPipelineStartupFailure(context);
+    testPipelineCaptureFailure(context);
+    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, last status and updates passed`);
     testShellOperatorRejection(context);
     testTimeouts(context);
+    const cancelledAt = performance.now();
     testConcurrentEdit(context);
     testDirectoryScanning(context);
-    // Other work gives cancelled processes time to reveal stray side effects.
+    // Wait past the fixture's five-second delay to detect escaped processes.
+    await new Promise(resolve => setTimeout(resolve, Math.max(0, 5500 - (performance.now() - cancelledAt))));
     assertNoSlowSideEffect(fixtures.docs);
     console.log(`${target}: error isolation, timeout, concurrent edit, scan order and symlink checks passed`);
   } finally {
@@ -420,7 +556,7 @@ function parseOptions() {
   return values;
 }
 
-function main() {
+async function main() {
   let values;
   try {
     values = parseOptions();
@@ -434,9 +570,9 @@ function main() {
     return;
   }
   for (const target of values.target ?? TARGETS) {
-    exercise(target);
+    await exercise(target);
   }
   console.log("All CLI integration checks passed.");
 }
 
-main();
+await main();

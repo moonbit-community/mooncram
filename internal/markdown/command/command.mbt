@@ -1,8 +1,10 @@
 ///|
 /// Tokenize arguments without invoking or emulating a shell. Single quotes are
 /// literal; outside them a backslash quotes exactly the next character.
-pub fn parse(command : String) -> Array[String] raise {
-  let args : Array[String] = []
+/// Unquoted, unescaped `|` separates pipeline segments.
+pub fn parse(command : String) -> Array[Array[String]] raise {
+  let pipeline : Array[Array[String]] = []
+  let mut args : Array[String] = []
   let word = StringBuilder()
   let mut quote : Char? = None
   let mut escaped = false
@@ -42,7 +44,17 @@ pub fn parse(command : String) -> Array[String] raise {
             word.reset()
             started = false
           }
-        '|' | '&' | ';' | '<' | '>' | '`' | '(' | ')' =>
+        '|' => {
+          if started {
+            args.push(word.to_string())
+            word.reset()
+            started = false
+          }
+          validate_segment(args)
+          pipeline.push(args)
+          args = []
+        }
+        '&' | ';' | '<' | '>' | '`' | '(' | ')' =>
           raise @diagnostic.Failure(
             "unquoted shell operator '\{c}'; quote it to pass it literally",
           )
@@ -62,10 +74,21 @@ pub fn parse(command : String) -> Array[String] raise {
   if started {
     args.push(word.to_string())
   }
-  if args.is_empty() || args[0] == "" {
+  validate_segment(args)
+  pipeline.push(args)
+  pipeline
+}
+
+///|
+fn validate_segment(args : Array[String]) -> Unit raise {
+  if args.is_empty() {
+    raise @diagnostic.Failure(
+      "empty pipeline segment; expected a local .mbtx file or executable package path",
+    )
+  }
+  if args[0] == "" {
     raise @diagnostic.Failure(
       "expected a local .mbtx file or executable package path",
     )
   }
-  args
 }
