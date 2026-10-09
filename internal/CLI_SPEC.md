@@ -232,6 +232,12 @@ overrides the parent. Self-reference reads the value before the assignment.
 Each actual case receives an independent `extra_env : Map[String, String]`
 snapshot. The original command text is retained for reports, update and dry-run.
 
+On Windows, export assignment, reference lookup and subsequent replacement are
+case-insensitive. Export names and lookup keys are normalized to ASCII uppercase,
+so differently cased assignments replace the same snapshot entry and child
+processes receive only one exported entry per variable. Linux and macOS retain
+case-sensitive names. These rules also apply to self-reference and empty values.
+
 Only `${NAME}` references expand; `$NAME` is literal. Unquoted and double-quoted
 references expand, while single quotes and escaped dollar signs protect them.
 Expansion occurs once and never retokenizes: whitespace, quotes, `|` and even

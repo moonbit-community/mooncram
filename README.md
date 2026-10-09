@@ -84,6 +84,9 @@ Markdown document, including later test blocks. Names must match
 Assignments can use `${NAME}` with the same quoting rules as arguments. Lookup
 uses earlier exports first, then the parent environment; self-reference reads the
 previous value, and an exported empty string overrides the parent value.
+On Windows, variable names are case-insensitive: exports and lookup keys use
+ASCII uppercase, so assigning `Name` and then `NAME` replaces one variable.
+On Linux and macOS, variable names remain case-sensitive.
 Expansion happens once, without splitting: spaces, quotes and `|` in a value stay
 inside the original argument, and an empty result remains an argument.
 
