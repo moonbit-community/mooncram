@@ -36,7 +36,7 @@ arguments. A later `--` can terminate mooncram's own option parsing.
 
 | Command | Behavior |
 | --- | --- |
-| `test` | Execute cases and compare stdout and exit status with the expectations. |
+| `test` | Execute cases and compare routed output and exit status with the expectations. |
 | `update` | Execute the same cases and replace failing expectations with representations of the observed results. |
 | `update --dry-run` | Execute cases and print proposed document changes without writing them. |
 | `help`, `-h`, `--help` | Print the relevant help to stdout and exit with `0`, without discovering or executing cases. |
@@ -179,13 +179,15 @@ positions in the original Markdown document.
 
 ## 4. Command tokenization and executable selection
 
-The text after the leading `$` is tokenized directly into an array of argument
-vectors, one per pipeline segment, or a single export assignment. It is not
-passed to a shell. The command parser returns
-`Command::Pipeline(Array[Array[String]])` or
+The text after the leading `$` is tokenized directly into an array of pipeline
+segments or a single export assignment. It is not passed to a shell. The command parser returns
+`Command::Pipeline(Array[PipelineSegment])` or
 `Command::Export(name~ : String, value~ : String)`, with `Debug` and `Eq`.
 Its optional `lookup` callback resolves variables; without it references are
 undefined. Returned arguments and assignment values have already been expanded.
+`PipelineSegment` has `argv : Array[String]`, `stderr_to_stdout : Bool`, and
+`stdout_to_null : Bool`, with `Debug` and `Eq`. Both flags default to `false`
+when their markers are absent; `Case.pipeline` stores these segments.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -209,11 +211,38 @@ errors. Quoted or escaped `|` is an ordinary argument character. For example:
 $ ./producer.mbtx|./cmd/filter|./consumer.mbtx
 ```
 
-Unquoted `&`, `;`, `<`, `>`, backticks, `(`, and `)` are rejected wherever
-they occur in a word. Quoting or escaping them passes them literally. There
-is no wildcard or tilde expansion or command substitution. For example, `'$HOME'`,
+Except for the exact trailing redirection markers below, unquoted `&`, `;`,
+`<`, `>`, backticks, `(`, and `)` are rejected wherever they occur in a word.
+Quoting or escaping them passes them literally. There is no wildcard or tilde expansion or command substitution. For example, `'$HOME'`,
 `*`, and `~` are literal arguments; `'$(cmd)'` is literal, while unquoted
 `$(cmd)` is rejected because of its parentheses.
+
+Each segment, including a single command, accepts these trailing markers:
+
+| Markers | Original stdout | Original stderr |
+| --- | --- | --- |
+| None | Next segment or final capture | Diagnostic stderr |
+| `2>&1` | Next segment or final capture | Same output pipe |
+| `>/dev/null` | Discarded | Diagnostic stderr |
+| Both, in either order | Discarded | Next segment or final capture |
+
+Markers contain no spaces or tabs and require at least one space or tab between
+the marker and the preceding command, argument or marker. The following `|`
+needs no whitespace. Each kind may occur at most once, and no ordinary argument
+may follow a marker in the same segment. Missing commands, duplicate markers,
+internal whitespace, other redirection forms, and redirection on `export` are
+parsing errors, retaining the document filename and command line number.
+
+Classification uses exact raw tokens during tokenization, before variable
+expansion. Fully quoted or correctly escaped markers and marker text produced by
+expansion remain ordinary arguments. Literal `2>&1` requires quoting or `2\>\&1`,
+escaping both `>` and `&`; literal `>/dev/null` can use `\>/dev/null`. The old
+`stdout>/null` and `stderr>/stdout` syntax is rejected. Expanded argv is never
+checked for redirection syntax. For example:
+
+```text
+$ ./producer.mbtx >/dev/null 2>&1|./cmd/filter
+```
 
 `$ export NAME=value` sets exactly one variable. The assignment is split at the
 first literal `=`; the name must match `[A-Za-z_][A-Za-z0-9_]*` and cannot contain
@@ -297,12 +326,19 @@ Nonzero build status, invalid JSON, or a missing/invalid artifact array is an
 execution error. Build stdout/stderr are included in build-error diagnostics;
 successful build output is not part of the program expectation.
 
-Pipeline segments run concurrently, with OS pipes passing intermediate stdout
-to the next stdin as raw bytes, without decoding or newline normalization. Only
-the final stdout is captured and compared with the expectation. Each segment's
-stderr is drained concurrently and buffered, then concatenated in segment order
-for mismatch diagnostics; stderr does not affect matching. All captured streams
-must decode successfully. Mooncram waits for every segment to finish and uses
+Pipeline segments run concurrently, with OS pipes passing intermediate routed
+output to the next stdin as raw bytes, without decoding or newline normalization.
+Only the final routed output is captured and compared with the expectation.
+Unredirected stderr is drained concurrently and buffered, then concatenated in
+segment order for mismatch diagnostics; it does not affect matching.
+`2>&1` sends stderr to the same OS pipe as routed stdout, preserving
+pipe write order, and excludes it from diagnostic collection. When both markers
+are present, only original stderr uses the output pipe. `>/dev/null` drains
+original stdout concurrently with a fixed 8 KiB byte buffer, without accumulating
+or decoding it. If neither stream uses the output pipe, its unused write end is
+closed immediately so downstream or final capture can observe EOF. Build
+processes always use the default routes. All captured streams must decode
+successfully. Mooncram waits for every segment to finish and uses
 the final segment's exit status, regardless of upstream statuses. There is no
 configured output-size limit or live relay of program output.
 
@@ -310,11 +346,12 @@ Builds and every tested pipeline segment inherit mooncram's environment and
 override names using the case's export snapshot. Their working directory is the
 canonical document's parent directory. Build processes
 and the first pipeline segment receive immediate EOF on stdin rather than
-mooncram's interactive input. Later segments receive the preceding stdout.
+mooncram's interactive input. Later segments receive the preceding routed output.
 
 Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
-is an execution error. Every CRLF pair is normalized to LF before comparison
-and reporting. Standalone CR, NUL, ANSI escapes, trailing spaces, blank lines,
+is an execution error. Discarded stdout need not be valid UTF-8; intermediate
+routed bytes remain undecoded. Every CRLF pair is normalized to LF before
+comparison and reporting. Standalone CR, NUL, ANSI escapes, trailing spaces, blank lines,
 and the presence or absence of a final newline otherwise remain significant.
 
 One deadline wraps path inspection, build, execution, and output capture for
@@ -336,7 +373,7 @@ isolation. This also applies to `test` and `update --dry-run`.
 A case passes only when all of the following match:
 
 1. Program exit status.
-2. Number of stdout lines.
+2. Number of routed output lines.
 3. Every corresponding output line's matcher.
 4. Whether the final output line lacks a newline.
 
@@ -434,7 +471,7 @@ FAIL <canonical-file>:<command-line>
 
 Diffs use three lines of context. The actual side is rendered in expectation
 syntax, including escaping, `(no-eol)`, nonzero status markers, and retained
-matching patterns. It is not a raw dump of program output. If stderr is
+matching patterns. It is not a raw dump of program output. If diagnostic stderr is
 nonempty, the report appends `--- diagnostic stderr` and its normalized text,
 ensuring a final newline. Successful cases do not print diagnostic stderr.
 

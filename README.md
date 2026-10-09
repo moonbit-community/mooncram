@@ -75,8 +75,22 @@ arguments; single quotes and escaped dollar signs preserve it literally. `$NAME`
 is literal. There is no glob or tilde expansion or command substitution.
 Unquoted, unescaped `|` separates pipeline segments, with or
 without surrounding spaces. Empty segments (including `||`) are errors.
-Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors. Quote or
-escape these characters to pass them as ordinary arguments.
+Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors, except for
+the exact trailing redirection markers below. Quote or escape these characters
+to pass them as ordinary arguments.
+
+Any segment, including a single command, can end with `2>&1` to merge
+stderr into its output pipe, or `>/dev/null` to discard its original stdout.
+Combining both markers in either order discards original stdout and sends only
+stderr to the next segment or final capture. Each marker must be separated from
+the preceding command, argument or marker by a space or tab; it contains no
+internal whitespace and may touch the following `|`. Each kind may occur once,
+and ordinary arguments cannot follow a marker. Fully quoted markers, correctly
+escaped markers, and marker text produced by variable expansion remain ordinary
+arguments. To pass literal `2>&1`, quote it or use `2\>\&1` to escape both special
+characters; literal `>/dev/null` can use `\>/dev/null`. The old `stdout>/null` and
+`stderr>/stdout` syntax, other redirection forms, and redirection on `export` are
+parsing errors with file and line numbers.
 
 `$ export NAME=value` sets one variable for subsequent commands in the same
 Markdown document, including later test blocks. Names must match
@@ -114,10 +128,10 @@ filtered output
 
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
-otherwise it is `0`. Pipelines match the final segment's stdout and exit code;
-upstream nonzero statuses do not override the final status. Negative statuses
+otherwise it is `0`. Pipelines match the final segment's routed output and exit
+code; upstream nonzero statuses do not override the final status. Negative statuses
 denote termination by a signal as reported by the process library. No expected
-output lines means stdout must be empty.
+output lines means the routed output must be empty.
 
 Bare empty lines at the beginning/end of a block or immediately before the next
 command are separators. Empty lines between nonempty expectations are output.
@@ -167,12 +181,17 @@ all local package cases, and `--timeout-ms` supplies every case deadline;
 `.mbtx` scripts still use Wasm. Build processes and every pipeline segment
 inherit mooncram's environment with the case's document exports applied.
 The first segment receives immediate EOF on stdin; later segments
-receive the preceding segment's stdout as raw bytes.
+receive the preceding segment's routed output as raw bytes.
 
-Only the final stdout is compared with the expectation. Every segment's stderr
-is drained concurrently and concatenated in segment order as `diagnostic stderr`
-when an assertion fails. Captured streams must be valid UTF-8 and have no
-configured size limit. Intermediate pipe data is neither decoded nor normalized.
+Only the final routed output is compared with the expectation. Unredirected
+stderr is drained concurrently and concatenated in segment order as
+`diagnostic stderr` when an assertion fails. Merged stderr uses the same OS pipe
+as routed stdout and is included in matching, without a second diagnostic copy.
+Captured streams must be valid UTF-8 and have no configured size limit.
+Intermediate pipe data is neither decoded nor normalized. Discarded stdout is
+drained concurrently with a fixed 8 KiB byte buffer, without accumulation or
+UTF-8 decoding; invalid bytes in discarded output are allowed. Build processes
+always use the default routes.
 
 All segments finish their build preflight before any tested program starts.
 Segments then run concurrently, and mooncram waits for all of them to exit.
