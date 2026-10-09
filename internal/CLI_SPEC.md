@@ -176,11 +176,12 @@ positions in the original Markdown document.
 
 ## 4. Command tokenization and executable selection
 
-The text after the leading `$` is tokenized directly into an argument vector.
-It is not passed to a shell.
+The text after the leading `$` is tokenized directly into an array of argument
+vectors, one per pipeline segment. It is not passed to a shell.
 
 | Syntax | Meaning |
 | --- | --- |
+| Unquoted, unescaped `\|` | Separate pipeline segments, even without surrounding spaces. |
 | Unquoted space or tab | Separate arguments; consecutive separators are ignored. |
 | `'text'` | Literal text until the next single quote; backslashes are literal. |
 | `"text"` | Text until the next unescaped double quote. |
@@ -192,15 +193,22 @@ Backslash does not interpret C/JSON escape sequences: `\n` contributes `n`,
 not a newline, unless the backslash is inside single quotes. A trailing
 backslash, an unclosed quote, or a NUL/CR/LF in a command is a parsing error.
 
-Unquoted `|`, `&`, `;`, `<`, `>`, backticks, `(`, and `)` are rejected wherever
+Empty pipeline segments, including leading/trailing `|` and `||`, are parsing
+errors. Quoted or escaped `|` is an ordinary argument character. For example:
+
+```text
+$ ./producer.mbtx|./cmd/filter|./consumer.mbtx
+```
+
+Unquoted `&`, `;`, `<`, `>`, backticks, `(`, and `)` are rejected wherever
 they occur in a word. Quoting or escaping them passes them literally. There
 is no variable, wildcard, tilde, or command substitution. For example, `'$HOME'`,
 `*`, and `~` are literal arguments; `'$(cmd)'` is literal, while unquoted
 `$(cmd)` is rejected because of its parentheses.
 
-The first argument must be nonempty. It is resolved as a local path relative
-to the canonical Markdown file's directory, not searched through `PATH`.
-Absolute paths are also accepted. It must resolve to either:
+The first argument of each segment must be nonempty. It is resolved as a local
+path relative to the canonical Markdown file's directory, not searched through
+`PATH`. Absolute paths are also accepted. It must resolve to either:
 
 - A regular file with a case-sensitive `.mbtx` suffix; or
 - A directory containing `moon.pkg` or `moon.pkg.json`. The `moon` tool then
@@ -230,9 +238,11 @@ items are placeholders, not shell syntax:
 | Native package | `moon -C <package> run --build-only --target native <package>` | `<artifact> <args...>` |
 
 Scripts always use Wasm, including when the CLI specifies `native`.
-Mooncram requests a build for every case; any build reuse is performed by the
-underlying tools. Script preflight checks compilation before `moonx` runs so
-that preflight compiler failures cannot be accepted as expected program exits.
+Mooncram requests a build for every segment of every case, in segment order.
+All segments must pass preflight before any tested program starts; build reuse
+is performed by the underlying tools. Script preflight checks compilation
+before `moonx` runs so that preflight compiler failures cannot be accepted as
+expected program exits.
 
 A successful build must return stdout containing JSON with an `artifacts_path`
 array containing exactly one string. Additional object fields are allowed.
@@ -242,15 +252,19 @@ Nonzero build status, invalid JSON, or a missing/invalid artifact array is an
 execution error. Build stdout/stderr are included in build-error diagnostics;
 successful build output is not part of the program expectation.
 
-Stdout and stderr are drained concurrently and buffered to completion, avoiding
-deadlock when either pipe carries large output. Stdout is always compared with
-the expectation. Stderr does not affect matching and is retained for mismatch
-diagnostics. Both streams must decode successfully. There is no configured
-output-size limit or live relay of program output.
+Pipeline segments run concurrently, with OS pipes passing intermediate stdout
+to the next stdin as raw bytes, without decoding or newline normalization. Only
+the final stdout is captured and compared with the expectation. Each segment's
+stderr is drained concurrently and buffered, then concatenated in segment order
+for mismatch diagnostics; stderr does not affect matching. All captured streams
+must decode successfully. Mooncram waits for every segment to finish and uses
+the final segment's exit status, regardless of upstream statuses. There is no
+configured output-size limit or live relay of program output.
 
 Builds and tested programs inherit mooncram's environment unchanged. Their
-working directory is the canonical document's parent directory. Every process
-receives immediate EOF on stdin rather than mooncram's interactive input.
+working directory is the canonical document's parent directory. Build processes
+and the first pipeline segment receive immediate EOF on stdin rather than
+mooncram's interactive input. Later segments receive the preceding stdout.
 
 Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
 is an execution error. Every CRLF pair is normalized to LF before comparison
@@ -261,9 +275,11 @@ One deadline wraps path inspection, build, execution, and output capture for
 each case. It is not a fresh timeout per subprocess or a timeout for the whole
 run. On expiry the case reports
 `timed out after N ms (including build)` as an execution error. Directly managed
-processes use hard cancellation; the implementation does not promise cleanup
-of detached descendants or rollback of their effects. Discovery, document
-parsing, reporting, and document replacement are outside this per-case deadline.
+processes use hard cancellation. A startup or capture error also cancels every
+started segment, and all unconsumed pipe handles are closed on exit. The
+implementation does not promise cleanup of detached descendants or rollback of
+their effects. Discovery, document parsing, reporting, and document replacement
+are outside this per-case deadline.
 
 Cases execute local code with the invoking user's permissions, in the actual
 document directory. Mooncram provides no sandbox or temporary workspace

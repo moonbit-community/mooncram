@@ -42,10 +42,29 @@ test "empty and unclosed test blocks have accurate errors" {
     "example.md:2: expected a command",
   )
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx | x\n")),
-    "example.md:2: unquoted",
+    () => ignore(parse_example("$ ./a.mbtx |\n")),
+    "example.md:2: empty pipeline segment",
   )
   assert_error_contains(() => ignore(parse_example("$\n")), "example.md:2:")
+}
+
+///|
+test "pipeline arguments and original command text are preserved" {
+  let command = "$ ./a.mbtx 'x|y'|./cmd/filter|./b.mbtx \\|"
+  let doc = parse_example(command + "\nresult\n[3]\n")
+  assert_eq(doc.cases[0].command, command)
+  assert_eq(doc.cases[0].pipeline, [
+    ["./a.mbtx", "x|y"],
+    ["./cmd/filter"],
+    ["./b.mbtx", "|"],
+  ])
+  assert_eq(doc.cases[0].expected.exit_code, 3)
+  for invalid in ["| ./a.mbtx", "./a.mbtx || ./b.mbtx", "./a.mbtx | ''"] {
+    assert_error_contains(
+      () => ignore(parse_example("$ " + invalid + "\n")),
+      "example.md:2:",
+    )
+  }
 }
 
 ///|
@@ -53,8 +72,8 @@ test "only bare mooncram info strings are recognized" {
   let source = "```mooncram\n$ ./bare.mbtx\n```\n\n```mooncram   \n$ ./spaces.mbtx\n```\n\n```mooncram {\"target\":\"native\"}\n$ ./json.mbtx\n```\n\n```mooncram {\n$ ./invalid-json.mbtx\n```\n\n```mooncram trailing text\n$ ./text.mbtx\n```\n"
   let doc = parse_document("strict.md", source)
   assert_eq(doc.cases.length(), 2)
-  assert_eq(doc.cases[0].argv[0], "./bare.mbtx")
-  assert_eq(doc.cases[1].argv[0], "./spaces.mbtx")
+  assert_eq(doc.cases[0].pipeline, [["./bare.mbtx"]])
+  assert_eq(doc.cases[1].pipeline, [["./spaces.mbtx"]])
 }
 
 ///|

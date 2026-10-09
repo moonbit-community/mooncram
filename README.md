@@ -56,8 +56,9 @@ languages, tilde fences, and fences inside larger example fences are also
 ignored. Tests inside block quotes and lists are supported. Empty or unclosed
 recognized test fences are errors.
 
-Each `$ ` line starts a case. The command must name an existing local `.mbtx`
-file or a directory containing an executable MoonBit package (`is-main: true`).
+Each `$ ` line starts a case. Each pipeline segment must name an existing local
+`.mbtx` file or a directory containing an executable MoonBit package
+(`is-main: true`).
 Local packages are built with `moon run --build-only` and their artifact is run
 with `moonrun` for Wasm or directly for native. Build diagnostics are kept out of
 program output. Scripts are first checked with a build-only invocation, then
@@ -69,8 +70,10 @@ the Markdown file's directory (the canonical file for symlinks).
 Arguments use single/double quotes and backslash escaping. Single quotes are
 literal; outside them a backslash quotes the next character. Quoted empty
 arguments are preserved. There is no variable, glob, tilde, or command
-substitution. Unquoted `|`, `&`, `;`, `<`, `>`, backticks, and parentheses are
-errors. Quote or escape these characters to pass them as ordinary arguments.
+substitution. Unquoted, unescaped `|` separates pipeline segments, with or
+without surrounding spaces. Empty segments (including `||`) are errors.
+Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors. Quote or
+escape these characters to pass them as ordinary arguments.
 
 ````markdown
 ```mooncram
@@ -79,14 +82,18 @@ Hello, Moon Bit!
 
 $ ./cmd/main --version
 my-cli * (glob)
+
+$ ./producer.mbtx|./cmd/filter|./consumer.mbtx
+filtered output
 ```
 ````
 
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
-otherwise it is `0`. Negative statuses denote termination by a signal as
-reported by the process library. No expected output lines means stdout must be
-empty.
+otherwise it is `0`. Pipelines match the final segment's stdout and exit code;
+upstream nonzero statuses do not override the final status. Negative statuses
+denote termination by a signal as reported by the process library. No expected
+output lines means stdout must be empty.
 
 Bare empty lines at the beginning/end of a block or immediately before the next
 command are separators. Empty lines between nonempty expectations are output.
@@ -134,16 +141,21 @@ CR, empty lines, trailing spaces, and the final newline are preserved.
 Block-level configuration is not supported. `--target` selects the backend for
 all local package cases, and `--timeout-ms` supplies every case deadline;
 `.mbtx` scripts still use Wasm. A tested program inherits mooncram's environment
-unchanged and receives immediate EOF on stdin.
+unchanged. The first segment receives immediate EOF on stdin; later segments
+receive the preceding segment's stdout as raw bytes.
 
-Stdout is always compared with the expectation. Stderr is drained concurrently
-to prevent pipe deadlocks and is shown as `diagnostic stderr` when an assertion
-fails. Both streams must be valid UTF-8 and have no configured size limit.
+Only the final stdout is compared with the expectation. Every segment's stderr
+is drained concurrently and concatenated in segment order as `diagnostic stderr`
+when an assertion fails. Captured streams must be valid UTF-8 and have no
+configured size limit. Intermediate pipe data is neither decoded nor normalized.
 
-The deadline includes builds and execution. On timeout the directly managed
-process is cancelled and the case is an execution error. Programs must manage
-their own detached child processes. Tests execute local code with the current
-user's permissions and are not sandboxed or isolated in a temporary workspace.
+All segments finish their build preflight before any tested program starts.
+Segments then run concurrently, and mooncram waits for all of them to exit.
+One deadline includes all builds and execution. On timeout or a startup/capture
+error, all directly managed processes are cancelled and pipes are closed; the
+case is an execution error. Programs must manage their own detached child
+processes. Tests execute local code with the current user's permissions and are
+not sandboxed or isolated in a temporary workspace.
 
 ## Updating expectations
 

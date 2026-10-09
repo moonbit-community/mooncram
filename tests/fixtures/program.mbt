@@ -11,6 +11,39 @@ async fn main {
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
     "echo" => @stdio.stdout.write(@stdio.stdin.read_all())
+    "relay" => {
+      @stdio.stderr.write(args[2] + "\n")
+      @stdio.stdout.write(@stdio.stdin.read_all())
+    }
+    "noisy-echo" => {
+      for _ in 0..<128 {
+        @stdio.stderr.write("e".repeat(8192))
+      }
+      @stdio.stdout.write(@stdio.stdin.read_all())
+    }
+    "binary" => {
+      let bytes = Bytes::makei(8192, i => (i % 256).to_byte())
+      for _ in 0..<128 {
+        @stdio.stdout.write(bytes)
+        @stdio.stderr.write("e".repeat(8192))
+      }
+    }
+    "check-binary" => {
+      for _ in 0..<128 {
+        @stdio.stderr.write("e".repeat(8192))
+      }
+      let bytes = @stdio.stdin.read_all().binary()
+      assert_eq(bytes.length(), 8192 * 128)
+      for i, byte in bytes {
+        assert_eq(byte, (i % 256).to_byte())
+      }
+      println("all bytes preserved")
+    }
+    "raw" => @stdio.stdout.write(b"one\r\ntwo\r\n\x00\xff")
+    "check-raw" => {
+      assert_eq(@stdio.stdin.read_all().binary(), b"one\r\ntwo\r\n\x00\xff")
+      println("raw bytes preserved")
+    }
     "streams" => {
       @stdio.stdout.write("one\n")
       @stdio.stderr.write("two\n")
@@ -33,10 +66,13 @@ async fn main {
     "read" => @stdio.stdout.write(@fs.read_file("side-effect.txt"))
     "mutate" => @fs.write_file("mutate.md", "changed by command\n")
     "slow" => {
+      let filename = args.get(2).unwrap_or("slow-finished.txt")
+      @fs.write_file(filename + ".started", "started")
       @async.sleep(5000)
-      @fs.write_file("slow-finished.txt", "finished")
+      @fs.write_file(filename, "finished")
     }
     "invalid-utf8" => @stdio.stdout.write(b"\xff")
+    "invalid-stderr" => @stdio.stderr.write(b"\xff")
     _ => @sys.exit(3)
   }
 }
