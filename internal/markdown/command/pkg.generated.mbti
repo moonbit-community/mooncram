@@ -1,0 +1,13 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/markdown/command"
+
+// Values
+pub fn parse(String) -> Array[String] raise
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

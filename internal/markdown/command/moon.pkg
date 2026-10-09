@@ -1,0 +1,9 @@
+import {
+  "moonbit-community/mooncram/internal/diagnostic",
+}
+
+import {
+  "moonbit-community/mooncram/internal/diagnostic",
+} for "test"
+
+supported_targets = "wasm+native"
