@@ -2,10 +2,12 @@
 priv struct Command {
   program : String
   args : Array[String]
+  stderr_to_stdout : Bool
+  stdout_to_null : Bool
 }
 
 ///|
-/// Only the final stdout is captured. OS pipes carry intermediate bytes without
+/// Only the final routed output is captured. OS pipes carry intermediate bytes without
 /// decoding or normalization. Task-group failure cancels and reaps every child.
 // ProcessInput.close is hidden/deprecated but is the dependency's cleanup API
 // for inputs that have not been consumed because spawning failed or was cancelled.
@@ -40,16 +42,37 @@ async fn capture_pipeline(
   let (out_reader, out_writer) = @process.read_from_process()
   readers.push(out_reader)
   outputs.push(out_writer)
+  // The first commands.length() outputs are the per-segment output routes.
+  // Additional drain/diagnostic writers join the same cleanup registry below.
   @async.with_task_group(group => {
     let stdout = group.spawn(() => out_reader.read_all().text())
     let errors = []
     let processes = []
     for i, command in commands {
-      let (err_reader, err_writer) = @process.read_from_process()
-      readers.push(err_reader)
-      // Track even unconsumed handles so a failed spawn cannot leak them.
-      defer err_writer.close()
-      errors.push(group.spawn(() => err_reader.read_all().text()))
+      let stdout_writer = if command.stdout_to_null {
+        let (reader, writer) = @process.read_from_process()
+        readers.push(reader)
+        outputs.push(writer)
+        group.spawn_bg(() => drain_output(reader))
+        if !command.stderr_to_stdout {
+          // No stream uses the downstream pipe: release it before spawning so
+          // the consumer can see EOF without waiting for this process to exit.
+          outputs[i].close()
+        }
+        writer
+      } else {
+        outputs[i]
+      }
+      let stderr_writer = if command.stderr_to_stdout {
+        // ProcessOutput permits stdout and stderr of one child to share a pipe.
+        outputs[i]
+      } else {
+        let (reader, writer) = @process.read_from_process()
+        readers.push(reader)
+        outputs.push(writer)
+        errors.push(group.spawn(() => reader.read_all().text()))
+        writer
+      }
       processes.push(
         @process.spawn(
           group,
@@ -59,8 +82,8 @@ async fn capture_pipeline(
           extra_env~,
           inherit_env=true,
           stdin=inputs[i],
-          stdout=outputs[i],
-          stderr=err_writer,
+          stdout=stdout_writer,
+          stderr=stderr_writer,
           cancel_handler=@process.hard_cancel(),
         ),
       )
@@ -79,4 +102,13 @@ async fn capture_pipeline(
       exit_code,
     }
   })
+}
+
+///|
+/// Discard bytes without accumulating output or attempting UTF-8 decoding.
+async fn drain_output(reader : @process.ReadFromProcess) -> Unit {
+  let buffer = FixedArray::make(8192, b'\x00')
+  while reader.read(buffer) != 0 {
+    ()
+  }
 }
