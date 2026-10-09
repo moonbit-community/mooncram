@@ -519,7 +519,7 @@ function testPipelinePreflight({ cli, docs, target }) {
   }
 }
 
-function testPipelineStartupFailure({ cli, docs, directory, target }) {
+function testPipelineStartupFailure({ cli, docs, directory, packageDir, target }) {
   // Remove moonx from PATH while keeping the build tools. The first package
   // starts successfully, then starting the script must fail and cancel it.
   const toolDirectories = process.env.PATH.split(delimiter);
@@ -534,6 +534,14 @@ function testPipelineStartupFailure({ cli, docs, directory, target }) {
   }
   const env = createEnvironment();
   env.PATH = [tools, ...toolDirectories.filter(path => !fs.existsSync(join(path, "moonx" + executableSuffix)))].join(delimiter);
+  // Changing the tool paths can invalidate native build commands. Warm both
+  // artifacts with this environment before measuring startup-failure cleanup.
+  run([
+    "moon", "-C", packageDir, "run", "--build-only", "--target", target, packageDir,
+  ], { cwd: docs, env });
+  run([
+    "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
+  ], { cwd: docs, env });
   const original = block(
     `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
     `$ ${LOCAL_PACKAGE} slow slow-spawn.txt | ${SCRIPT_COMMAND} echo\n`,
@@ -541,12 +549,16 @@ function testPipelineStartupFailure({ cli, docs, directory, target }) {
   const document = writeDocument(docs, "startup-error.md", original);
   const start = performance.now();
   const result = cli(["update", document, "--target", target], { env, expected: EXIT_CODE.ERROR });
-  assert(performance.now() - start < CANCELLATION_LIMIT_MS);
-  assert(result.stderr.includes("@process.spawn()"));
+  const elapsed = performance.now() - start;
+  const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
+    `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
+  assert(result.stderr.includes("@process.spawn()"), diagnostic);
   assert(result.stderr.includes("startup-error.md:5:"));
   assert(result.stdout.includes("+Hello, Moon Bit!"));
   assert(result.stderr.includes("Not updating"));
   assert.equal(fs.readFileSync(document, "utf8"), original);
+  assert(!fs.existsSync(join(docs, "slow-spawn.txt")), diagnostic);
+  assert(elapsed < CANCELLATION_LIMIT_MS, diagnostic);
 }
 
 function testPipelineCaptureFailure({ cli, docs, target }) {
