@@ -65,11 +65,16 @@ const INVALID_CLI_ARGUMENTS = [
 ];
 const UPDATE_ERROR_CASES = [
   { command: "../project/bad", diagnostic: "build failed" },
+  { command: "../project/bad >/dev/null 2>&1", diagnostic: "build failed" },
+  { command: "./bad.mbtx 2>&1 >/dev/null", diagnostic: "build failed" },
   { command: "./bad.mbtx", diagnostic: "build failed" },
   { command: "../project/library" },
   { command: "./missing.mbtx" },
   { command: `${quoteArgument(process.execPath)} hello` },
   { command: `${LOCAL_PACKAGE} invalid-utf8` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr 2>&1` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null 2>&1` },
   { command: `${LOCAL_PACKAGE} hello | ../project/bad`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./bad.mbtx`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./missing.mbtx` },
@@ -507,12 +512,90 @@ function testPipelines({ cli, docs, target }) {
   cli(["test", update, "--target", target]);
 }
 
+function testRedirections({ cli, docs, target }) {
+  const cases = [
+    [`${LOCAL_PACKAGE} streams 2>&1`, "one\ntwo\nthree\n[2]\n"],
+    [`${SCRIPT_COMMAND} streams >/dev/null`, "[2]\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n"],
+    [`${SCRIPT_COMMAND} streams >/dev/null 2>&1`, "two\n[2]\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} echo`, "one\ntwo\nthree\n"],
+    [`${LOCAL_PACKAGE} hello | ${SCRIPT_COMMAND} relay middle 2>&1|${LOCAL_PACKAGE} echo`, "middle\nHello, Moon Bit!\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams 2>&1`, "one\ntwo\nthree\n[2]\n"],
+    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null`, "[2]\n"],
+    [`${LOCAL_PACKAGE} streams >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo`, "two\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle 2>&1 >/dev/null | ${SCRIPT_COMMAND} echo`, "middle\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null 2>&1`, "two\n[2]\n"],
+    [`${LOCAL_PACKAGE} invalid-utf8 >/dev/null`, ""],
+    [`${SCRIPT_COMMAND} raw >/dev/null | ${LOCAL_PACKAGE} check-eof`, "EOF\n"],
+    [`${LOCAL_PACKAGE} raw-stderr >/dev/null 2>&1 | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
+    [`${SCRIPT_COMMAND} raw-stderr 2>&1 >/dev/null | ${LOCAL_PACKAGE} echo | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
+    [`${LOCAL_PACKAGE} binary >/dev/null | ${LOCAL_PACKAGE} check-eof`, "EOF\n"],
+    [`${LOCAL_PACKAGE} large 2>&1 | ${SCRIPT_COMMAND} check-large-merged`, "large streams merged\n"],
+    [`${SCRIPT_COMMAND} large >/dev/null 2>&1 | ${LOCAL_PACKAGE} check-large-stderr`, "large stderr preserved\n"],
+    [`${LOCAL_PACKAGE} large 2>&1 >/dev/null | ${SCRIPT_COMMAND} check-large-stderr`, "large stderr preserved\n"],
+    [`${LOCAL_PACKAGE} binary 2>&1 | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
+    [`${LOCAL_PACKAGE} binary >/dev/null 2>&1 | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
+    [`${LOCAL_PACKAGE} wait-downstream >/dev/null | ${LOCAL_PACKAGE} signal-eof`, "EOF\n"],
+  ];
+  for (const program of [LOCAL_PACKAGE, SCRIPT_COMMAND]) {
+    cases.push([`${program} args '2>&1' ">/dev/null" 2\\>\\&1 \\>/dev/null`,
+      '["2>&1",">/dev/null","2>&1",">/dev/null"] (equal)\n']);
+  }
+  fs.rmSync(join(docs, "downstream-eof.txt"), { force: true });
+  const passing = writeDocument(docs, "redirections.md",
+    block("$ export MARKER='2>&1'\n") +
+    cases.map(([command, output]) => block(`$ ${command}\n${output}`)).join("\n") +
+    block(`$ ${LOCAL_PACKAGE} args \${MARKER} "\${MARKER}" after\n["2>&1","2>&1","after"] (equal)\n`));
+  cli(["test", passing, "--target", target]);
+
+  // Only unredirected stderr belongs to diagnostics, in segment order.
+  for (const [command, output, diagnostic] of [
+    [`${LOCAL_PACKAGE} streams 2>&1 | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last`,
+      "one\ntwo\nthree\n", "middle\nlast\n"],
+    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last >/dev/null 2>&1`,
+      "last\n", "two\nmiddle\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n", ""],
+  ]) {
+    const document = writeDocument(docs, "redirect-diagnostic.md", block(`$ ${command}\nwrong\n`));
+    const result = cli(["test", document, "--target", target], { expected: EXIT_CODE.FAILURE });
+    if (diagnostic) assert(result.stdout.includes(`diagnostic stderr\n${diagnostic}`));
+    else assert(!result.stdout.includes("diagnostic stderr"));
+    cli(["update", document, "--target", target]);
+    assert.equal(fs.readFileSync(document, "utf8"), block(`$ ${command}\n${output}`));
+  }
+
+  const command = `$ ${SCRIPT_COMMAND} streams\t>/dev/null 2>&1|${LOCAL_PACKAGE} echo 2>&1`;
+  const original = block(`${command}\nwrong\n`);
+  const update = writeDocument(docs, "redirect-update.md", original);
+  assert(cli(["update", update, "--target", target, "--dry-run"]).stdout.includes(command));
+  assert.equal(fs.readFileSync(update, "utf8"), original);
+  cli(["update", update, "--target", target]);
+  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\ntwo\n`));
+  cli(["test", update, "--target", target]);
+
+  for (const invalid of ["2>&1", `${LOCAL_PACKAGE} >/dev/null >/dev/null`,
+    `${LOCAL_PACKAGE} 2> &1`, `${LOCAL_PACKAGE} >/dev/null arg`,
+    "export A=x 2>&1", `${LOCAL_PACKAGE} stderr>/stdout`,
+    `${LOCAL_PACKAGE} stdout>/null`, `${LOCAL_PACKAGE} 2>&1 2>&1`,
+    `${LOCAL_PACKAGE} > /dev/null`, `${LOCAL_PACKAGE} hello2>&1`,
+    `${LOCAL_PACKAGE} hello>/dev/null`, `${LOCAL_PACKAGE} 2\\>&1`,
+    `${LOCAL_PACKAGE} 2>\\&1`]) {
+    const original = block(`$ ${invalid}\n`);
+    const document = writeDocument(docs, "redirect-invalid.md", original);
+    const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
+    assert(result.stderr.includes("redirect-invalid.md:2:"));
+    assert.equal(fs.readFileSync(document, "utf8"), original);
+  }
+}
+
 function testPipelinePreflight({ cli, docs, target }) {
   const sideEffect = join(docs, "side-effect.txt");
   fs.rmSync(sideEffect, { force: true });
   for (const downstream of ["../project/bad", "./bad.mbtx", "./missing.mbtx"]) {
     const document = writeDocument(docs, "preflight.md", block(
-      `$ ${LOCAL_PACKAGE} setup | ${downstream}\n`,
+      `$ ${LOCAL_PACKAGE} setup >/dev/null 2>&1 | ${downstream}\n`,
     ));
     cli(["test", document, "--target", target], { expected: EXIT_CODE.ERROR });
     assert(!fs.existsSync(sideEffect), "upstream ran before all builds succeeded");
@@ -542,36 +625,40 @@ function testPipelineStartupFailure({ cli, docs, directory, packageDir, target }
   run([
     "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
   ], { cwd: docs, env });
-  const original = block(
-    `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
-    `$ ${LOCAL_PACKAGE} slow slow-spawn.txt | ${SCRIPT_COMMAND} echo\n`,
-  );
-  const document = writeDocument(docs, "startup-error.md", original);
-  const start = performance.now();
-  const result = cli(["update", document, "--target", target], { env, expected: EXIT_CODE.ERROR });
-  const elapsed = performance.now() - start;
-  const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
-    `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
-  assert(result.stderr.includes("@process.spawn()"), diagnostic);
-  assert(result.stderr.includes("startup-error.md:5:"));
-  assert(result.stdout.includes("+Hello, Moon Bit!"));
-  assert(result.stderr.includes("Not updating"));
-  assert.equal(fs.readFileSync(document, "utf8"), original);
-  assert(!fs.existsSync(join(docs, "slow-spawn.txt")), diagnostic);
-  assert(elapsed < CANCELLATION_LIMIT_MS, diagnostic);
+  for (const suffix of ["", " 2>&1", " >/dev/null", " >/dev/null 2>&1"]) {
+    const original = block(
+      `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
+      `$ ${LOCAL_PACKAGE} slow slow-spawn.txt >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo${suffix}\n`,
+    );
+    const document = writeDocument(docs, "startup-error.md", original);
+    const start = performance.now();
+    const result = cli(["update", document, "--target", target], { env, expected: EXIT_CODE.ERROR });
+    const elapsed = performance.now() - start;
+    const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
+      `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
+    assert(result.stderr.includes("@process.spawn()"), diagnostic);
+    assert(result.stderr.includes("startup-error.md:5:"));
+    assert(result.stdout.includes("+Hello, Moon Bit!"));
+    assert(result.stderr.includes("Not updating"));
+    assert.equal(fs.readFileSync(document, "utf8"), original);
+    assert(!fs.existsSync(join(docs, "slow-spawn.txt")), diagnostic);
+    assert(elapsed < CANCELLATION_LIMIT_MS, diagnostic);
+  }
 }
 
 function testPipelineCaptureFailure({ cli, docs, target }) {
-  const original = block(
-    `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
-    `$ ${LOCAL_PACKAGE} slow slow-capture.txt | ${LOCAL_PACKAGE} invalid-stderr\n`,
-  );
-  const document = writeDocument(docs, "capture-error.md", original);
-  const start = performance.now();
-  const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
-  assert(performance.now() - start < CANCELLATION_LIMIT_MS);
-  assert(result.stderr.includes("Not updating"));
-  assert.equal(fs.readFileSync(document, "utf8"), original);
+  for (const suffix of ["", " 2>&1"]) {
+    const original = block(
+      `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
+      `$ ${LOCAL_PACKAGE} slow slow-capture.txt >/dev/null | ${LOCAL_PACKAGE} invalid-stderr${suffix}\n`,
+    );
+    const document = writeDocument(docs, "capture-error.md", original);
+    const start = performance.now();
+    const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
+    assert(performance.now() - start < CANCELLATION_LIMIT_MS);
+    assert(result.stderr.includes("Not updating"));
+    assert.equal(fs.readFileSync(document, "utf8"), original);
+  }
 }
 
 function assertNoSlowSideEffect(docs) {
@@ -600,7 +687,7 @@ function testTimeouts({ cli, docs }) {
       fs.rmSync(join(docs, `slow-${segment}.txt.started`), { force: true });
     }
     const pipeline = writeDocument(docs, "slow-pipeline.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} slow slow-last.txt\nwrong\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt 2>&1 | ${LOCAL_PACKAGE} slow slow-middle.txt >/dev/null 2>&1 | ${LOCAL_PACKAGE} slow slow-last.txt >/dev/null\nwrong\n`,
     ));
     const original = fs.readFileSync(pipeline);
     const pipelineStart = performance.now();
@@ -617,7 +704,7 @@ function testTimeouts({ cli, docs }) {
     // Even when the final segment has exited, upstream processes must be
     // awaited and cancelled when the shared deadline expires.
     const early = writeDocument(docs, "slow-upstream.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt >/dev/null | ${LOCAL_PACKAGE} slow slow-middle.txt 2>&1 | ${LOCAL_PACKAGE} hello >/dev/null\nHello, Moon Bit!\n`,
     ));
     assert(cli([
       "test", early, "--target", backend, "--timeout-ms", "1500",
@@ -661,10 +748,11 @@ async function exercise(target) {
 
     testUpdateErrors(context);
     testPipelines(context);
+    testRedirections(context);
     testPipelinePreflight(context);
     testPipelineStartupFailure(context);
     testPipelineCaptureFailure(context);
-    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, last status and updates passed`);
+    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, last status, redirections and updates passed`);
     testShellOperatorRejection(context);
     testTimeouts(context);
     const cancelledAt = performance.now();

@@ -53,6 +53,54 @@ async fn main {
       assert_eq(@stdio.stdin.read_all().binary(), b"one\r\ntwo\r\n\x00\xff")
       println("raw bytes preserved")
     }
+    "raw-stderr" => {
+      @stdio.stdout.write("discard me")
+      @stdio.stderr.write(b"one\r\ntwo\r\n\x00\xff")
+    }
+    "check-eof" => {
+      assert_eq(@stdio.stdin.read_all().binary().length(), 0)
+      println("EOF")
+    }
+    "wait-downstream" => {
+      @stdio.stdout.write("discard me")
+      // The downstream pipe must close while this process is still alive.
+      while !@fs.exists("downstream-eof.txt") {
+        @async.sleep(10)
+      }
+    }
+    "signal-eof" => {
+      assert_eq(@stdio.stdin.read_all().binary().length(), 0)
+      @fs.write_file("downstream-eof.txt", "EOF")
+      println("EOF")
+    }
+    "check-large-merged" => {
+      let bytes = @stdio.stdin.read_all().binary()
+      assert_eq(bytes.length(), 2 * 8192 * 128 + 2)
+      let mut out = 0
+      let mut err = 0
+      let mut newlines = 0
+      for byte in bytes {
+        match byte {
+          b'o' => out += 1
+          b'e' => err += 1
+          b'\n' => newlines += 1
+          _ => fail("unexpected merged byte")
+        }
+      }
+      assert_eq(out, 8192 * 128)
+      assert_eq(err, 8192 * 128)
+      assert_eq(newlines, 2)
+      println("large streams merged")
+    }
+    "check-large-stderr" => {
+      let bytes = @stdio.stdin.read_all().binary()
+      assert_eq(bytes.length(), 8192 * 128 + 1)
+      for byte in bytes[:bytes.length() - 1] {
+        assert_eq(byte, b'e')
+      }
+      assert_eq(bytes[bytes.length() - 1], b'\n')
+      println("large stderr preserved")
+    }
     "streams" => {
       @stdio.stdout.write("one\n")
       @stdio.stderr.write("two\n")
