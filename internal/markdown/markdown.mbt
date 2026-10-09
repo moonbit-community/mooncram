@@ -58,6 +58,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
   collect_blocks(markdown.block, blocks)
   let lines = source_lines(source)
   let cases = []
+  let extra_env : Map[String, String] = Map([])
   for block in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
     if !layout.opening_fence.v.has_prefix("`") {
@@ -76,7 +77,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
       raise @diagnostic.located(path, open_line, "unclosed mooncram fence")
     }
     let code = block.v.code.to_array()
-    let before = cases.length()
+    let mut has_command = false
     let mut i = 0
     while i < code.length() {
       let node = code[i]
@@ -90,9 +91,15 @@ pub fn parse_document(path : String, source : String) -> Document raise {
           path, line, "expected a command starting with '$ '",
         )
       }
-      let pipeline = @command.parse(node.v[1:].to_owned()) catch {
+      let command = @command.parse(node.v[1:].to_owned(), lookup=name => {
+        match extra_env.get(name) {
+          Some(value) => Some(value)
+          None => @env.get_env_var(name)
+        }
+      }) catch {
         e => raise @diagnostic.located(path, line, @diagnostic.error_text(e))
       }
+      has_command = true
       let mut next = i + 1
       while next < code.length() &&
             !code[next].v.has_prefix("$ ") &&
@@ -104,6 +111,20 @@ pub fn parse_document(path : String, source : String) -> Document raise {
       let mut end = next
       while end > i + 1 && code[end - 1].v == "" {
         end -= 1
+      }
+      let pipeline = match command {
+        Export(name~, value~) => {
+          if end != i + 1 {
+            let @cmark_base.LinePos(output_line, _) = code[i + 1].meta.loc.first_line
+            raise @diagnostic.located(
+              path, output_line, "export does not accept expected output or an exit code",
+            )
+          }
+          extra_env[name] = value
+          i = next
+          continue
+        }
+        Pipeline(pipeline) => pipeline
       }
       let expected = @output.parse_expectation(code[i + 1:end], path)
       let command_line = lines[line - 1]
@@ -124,6 +145,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
       cases.push({
         command: node.v,
         pipeline,
+        extra_env: extra_env.copy(),
         line,
         expected,
         replace_start: command_line.end,
@@ -134,7 +156,7 @@ pub fn parse_document(path : String, source : String) -> Document raise {
       })
       i = next
     }
-    if cases.length() == before {
+    if !has_command {
       raise @diagnostic.located(path, open_line, "empty mooncram block")
     }
   }

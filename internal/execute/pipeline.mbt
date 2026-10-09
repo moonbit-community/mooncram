@@ -13,6 +13,7 @@ priv struct Command {
 async fn capture_pipeline(
   commands : Array[Command],
   cwd : String,
+  extra_env~ : Map[String, String],
 ) -> @output.Captured {
   let inputs : Array[&@process.ProcessInput] = []
   let outputs : Array[&@process.ProcessOutput] = []
@@ -55,6 +56,8 @@ async fn capture_pipeline(
           command.program,
           command.args,
           cwd~,
+          extra_env~,
+          inherit_env=true,
           stdin=inputs[i],
           stdout=outputs[i],
           stderr=err_writer,
