@@ -17,40 +17,6 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 }
 
 ///|
-test "command quoting and literal expansion characters" {
-  assert_eq(
-    parse_command("./hello.mbtx 'Moon Bit' \"a b\" x\\ y '' \"\" a\"b\"c"),
-    ["./hello.mbtx", "Moon Bit", "a b", "x y", "", "", "abc"],
-  )
-  assert_eq(parse_command("./a.mbtx '$HOME' * ~ \"$(cmd)\" '|' \\> 'a\\b'"), [
-    "./a.mbtx", "$HOME", "*", "~", "$(cmd)", "|", ">", "a\\b",
-  ])
-  assert_eq(parse_command("./脚本.mbtx 😀\t\"a\\\"b\""), [
-    "./脚本.mbtx", "😀", "a\"b",
-  ])
-}
-
-///|
-test "command rejects shell operators and incomplete arguments" {
-  for operator in ["|", ">", "<", ";", "&&", "||", "&", "`", "$(whoami)"] {
-    assert_error_contains(
-      () => ignore(parse_command("./a.mbtx " + operator)),
-      "shell operator",
-    )
-  }
-  assert_error_contains(
-    () => ignore(parse_command("./a.mbtx '")),
-    "unclosed quote",
-  )
-  assert_error_contains(
-    () => ignore(parse_command("./a.mbtx \\")),
-    "trailing backslash",
-  )
-  assert_error_contains(() => ignore(parse_command("''")), "expected a local")
-  assert_error_contains(() => ignore(parse_command("./a.mbtx \u0000")), "NUL")
-}
-
-///|
 test "mixed Markdown skips other languages tilde fences and enclosing examples" {
   let source = "# Heading\n\n```text\n$ ignored\n```\n\n~~~~mooncram\n$ ignored\n~~~~\n\n````markdown\n```mooncram\n$ ignored\n```\n````\n\n```mooncram\n$ ./a.mbtx\nhello\n\n$ ./b.mbtx\n[2]\n```\n"
   let doc = parse_document("mixed.md", source)

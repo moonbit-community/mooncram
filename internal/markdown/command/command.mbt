@@ -1,7 +1,7 @@
 ///|
 /// Tokenize arguments without invoking or emulating a shell. Single quotes are
 /// literal; outside them a backslash quotes exactly the next character.
-fn parse_command(command : String) -> Array[String] raise {
+pub fn parse(command : String) -> Array[String] raise {
   let args : Array[String] = []
   let word = StringBuilder()
   let mut quote : Char? = None
