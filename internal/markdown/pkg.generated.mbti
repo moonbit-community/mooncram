@@ -2,6 +2,7 @@
 package "moonbit-community/mooncram/internal/markdown"
 
 import {
+  "moonbit-community/mooncram/internal/markdown/command",
   "moonbit-community/mooncram/internal/output",
 }
 
@@ -13,7 +14,7 @@ pub fn parse_document(String, String) -> Document raise
 // Types and methods
 pub struct Case {
   command : String
-  pipeline : Array[Array[String]]
+  pipeline : Array[@command.PipelineSegment]
   extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation

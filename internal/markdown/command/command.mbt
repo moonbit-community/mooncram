@@ -1,6 +1,20 @@
 ///|
+/// One command's expanded arguments and routes for its original output streams.
+pub(all) struct PipelineSegment {
+  argv : Array[String]
+  stderr_to_stdout : Bool
+  stdout_to_null : Bool
+} derive(Debug, Eq)
+
+///|
+pub extend PipelineSegment with @debug.Debug::{to_repr}
+
+///|
+pub extend PipelineSegment with Eq::{equal, not_equal}
+
+///|
 pub(all) enum Command {
-  Pipeline(Array[Array[String]])
+  Pipeline(Array[PipelineSegment])
   Export(name~ : String, value~ : String)
 } derive(Debug, Eq)
 
@@ -14,6 +28,13 @@ pub extend Command with Eq::{equal, not_equal}
 priv enum Part {
   Text(String)
   Variable(String)
+}
+
+///|
+priv enum Token {
+  Argument(Array[Part])
+  StderrToStdout
+  StdoutToNull
 }
 
 ///|
@@ -67,8 +88,35 @@ pub fn parse(
   lookup? : (String) -> String? = _ => None,
 ) -> Command raise {
   let words = tokenize(command)
-  let pipeline : Array[Array[String]] = []
-  for segment in words {
+  let pipeline : Array[PipelineSegment] = []
+  for tokens in words {
+    let segment = []
+    let mut stderr_to_stdout = false
+    let mut stdout_to_null = false
+    for token in tokens {
+      match token {
+        Argument(parts) => {
+          if stderr_to_stdout || stdout_to_null {
+            raise @diagnostic.Failure(
+              "ordinary arguments cannot follow redirection",
+            )
+          }
+          segment.push(parts)
+        }
+        StderrToStdout => {
+          if stderr_to_stdout {
+            raise @diagnostic.Failure("duplicate 2>&1 redirection")
+          }
+          stderr_to_stdout = true
+        }
+        StdoutToNull => {
+          if stdout_to_null {
+            raise @diagnostic.Failure("duplicate >/dev/null redirection")
+          }
+          stdout_to_null = true
+        }
+      }
+    }
     if segment.is_empty() {
       raise @diagnostic.Failure(
         "empty pipeline segment; expected a local .mbtx file or executable package path",
@@ -81,6 +129,9 @@ pub fn parse(
       )
     }
     if executable == "export" {
+      if stderr_to_stdout || stdout_to_null {
+        raise @diagnostic.Failure("export does not accept redirection")
+      }
       if words.length() != 1 {
         raise @diagnostic.Failure("export is not allowed in a pipeline")
       }
@@ -109,14 +160,14 @@ pub fn parse(
     for parts in segment[1:] {
       args.push(expand(parts, lookup))
     }
-    pipeline.push(args)
+    pipeline.push({ argv: args, stderr_to_stdout, stdout_to_null, })
   }
   Pipeline(pipeline)
 }
 
 ///|
 /// Keep references separate until executable paths and export names are checked.
-fn tokenize(command : String) -> Array[Array[Array[Part]]] raise {
+fn tokenize(command : String) -> Array[Array[Token]] raise {
   let pipeline = []
   let mut args = []
   let mut parts = []
@@ -132,6 +183,27 @@ fn tokenize(command : String) -> Array[Array[Array[Part]]] raise {
   }
   for i = 0; i < chars.length(); {
     let c = chars[i]
+    // Recognize only complete raw tokens, before quoting/escaping or expansion
+    // can turn ordinary argument text into something that resembles a marker.
+    if !started && quote is None && !escaped && !(c is (' ' | '\t' | '|')) {
+      let raw = StringBuilder()
+      let mut end = i
+      while end < chars.length() && !(chars[end] is (' ' | '\t' | '|')) {
+        raw.write_char(chars[end])
+        end += 1
+      }
+      match raw.to_string() {
+        "2>&1" => {
+          args.push(StderrToStdout)
+          continue end
+        }
+        ">/dev/null" => {
+          args.push(StdoutToNull)
+          continue end
+        }
+        _ => ()
+      }
+    }
     if escaped {
       word.write_char(c)
       escaped = false
@@ -180,7 +252,7 @@ fn tokenize(command : String) -> Array[Array[Array[Part]]] raise {
         ' ' | '\t' =>
           if started {
             parts.push(Text(word.to_string()))
-            args.push(parts)
+            args.push(Argument(parts))
             parts = []
             word.reset()
             started = false
@@ -188,7 +260,7 @@ fn tokenize(command : String) -> Array[Array[Array[Part]]] raise {
         '|' => {
           if started {
             parts.push(Text(word.to_string()))
-            args.push(parts)
+            args.push(Argument(parts))
             parts = []
             word.reset()
             started = false
@@ -216,7 +288,7 @@ fn tokenize(command : String) -> Array[Array[Array[Part]]] raise {
   }
   if started {
     parts.push(Text(word.to_string()))
-    args.push(parts)
+    args.push(Argument(parts))
   }
   pipeline.push(args)
   pipeline

@@ -10,10 +10,18 @@ pub async fn execute_case(
     () => {
       let commands = []
       // Preflight every segment before any tested program can produce effects.
-      for argv in case.pipeline {
-        commands.push(
-          prepare_command(argv, cwd, target~, extra_env=case.extra_env),
+      for segment in case.pipeline {
+        let command = prepare_command(
+          segment.argv,
+          cwd,
+          target~,
+          extra_env=case.extra_env,
         )
+        commands.push({
+          ..command,
+          stderr_to_stdout: segment.stderr_to_stdout,
+          stdout_to_null: segment.stdout_to_null,
+        })
       }
       capture_pipeline(commands, cwd, extra_env=case.extra_env)
     },
@@ -42,7 +50,12 @@ async fn prepare_command(
         extra_env~,
       ),
     )
-    { program: "moonx", args: [executable, "--"] + args, }
+    {
+      program: "moonx",
+      args: [executable, "--"] + args,
+      stderr_to_stdout: false,
+      stdout_to_null: false,
+    }
   } else if kind == Directory {
     if !@fs.exists(@files.resolve_from(executable, "moon.pkg")) &&
       !@fs.exists(@files.resolve_from(executable, "moon.pkg.json")) {
@@ -56,9 +69,19 @@ async fn prepare_command(
       extra_env~,
     )
     if target == "wasm" {
-      { program: "moonrun", args: [artifact, "--"] + args, }
+      {
+        program: "moonrun",
+        args: [artifact, "--"] + args,
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      }
     } else {
-      { program: artifact, args, }
+      {
+        program: artifact,
+        args,
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      }
     }
   } else {
     raise @diagnostic.Failure(
@@ -73,7 +96,11 @@ async fn build_artifact(
   cwd : String,
   extra_env~ : Map[String, String],
 ) -> String {
-  let build = capture_pipeline([{ program: "moon", args, }], cwd, extra_env~)
+  let build = capture_pipeline(
+    [{ program: "moon", args, stderr_to_stdout: false, stdout_to_null: false, }],
+    cwd,
+    extra_env~,
+  )
   if build.exit_code != 0 {
     raise @diagnostic.Failure(
       "build failed (exit \{build.exit_code})\n\{build.output}\{build.diagnostic}",

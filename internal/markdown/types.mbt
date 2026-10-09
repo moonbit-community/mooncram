@@ -1,7 +1,7 @@
 ///|
 pub struct Case {
   command : String
-  pipeline : Array[Array[String]]
+  pipeline : Array[@command.PipelineSegment]
   extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation

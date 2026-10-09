@@ -1,4 +1,11 @@
 ///|
+fn plain_pipeline(
+  argvs : Array[Array[String]],
+) -> Array[@command.PipelineSegment] {
+  argvs.map(argv => { argv, stderr_to_stdout: false, stdout_to_null: false, })
+}
+
+///|
 fn parse_example(body : String) -> Document raise {
   parse_document("example.md", "```mooncram\n" + body + "```\n")
 }
@@ -53,11 +60,10 @@ test "pipeline arguments and original command text are preserved" {
   let command = "$ ./a.mbtx 'x|y'|./cmd/filter|./b.mbtx \\|"
   let doc = parse_example(command + "\nresult\n[3]\n")
   assert_eq(doc.cases[0].command, command)
-  assert_eq(doc.cases[0].pipeline, [
-    ["./a.mbtx", "x|y"],
-    ["./cmd/filter"],
-    ["./b.mbtx", "|"],
-  ])
+  assert_eq(
+    doc.cases[0].pipeline,
+    plain_pipeline([["./a.mbtx", "x|y"], ["./cmd/filter"], ["./b.mbtx", "|"]]),
+  )
   assert_eq(doc.cases[0].expected.exit_code, 3)
   for invalid in ["| ./a.mbtx", "./a.mbtx || ./b.mbtx", "./a.mbtx | ''"] {
     assert_error_contains(
@@ -72,8 +78,8 @@ test "only bare mooncram info strings are recognized" {
   let source = "```mooncram\n$ ./bare.mbtx\n```\n\n```mooncram   \n$ ./spaces.mbtx\n```\n\n```mooncram {\"target\":\"native\"}\n$ ./json.mbtx\n```\n\n```mooncram {\n$ ./invalid-json.mbtx\n```\n\n```mooncram trailing text\n$ ./text.mbtx\n```\n"
   let doc = parse_document("strict.md", source)
   assert_eq(doc.cases.length(), 2)
-  assert_eq(doc.cases[0].pipeline, [["./bare.mbtx"]])
-  assert_eq(doc.cases[1].pipeline, [["./spaces.mbtx"]])
+  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./bare.mbtx"]]))
+  assert_eq(doc.cases[1].pipeline, plain_pipeline([["./spaces.mbtx"]]))
 }
 
 ///|
@@ -92,9 +98,12 @@ test "exports apply in document order across blocks with independent snapshots" 
   let source = "```mooncram\n$ export MOONCRAM_TEST_VALUE=first\n```\n\n```mooncram\n$ ./a.mbtx ${MOONCRAM_TEST_VALUE}\n$ export MOONCRAM_TEST_VALUE=${MOONCRAM_TEST_VALUE}-second\n$ ./b.mbtx \"${MOONCRAM_TEST_VALUE}\"\n$ export MOONCRAM_TEST_VALUE=\n$ ./c.mbtx ${MOONCRAM_TEST_VALUE}\n```\n"
   let doc = parse_document("exports.md", source)
   assert_eq(doc.cases.length(), 3)
-  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "first"]])
-  assert_eq(doc.cases[1].pipeline, [["./b.mbtx", "first-second"]])
-  assert_eq(doc.cases[2].pipeline, [["./c.mbtx", ""]])
+  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", "first"]]))
+  assert_eq(
+    doc.cases[1].pipeline,
+    plain_pipeline([["./b.mbtx", "first-second"]]),
+  )
+  assert_eq(doc.cases[2].pipeline, plain_pipeline([["./c.mbtx", ""]]))
   assert_eq(doc.cases[0].extra_env.get("MOONCRAM_TEST_VALUE"), Some("first"))
   assert_eq(
     doc.cases[1].extra_env.get("MOONCRAM_TEST_VALUE"),
@@ -142,10 +151,13 @@ test "parent environment is a fallback and empty exports override it" {
     let doc = parse_example(
       "$ ./a.mbtx ${PATH}\n$ export PATH=${PATH}-suffix\n$ ./a.mbtx ${PATH}\n$ export PATH=\n$ ./a.mbtx ${PATH}\n",
     )
-    assert_eq(doc.cases[0].pipeline, [["./a.mbtx", path]])
+    assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", path]]))
     assert_true(doc.cases[0].extra_env.is_empty())
-    assert_eq(doc.cases[1].pipeline, [["./a.mbtx", path + "-suffix"]])
-    assert_eq(doc.cases[2].pipeline, [["./a.mbtx", ""]])
+    assert_eq(
+      doc.cases[1].pipeline,
+      plain_pipeline([["./a.mbtx", path + "-suffix"]]),
+    )
+    assert_eq(doc.cases[2].pipeline, plain_pipeline([["./a.mbtx", ""]]))
   }
 }
 
@@ -180,13 +192,19 @@ test "Windows exports override parent values across casing and preserve snapshot
   )
   assert_eq(queries, ["MODE", "MODE"])
   assert_eq(doc.cases.length(), 4)
-  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "parent"]])
+  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", "parent"]]))
   assert_true(doc.cases[0].extra_env.is_empty())
-  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "parent-doc", "parent-doc"]])
+  assert_eq(
+    doc.cases[1].pipeline,
+    plain_pipeline([["./a.mbtx", "parent-doc", "parent-doc"]]),
+  )
   assert_eq(doc.cases[1].extra_env, { "MODE": "parent-doc" })
-  assert_eq(doc.cases[2].pipeline, [["./a.mbtx", "parent-doc-next"]])
+  assert_eq(
+    doc.cases[2].pipeline,
+    plain_pipeline([["./a.mbtx", "parent-doc-next"]]),
+  )
   assert_eq(doc.cases[2].extra_env, { "MODE": "parent-doc-next" })
-  assert_eq(doc.cases[3].pipeline, [["./a.mbtx", ""]])
+  assert_eq(doc.cases[3].pipeline, plain_pipeline([["./a.mbtx", ""]]))
   assert_eq(doc.cases[3].extra_env, { "MODE": "" })
   assert_eq(doc.cases[1].command, "$ ./a.mbtx \"${mODE}\" ${MODE}")
   doc.cases[2].extra_env["MODE"] = "changed"
@@ -202,9 +220,9 @@ test "Windows mixed-case exports work without a parent value" {
     parent_lookup=_ => None,
     case_insensitive=true,
   )
-  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "first"]])
+  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", "first"]]))
   assert_eq(doc.cases[0].extra_env, { "NEW_VALUE": "first" })
-  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "second"]])
+  assert_eq(doc.cases[1].pipeline, plain_pipeline([["./a.mbtx", "second"]]))
   assert_eq(doc.cases[1].extra_env, { "NEW_VALUE": "second" })
   assert_error_contains(
     () => {
@@ -230,10 +248,19 @@ test "Unix environment names remain distinct across casing" {
     parent_lookup=name => parent.get(name),
     case_insensitive=false,
   )
-  assert_eq(doc.cases[0].pipeline, [["./a.mbtx", "upper", "lower"]])
-  assert_eq(doc.cases[1].pipeline, [["./a.mbtx", "upper", "lower-doc", "mixed"]])
+  assert_eq(
+    doc.cases[0].pipeline,
+    plain_pipeline([["./a.mbtx", "upper", "lower"]]),
+  )
+  assert_eq(
+    doc.cases[1].pipeline,
+    plain_pipeline([["./a.mbtx", "upper", "lower-doc", "mixed"]]),
+  )
   assert_eq(doc.cases[1].extra_env, { "Mode": "mixed", "mode": "lower-doc" })
-  assert_eq(doc.cases[2].pipeline, [["./a.mbtx", "", "lower-doc", "mixed"]])
+  assert_eq(
+    doc.cases[2].pipeline,
+    plain_pipeline([["./a.mbtx", "", "lower-doc", "mixed"]]),
+  )
   assert_eq(doc.cases[2].extra_env, {
     "Mode": "mixed",
     "mode": "lower-doc",
@@ -252,4 +279,27 @@ test "Unix environment names remain distinct across casing" {
     },
     "unix.md:3: undefined variable: MODE",
   )
+}
+
+///|
+test "redirection keeps source command text and located errors" {
+  let command = "$ ./a.mbtx arg\t>/dev/null 2>&1|./b.mbtx 2>&1"
+  let doc = parse_example(command + "\nresult\n")
+  assert_eq(doc.cases[0].command, command)
+  assert_eq(doc.cases[0].pipeline, [
+    { argv: ["./a.mbtx", "arg"], stderr_to_stdout: true, stdout_to_null: true, },
+    { argv: ["./b.mbtx"], stderr_to_stdout: true, stdout_to_null: false, },
+  ])
+  for
+    invalid in [
+      "2>&1", ">/dev/null", "./a.mbtx >/dev/null >/dev/null", "./a.mbtx 2>&1 2>&1",
+      "./a.mbtx 2> &1", "./a.mbtx > /dev/null", "./a.mbtx2>&1", "./a.mbtx>/dev/null",
+      "./a.mbtx 2>&1 arg", "export A=x >/dev/null", "export A=x 2>&1", "./a.mbtx stderr>/stdout",
+      "./a.mbtx stdout>/null",
+    ] {
+    assert_error_contains(
+      () => ignore(parse_example("$ " + invalid + "\n")),
+      "example.md:2:",
+    )
+  }
 }

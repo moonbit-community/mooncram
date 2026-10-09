@@ -12,12 +12,21 @@ pub fn parse(String, lookup? : (String) -> String?) -> Command raise
 
 // Types and methods
 pub(all) enum Command {
-  Pipeline(Array[Array[String]])
+  Pipeline(Array[PipelineSegment])
   Export(name~ : String, value~ : String)
 } derive(Eq, @debug.Debug)
 pub fn Command::equal(Self, Self) -> Bool
 pub fn Command::not_equal(Self, Self) -> Bool
 pub fn Command::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PipelineSegment {
+  argv : Array[String]
+  stderr_to_stdout : Bool
+  stdout_to_null : Bool
+} derive(Eq, @debug.Debug)
+pub fn PipelineSegment::equal(Self, Self) -> Bool
+pub fn PipelineSegment::not_equal(Self, Self) -> Bool
+pub fn PipelineSegment::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 
