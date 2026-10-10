@@ -12,10 +12,48 @@ pub struct ExpectedLine {
 }
 
 ///|
-pub struct Expectation {
+pub struct StreamExpectation {
   lines : Array[ExpectedLine]
-  exit_code : Int
   no_eol : Bool
+}
+
+///|
+pub(all) enum Stream {
+  Stdout
+  Stderr
+} derive(Eq)
+
+///|
+pub extend Stream with Eq::{equal, not_equal}
+
+///|
+pub(all) enum StreamConstraint {
+  Match(StreamExpectation)
+  Ignore
+  Empty
+}
+
+///|
+pub struct StreamSection {
+  stream : Stream
+  constraint : StreamConstraint
+  // Row offsets into Expectation.source_lines; end includes separator blanks.
+  start : Int
+  content_end : Int
+  end : Int
+}
+
+///|
+pub(all) enum ExpectedBody {
+  Legacy(StreamExpectation)
+  Streams(Array[StreamSection])
+}
+
+///|
+pub struct Expectation {
+  body : ExpectedBody
+  exit_code : Int
+  source_lines : Array[String]
 }
 
 ///|

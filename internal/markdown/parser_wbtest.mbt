@@ -29,9 +29,9 @@ test "mixed Markdown skips other languages tilde fences and enclosing examples" 
   let doc = parse_document("mixed.md", source)
   assert_eq(doc.cases.length(), 2)
   assert_eq(doc.cases[0].line, 18)
-  assert_eq(doc.cases[0].expected.lines[0].raw, "hello")
+  assert_eq(doc.cases[0].expected.source_lines[0], "hello")
   assert_eq(doc.cases[1].expected.exit_code, 2)
-  assert_eq(doc.cases[1].expected.lines.length(), 0)
+  assert_eq(doc.cases[1].expected.source_lines, ["[2]"])
 }
 
 ///|
