@@ -50,7 +50,7 @@ const INVALID_PROGRAM = "fn main { nonexistent_function() }\n";
 const LIBRARY_PROGRAM = "pub fn value() -> Int { 1 }\n";
 const SCRIPT_FILENAME = "program with space.mbtx";
 const SCRIPT_COMMAND = quoteArgument(`./${SCRIPT_FILENAME}`);
-const LOCAL_PACKAGE = "../project/cmd";
+const LOCAL_PACKAGE = "cmd";
 const PATH_ARGUMENTS = [
   String.raw`C:\Moon Bit\file.txt`,
   String.raw`\\server\share\file.txt`,
@@ -64,18 +64,18 @@ const INVALID_CLI_ARGUMENTS = [
   ["test", "missing.md"],
 ];
 const UPDATE_ERROR_CASES = [
-  { command: "../project/bad", diagnostic: "build failed" },
-  { command: "../project/bad >/dev/null 2>&1", diagnostic: "build failed" },
+  { command: "bad", diagnostic: "build failed" },
+  { command: "bad >/dev/null 2>&1", diagnostic: "build failed" },
   { command: "./bad.mbtx 2>&1 >/dev/null", diagnostic: "build failed" },
   { command: "./bad.mbtx", diagnostic: "build failed" },
-  { command: "../project/library" },
+  { command: "library" },
   { command: "./missing.mbtx" },
   { command: `${quoteArgument(process.execPath)} hello` },
   { command: `${LOCAL_PACKAGE} invalid-utf8` },
   { command: `${LOCAL_PACKAGE} invalid-stderr 2>&1` },
   { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null` },
   { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null 2>&1` },
-  { command: `${LOCAL_PACKAGE} hello | ../project/bad`, diagnostic: "build failed" },
+  { command: `${LOCAL_PACKAGE} hello | bad`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./bad.mbtx`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./missing.mbtx` },
   { command: `${LOCAL_PACKAGE} hello | ${LOCAL_PACKAGE} invalid-utf8` },
@@ -127,8 +127,8 @@ function formatImports(imports) {
   return "import {\n" + imports.map(item => `  "${item}",\n`).join("") + "}\n";
 }
 
-function block(body) {
-  return "```mooncram\n" + body + "```\n";
+function block(body, module = "mooncram/integration") {
+  return "```mooncram" + (module ? ` ${module}` : "") + "\n" + body + "```\n";
 }
 
 // Mooncram treats backslashes as escapes inside double-quoted arguments.
@@ -154,9 +154,9 @@ function createEnvironment() {
   };
 }
 
-function createCli(executable, docs) {
+function createCli(executable, project) {
   const env = createEnvironment();
-  return (args, options = {}) => run([...executable, ...args], { cwd: docs, env, ...options });
+  return (args, options = {}) => run([...executable, ...args], { cwd: project, env, ...options });
 }
 
 function createTemporaryDirectory(target) {
@@ -259,7 +259,7 @@ function createErrorFixtures(project, docs) {
   writePackage(join(project, "library"), "", LIBRARY_PROGRAM, "lib.mbt");
 }
 
-function createScanFixtures(directory, packageDir) {
+function createScanFixtures(directory) {
   const scan = join(directory, "scan");
   fs.mkdirSync(scan);
   const invalid = block("invalid\n");
@@ -270,8 +270,8 @@ function createScanFixtures(directory, packageDir) {
   }
   writeDocument(scan, ".hidden.md", invalid);
   fs.symlinkSync(scan, join(scan, "cycle"), DIRECTORY_LINK_TYPE);
-  writeDocument(scan, "a.md", block(`$ ${quoteArgument(packageDir)} setup\n`));
-  writeDocument(scan, "z.md", block(`$ ${quoteArgument(packageDir)} read\nside effect preserved\n`));
+  writeDocument(scan, "a.md", block(`$ ${LOCAL_PACKAGE} setup\n`));
+  writeDocument(scan, "z.md", block(`$ ${LOCAL_PACKAGE} read\nside effect preserved\n`));
   return scan;
 }
 
@@ -291,7 +291,92 @@ function testCliArguments({ cli, docs }) {
       "```mooncram {\nnot a command\n```\n" +
       "```mooncram trailing text\nnot a command\n```\n",
   );
-  assert(cli(["test", legacy], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
+  assert(cli(["test", legacy], { expected: EXIT_CODE.ERROR }).stderr.includes("legacy.md:1: invalid mooncram module declaration"));
+}
+
+function testModuleResolution({ cli, docs, directory, target }) {
+  const moduleRoot = join(directory, "module-resolution");
+  fs.mkdirSync(moduleRoot);
+  const configPath = join(moduleRoot, "moon.mod");
+  const sourceRoot = join(moduleRoot, "src");
+  const declaration = "user/foo";
+  const invoke = (body, options = {}) => {
+    const doc = writeDocument(docs, "module-resolution.md", block(body, declaration));
+    return cli(["test", doc, "--target", target], { cwd: moduleRoot, ...options });
+  };
+  const executable = 'pkgtype(kind: "executable")\n';
+  const print = text => `fn main { println(${JSON.stringify(text)}) }\n`;
+  fs.writeFileSync(configPath, 'name = "user/foo"\nsource = "src"\n');
+  // A module fence also accepts scripts resolved from the document directory.
+  invoke(`$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n`);
+  const sub = join(sourceRoot, "foo");
+  writePackage(sourceRoot, executable, print("root"));
+  writePackage(sub, 'options("is-main": true)\n', print("child"));
+  writePackage(join(sourceRoot, "cmd", "deep", "boo"), executable, print("deep"));
+  invoke("$ cmd/deep/boo\ndeep\n");
+  let result = invoke("$ foo | foo\nroot\n");
+  assert.equal(result.stderr.split("WARNING ").length - 1, 2);
+  assert(result.stderr.includes("module-resolution.md:2:"));
+  assert(result.stderr.includes("user/foo and user/foo/foo; selected user/foo"));
+  assert(result.stdout.includes("1 cases, 0 failed, 0 errors"));
+
+  const update = writeDocument(docs, "module-warning-update.md", block("$ foo\nwrong\n", declaration));
+  result = cli(["update", update, "--target", target], { cwd: moduleRoot });
+  assert.equal(result.stderr.split("WARNING ").length - 1, 1);
+  assert.equal(fs.readFileSync(update, "utf8"), block("$ foo\nroot\n", declaration));
+
+  // Root executable takes precedence even when its build or target fails.
+  fs.writeFileSync(join(sourceRoot, "main.mbt"), INVALID_PROGRAM);
+  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
+  fs.writeFileSync(join(sourceRoot, "main.mbt"), print("root"));
+  fs.writeFileSync(join(sourceRoot, "moon.pkg"), executable + 'supported_targets = "js"\n');
+  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
+  writePackage(sourceRoot, 'pkgtype(kind: "library")\n', LIBRARY_PROGRAM);
+  assert.equal(invoke("$ foo\nchild\n").stderr, "");
+  fs.unlinkSync(join(sub, "moon.pkg"));
+  fs.writeFileSync(join(sub, "moon.pkg.json"), '{"is-main":true}\n');
+  invoke("$ foo\nchild\n");
+  fs.writeFileSync(join(sub, "moon.pkg.json"), '{}\n');
+  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("no executable package"));
+  fs.writeFileSync(join(sub, "moon.pkg.json"), '{"is-main":true}\n');
+  fs.writeFileSync(join(sub, "moon.pkg"), 'pkgtype(kind: true)\n');
+  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
+  fs.unlinkSync(join(sub, "moon.pkg"));
+
+  for (const name of [quoteArgument(sub), "./foo", "../foo", "cmd/../foo"]) {
+    assert(invoke(`$ ${name}\n`, { expected: EXIT_CODE.ERROR }).stderr.includes("invalid module package name"));
+  }
+  const nested = join(sourceRoot, "nested");
+  writePackage(join(nested, "cmd"), executable, print("nested"));
+  fs.writeFileSync(join(nested, "moon.mod"), 'name = "user/nested"\n');
+  assert(invoke("$ nested/cmd\n", { expected: EXIT_CODE.ERROR }).stderr.includes("nested modules"));
+
+  // Validate the whole document before the first command, even export-only declarations.
+  const sideEffect = join(docs, "side-effect.txt");
+  fs.rmSync(sideEffect, { force: true });
+  const invalid = writeDocument(docs, "module-invalid.md",
+    block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ export A=x\n", "user/other"));
+  const before = fs.readFileSync(invalid);
+  result = cli(["update", invalid, "--target", target], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
+  assert(result.stderr.includes("module-invalid.md:4: module declaration 'user/other' does not match 'user/foo'"));
+  assert(!fs.existsSync(sideEffect));
+  assert.deepEqual(fs.readFileSync(invalid), before);
+  const declared = writeDocument(docs, "module-missing.md", block("$ export A=x\n", declaration));
+  for (const cwd of [docs, sourceRoot]) {
+    assert(cli(["test", declared], { cwd, expected: EXIT_CODE.ERROR }).stderr.includes("requires moon.mod in startup cwd"));
+  }
+  fs.writeFileSync(configPath, 'name =');
+  assert(cli(["test", declared], { cwd: moduleRoot, expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
+
+  // Without a declaration only scripts are accepted, including mixed fences.
+  const scoped = writeDocument(docs, "module-scope.md",
+    block(`$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n`, "") +
+    block(`$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`) + block(`$ ${LOCAL_PACKAGE} hello\n`, ""));
+  result = cli(["test", scoped, "--target", target], { expected: EXIT_CODE.ERROR });
+  assert(result.stdout.includes("3 cases, 0 failed, 1 errors"));
+  assert(result.stderr.includes("module-scope.md:10:"));
+  const oldPath = writeDocument(docs, "module-old-path.md", block(`$ ${quoteArgument(sub)}\n`, ""));
+  assert(cli(["test", oldPath], { expected: EXIT_CODE.ERROR }).stderr.includes("command requires a .mbtx file"));
 }
 
 function testPassingCases({ cli, docs, target }) {
@@ -431,7 +516,7 @@ function testDiagnostics({ cli, docs, target }) {
 
 function assertUpdatedDocument(updated) {
   const text = updated.toString("utf8");
-  assert(text.startsWith("😀 Intro\r\n\r\n> - ```mooncram\r\n"));
+  assert(text.startsWith("😀 Intro\r\n\r\n> - ```mooncram mooncram/integration\r\n"));
   assert(updated.includes("Hello,* (glob)\r\n") && updated.includes("o* (glob)\r\n"));
   assert(updated.includes("(escaped)") && updated.includes("(no-eol)"));
   assert(text.endsWith("Unchanged tail"));
@@ -593,7 +678,7 @@ function testRedirections({ cli, docs, target }) {
 function testPipelinePreflight({ cli, docs, target }) {
   const sideEffect = join(docs, "side-effect.txt");
   fs.rmSync(sideEffect, { force: true });
-  for (const downstream of ["../project/bad", "./bad.mbtx", "./missing.mbtx"]) {
+  for (const downstream of ["bad", "./bad.mbtx", "./missing.mbtx"]) {
     const document = writeDocument(docs, "preflight.md", block(
       `$ ${LOCAL_PACKAGE} setup >/dev/null 2>&1 | ${downstream}\n`,
     ));
@@ -602,7 +687,7 @@ function testPipelinePreflight({ cli, docs, target }) {
   }
 }
 
-function testPipelineStartupFailure({ cli, docs, directory, packageDir, target }) {
+function testPipelineStartupFailure({ cli, docs, directory, project, packageDir, target }) {
   // Remove moonx from PATH while keeping the build tools. The first package
   // starts successfully, then starting the script must fail and cancel it.
   const toolDirectories = process.env.PATH.split(delimiter);
@@ -620,7 +705,7 @@ function testPipelineStartupFailure({ cli, docs, directory, packageDir, target }
   // Changing the tool paths can invalidate native build commands. Warm both
   // artifacts with this environment before measuring startup-failure cleanup.
   run([
-    "moon", "-C", packageDir, "run", "--build-only", "--target", target, packageDir,
+    "moon", "-C", project, "run", "--build-only", "--target", target, packageDir,
   ], { cwd: docs, env });
   run([
     "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
@@ -720,12 +805,14 @@ function testConcurrentEdit({ cli, docs, target }) {
   assert.equal(fs.readFileSync(mutate, "utf8"), "changed by command\n");
 }
 
-function testDirectoryScanning({ cli, directory, packageDir, target }) {
-  const scan = createScanFixtures(directory, packageDir);
+function testDirectoryScanning({ cli, directory, target }) {
+  const scan = createScanFixtures(directory);
   const explicit = cli(["test", scan, join(scan, "a.md"), "--target", target]);
   assert(explicit.stdout.includes("2 cases"));
-  const implicit = cli(["test", "--target", target], { cwd: scan });
-  assert(implicit.stdout.includes("2 cases"));
+  const implicit = cli(["test", "--target", target], { cwd: scan, expected: EXIT_CODE.ERROR });
+  assert(implicit.stderr.includes("requires moon.mod in startup cwd"));
+  const fromModule = cli(["test", scan, "--target", target]);
+  assert(fromModule.stdout.includes("2 cases"));
 }
 
 async function exercise(target) {
@@ -733,9 +820,10 @@ async function exercise(target) {
   const directory = createTemporaryDirectory(target);
   try {
     const fixtures = createFixtures(directory);
-    const context = { ...fixtures, target, cli: createCli(executable, fixtures.docs) };
+    const context = { ...fixtures, target, cli: createCli(executable, fixtures.project) };
 
     testCliArguments(context);
+    testModuleResolution(context);
     testPassingCases(context);
     testExports(context);
     testExportCasing(context);
