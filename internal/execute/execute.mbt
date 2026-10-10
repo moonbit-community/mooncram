@@ -3,6 +3,7 @@ pub async fn execute_case(
   case : @markdown.Case,
   cwd : String,
   module_context~ : ModuleContext?,
+  imports~ : Map[String, @markdown.ToolImport],
   warning~ : async (String) -> Unit,
   target~ : String,
   timeout_ms~ : Int,
@@ -16,6 +17,7 @@ pub async fn execute_case(
         let command = prepare_command(
           segment.argv,
           cwd,
+          imports~,
           module_context=if case.module_name is Some(_) {
             module_context
           } else {
@@ -44,12 +46,28 @@ async fn prepare_command(
   argv : Array[String],
   cwd : String,
   module_context~ : ModuleContext?,
+  imports~ : Map[String, @markdown.ToolImport],
   warning~ : async (String) -> Unit,
   target~ : String,
   extra_env~ : Map[String, String],
 ) -> Command {
   let executable = @files.resolve_from(cwd, argv[0])
   let args = argv[1:].to_owned()
+  if imports.get(argv[0]) is Some(binding) {
+    if module_context is Some(context) &&
+      has_local_candidate(context, binding.name) {
+      raise @diagnostic.Failure(
+        "ambiguous import alias '\{binding.name}' (\{binding.coordinate}): executable package in module \{context.name}; choose a different import alias",
+      )
+    }
+    return {
+      program: "moonx",
+      args: ["--target", "wasm", binding.coordinate, "--"] + args,
+      imported: Some(binding),
+      stderr_to_stdout: false,
+      stdout_to_null: false,
+    }
+  }
   if executable.has_suffix(".mbtx") {
     if @fs.kind(executable) != Regular {
       raise @diagnostic.Failure(
@@ -66,6 +84,7 @@ async fn prepare_command(
     )
     {
       program: "moonx",
+      imported: None,
       args: [executable, "--"] + args,
       stderr_to_stdout: false,
       stdout_to_null: false,
@@ -88,6 +107,7 @@ async fn prepare_command(
     if target == "wasm" {
       {
         program: "moonrun",
+        imported: None,
         args: [artifact, "--"] + args,
         stderr_to_stdout: false,
         stdout_to_null: false,
@@ -95,6 +115,7 @@ async fn prepare_command(
     } else {
       {
         program: artifact,
+        imported: None,
         args,
         stderr_to_stdout: false,
         stdout_to_null: false,
@@ -114,7 +135,15 @@ async fn build_artifact(
   extra_env~ : Map[String, String],
 ) -> String {
   let build = capture_pipeline(
-    [{ program: "moon", args, stderr_to_stdout: false, stdout_to_null: false, }],
+    [
+      {
+        program: "moon",
+        args,
+        imported: None,
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      },
+    ],
     cwd,
     extra_env~,
   )

@@ -220,3 +220,17 @@ async fn resolve_package(
     "no executable package '\{name}' in module \{context.name} (nested modules are excluded)",
   )
 }
+
+///|
+/// Probe the same candidates as local resolution without hiding config errors.
+async fn has_local_candidate(context : ModuleContext, name : String) -> Bool {
+  let subpackage = @files.resolve_from(context.source_root, name)
+  let basename = context.name.split("/").last().unwrap().to_owned()
+  if name == basename {
+    let root_callable = callable_package(context, context.source_root)
+    let sub_callable = callable_package(context, subpackage)
+    root_callable || sub_callable
+  } else {
+    callable_package(context, subpackage)
+  }
+}

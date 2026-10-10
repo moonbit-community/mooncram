@@ -80,6 +80,7 @@ fn parse_document_with_env(
   )
   let blocks = []
   collect_blocks(markdown.block, blocks)
+  let imports = collect_imports(path, blocks)
   let lines = source_lines(source)
   let cases = []
   let module_declarations = []
@@ -198,7 +199,7 @@ fn parse_document_with_env(
       raise @diagnostic.located(path, open_line, "empty mooncram block")
     }
   }
-  { path, source, cases, module_declarations, }
+  { path, source, cases, module_declarations, imports, }
 }
 
 ///|
