@@ -28,6 +28,18 @@ async fn main {
       @stdio.stderr.write(args[2] + "\n")
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
+    "relay-tail" => {
+      @stdio.stderr.write(args[2])
+      @stdio.stdout.write(@stdio.stdin.read_all())
+    }
+    "dual-tail" => {
+      @stdio.stdout.write("out")
+      @stdio.stderr.write("err")
+    }
+    "dual-special" => {
+      @stdio.stdout.write("@STDERR (ignore)\n")
+      @stdio.stderr.write("@STDOUT\n")
+    }
     "noisy-echo" => {
       for _ in 0..<128 {
         @stdio.stderr.write("e".repeat(8192))
