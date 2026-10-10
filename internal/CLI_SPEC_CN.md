@@ -75,7 +75,7 @@ mooncram test -- -example.md
 ```
 
 mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展开，展开发生在 CLI
-收到参数之前。当前没有项目配置或围栏配置：目标后端和超时由 CLI 选项控制。
+收到参数之前。围栏仅允许模块声明，目标后端和超时由 CLI 选项控制。
 
 ## 2. 文件发现与执行顺序
 
@@ -112,23 +112,26 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 
 文档按 UTF-8 读取，解码失败属于文档错误。
 Markdown 由 `cmark` 按结构解析，并保留源码位置和排版信息。
-只有起始围栏使用反引号、语言名严格为 `mooncram` 且之后仅有可选空白的围栏代码块
-才会被处理，语言名区分大小写。符合 Markdown 语法的更长反引号围栏也有效。
+只有起始围栏使用反引号、语言名严格为 `mooncram` 的围栏代码块才会被处理，
+语言名区分大小写。后面允许空白和一个模块名，例如 `mooncram user/foo`。
+声明仅作用于当前围栏，普通围栏没有模块名。多个词、旧版 JSON 配置和非法模块名
+在围栏起始行报文档解析错误。模块名和包名由非空的斜杠分隔组件组成，组件仅含
+ASCII 字母、数字、`_`、`-` 或 `.`，不允许 `.` 和 `..` 组件。
+符合 Markdown 语法的更长反引号围栏也有效。
 
-其他语言代码块、缩进代码块、波浪号围栏、更大示例代码块内部看似围栏的文本，
-以及带任何非空白尾随文本的 `mooncram` 围栏都会被静默忽略。后者包括有效或无效的
-旧版 JSON 配置及任意其他文本。支持引用块和列表内的用例；Markdown 容器前缀
-不属于命令或输出。mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
+其他语言、缩进代码块、波浪号围栏和更大示例代码块内看似围栏的文本会被静默忽略。
+支持引用块和列表内的用例；Markdown 容器前缀不属于命令或输出。
+mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
 
 符合条件的围栏必须闭合，并且至少包含一条指令（export 也满足此要求）。
 未闭合或为空的测试围栏会造成文档解析错误。被忽略的围栏不会产生 mooncram 解析错误。
 
 ````markdown
-```mooncram
+```mooncram user/foo
 $ ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 
-$ ./cmd/main --version
+$ cmd/main --version
 my-cli * (glob)
 ```
 ````
@@ -180,7 +183,7 @@ my-cli * (glob)
 是普通参数字符。例如支持：
 
 ```text
-$ ./producer.mbtx|./cmd/filter|./consumer.mbtx
+$ ./producer.mbtx|cmd/filter|./consumer.mbtx
 ```
 
 除下述精确的尾部重定向标记外，未加引号的 `&`、`;`、`<`、`>`、反引号、
@@ -209,7 +212,7 @@ $ ./producer.mbtx|./cmd/filter|./consumer.mbtx
 重定向。例如：
 
 ```text
-$ ./producer.mbtx >/dev/null 2>&1|./cmd/filter
+$ ./producer.mbtx >/dev/null 2>&1|cmd/filter
 ```
 
 `$ export NAME=value` 每条指令设置一个变量，按第一个字面量 `=` 分隔赋值。
@@ -239,16 +242,31 @@ Windows 下导出赋值、引用查询和后续覆盖均不区分变量名大小
 报解析错误；单引号或转义保护的引用可作为字面路径。作为普通参数传入的文件路径
 遵循参数展开规则。
 
-每个段的第一个参数不能为空。它按本地路径解析，以规范 Markdown 文件所在目录为基准，
-不会通过 `PATH` 查找。也接受绝对路径。目标必须解析为以下两类之一：
+每个段的第一个参数不能为空。普通 `mooncram` 围栏只能执行普通 `.mbtx` 文件。
+脚本路径相对于规范 Markdown 文件所在目录解析，也接受绝对脚本路径。
+声明模块的围栏同样允许脚本。
 
-- 普通文件，且后缀严格为 `.mbtx`，区分大小写；
-- 含有 `moon.pkg` 或 `moon.pkg.json` 的目录。随后由 `moon` 检查该目录是否为
-  可执行包，以及是否支持请求的后端。
+执行文档内任何用例前，校验所有模块声明，要求与 mooncram 启动 cwd 下的
+`moon.mod` 的 `name` 精确匹配，包括仅含 export 的围栏。配置缺失、解析失败或
+名称不符属于文档错误，在声明围栏的起始行报告。不向父目录搜索，不加载注册表模块。
+`Case.module_name` 保存可选模块名；`Document.module_declarations` 保存声明和起始行。
+执行上下文保存模块名、启动根目录和源码根目录。
 
-不带 `./` 的名称，只要指向合适的本地路径，也可以使用。任意二进制文件、shell
-命令、`.mbt` 文件以及仅以注册表标识符命名的包都不能作为用例目标。
-路径不存在、文件类型不受支持或包不可执行，会导致执行或构建错误，而非输出不匹配。
+声明围栏允许相对于模块 `source` 的可执行包名。`source` 缺失、为空或 null 时
+使用模块根目录；其他值必须解析到模块根目录内的子目录。
+对于 `user/foo`，`cmd/boo` 对应 `user/foo/cmd/boo`。短名称 `foo` 优先考虑根包
+`user/foo`，其次考虑同名子包 `user/foo/foo`。可调用包通过
+`pkgtype(kind: "executable")` 或旧的 `is-main: true` 声明。仅子包可调用时选择子包，
+双方可调用时选择根包；双方都不可调用时报错。选中包编译失败或不支持目标后端时
+直接报错，不回退。
+
+每个发生歧义的管道段向 mooncram 的 stderr 独立输出一次 `WARNING`，包含文档位置、
+两个完整包名和选择结果。警告不进入捕获输出、不匹配诊断、更新内容或错误计数。
+包名不接受绝对目录、`./`、`../`、路径穿越，也不得跨入其他 `moon.mod` 或
+`moon.mod.json` 界定的嵌套模块，符号链接也遵循此限制。
+`moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析，兼容以 JSON 读取
+`moon.pkg.json`；配置解析失败会报错。任意二进制、shell 命令、`.mbt` 文件和
+注册表模块不能作为用例目标，也不会通过 `PATH` 查找目标。
 其余参数会转发给被测程序，因此程序自己的 `--version` 或 `--target`
 不会被解释为 mooncram 选项。
 
@@ -263,8 +281,8 @@ Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 | 用例类型 | 构建预检查 | 程序调用 |
 | --- | --- | --- |
 | `.mbtx` 脚本 | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
-| Wasm 包 | `moon -C <package> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
-| 原生包 | `moon -C <package> run --build-only --target native <package>` | `<artifact> <args...>` |
+| Wasm 包 | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
+| 原生包 | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
 
 脚本始终使用 Wasm，即使 CLI 指定了 `native`。
 mooncram 按段顺序为每个用例的所有段请求构建，是否复用已有构建由底层工具决定。
@@ -518,9 +536,9 @@ Not updating <canonical-file>: execution errors in this document
 
 | 计数 | 含义 |
 | --- | --- |
-| `total` | 尝试执行的用例数，在执行之前递增。包含执行错误用例；不包含 export 和解析失败文档中的用例。 |
+| `total` | 尝试执行的用例数，在执行之前递增。包含执行错误用例；不包含 export 和解析或模块声明校验失败文档中的用例。 |
 | `failed` | 执行完成但输出或退出状态不匹配的用例数。执行错误单独计数。仅在 `test` 汇总中打印。 |
-| `errors` | 捕获到的用例错误与文档读取、解析、更新错误之和。一次解析失败计为一个文档错误。 |
+| `errors` | 捕获到的用例错误与文档读取、解析、模块声明校验、更新错误之和。一次解析或声明校验失败计为一个文档错误。 |
 | `updated` | 已成功写入文档中的不匹配用例数，或试运行中可生成文档差异的不匹配用例数。计量单位是用例，不是文件或变更行。 |
 
 被取消更新或写入失败的文档不计入 `updated`。
@@ -546,7 +564,7 @@ Not updating <canonical-file>: execution errors in this document
 | 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
+| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt)、[execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 | 报告与局部编辑 | [report/report.mbt](report/report.mbt)、[update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 

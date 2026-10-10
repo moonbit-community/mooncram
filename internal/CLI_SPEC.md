@@ -83,8 +83,8 @@ mooncram test -- -example.md
 ```
 
 Mooncram does not expand path globs itself. Expansion by the shell launching
-mooncram happens before the CLI receives its arguments. There is no project or
-fence configuration: target and timeout are controlled by the CLI options.
+mooncram happens before the CLI receives its arguments. A fence can declare its
+module; target and timeout are controlled by the CLI options.
 
 ## 2. File discovery and ordering
 
@@ -127,15 +127,18 @@ there are no attempted cases and no recorded errors, the CLI reports
 Documents are read as UTF-8; decoding failures are document errors. Markdown
 is parsed structurally with `cmark`, with source locations and layout retained.
 Only fenced code blocks with a backtick opening fence and the exact,
-case-sensitive language name `mooncram`, followed only by optional whitespace,
-are considered. Valid longer backtick fences work as well as triple backticks.
+case-sensitive language name `mooncram` are considered. The info string accepts
+optional whitespace and a single module name, such as `mooncram user/foo`.
+The declaration is scoped to that fence; ordinary fences have no module name.
+Multiple words, JSON settings, or invalid module names are document parsing
+errors at the opening line. Module/package names use nonempty slash-separated
+components with ASCII letters, digits, `_`, `-`, or `.`; `.` and `..` components
+are prohibited. Valid longer backtick fences work as well as triple backticks.
 
-Other languages, indented code blocks, tilde fences, apparent fences inside
-larger code examples, and `mooncram` fences with any non-whitespace trailing
-text are silently ignored. This includes valid or invalid former JSON settings
-and arbitrary trailing text. Cases inside block quotes and lists are supported;
-the Markdown container prefix is not part of the command or output. Normal
-Markdown fence indentation rules apply before mooncram parses lines.
+Other languages, indented code blocks, tilde fences, and apparent fences inside
+larger code examples are silently ignored. Cases inside block quotes and lists
+are supported; the Markdown container prefix is not part of the command or
+output. Normal Markdown indentation rules apply before parsing lines.
 
 An eligible fence must have a closing fence and at least one command (an export
 also satisfies this requirement). An unclosed or empty eligible fence is a
@@ -143,11 +146,11 @@ document parsing error. Ignored fences do not
 produce mooncram parsing errors.
 
 ````markdown
-```mooncram
+```mooncram user/foo
 $ ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 
-$ ./cmd/main --version
+$ cmd/main --version
 my-cli * (glob)
 ```
 ````
@@ -208,7 +211,7 @@ Empty pipeline segments, including leading/trailing `|` and `||`, are parsing
 errors. Quoted or escaped `|` is an ordinary argument character. For example:
 
 ```text
-$ ./producer.mbtx|./cmd/filter|./consumer.mbtx
+$ ./producer.mbtx|cmd/filter|./consumer.mbtx
 ```
 
 Except for the exact trailing redirection markers below, unquoted `&`, `;`,
@@ -241,7 +244,7 @@ escaping both `>` and `&`; literal `>/dev/null` can use `\>/dev/null`. The old
 checked for redirection syntax. For example:
 
 ```text
-$ ./producer.mbtx >/dev/null 2>&1|./cmd/filter
+$ ./producer.mbtx >/dev/null 2>&1|cmd/filter
 ```
 
 `$ export NAME=value` sets exactly one variable. The assignment is split at the
@@ -280,18 +283,38 @@ this is a parsing error even if the variable is defined. Single-quoted or escape
 references may appear literally in executable paths. File paths passed as ordinary
 arguments follow the normal expansion rules.
 
-The first argument of each segment must be nonempty. It is resolved as a local
-path relative to the canonical Markdown file's directory, not searched through
-`PATH`. Absolute paths are also accepted. It must resolve to either:
+The first argument of each segment must be nonempty. A case in an ordinary
+`mooncram` fence can execute only a regular `.mbtx` file. Script paths are resolved
+against the canonical Markdown directory; absolute script paths are accepted.
+Scripts are also allowed in fences with a module declaration.
 
-- A regular file with a case-sensitive `.mbtx` suffix; or
-- A directory containing `moon.pkg` or `moon.pkg.json`. The `moon` tool then
-  validates that it is an executable package and supports the requested target.
+Before executing any case in a document, all declarations must exactly match
+`name` in the `moon.mod` located directly in mooncram's startup cwd. This includes
+export-only fences. Missing/invalid configuration or a mismatched declaration is
+a document error reported at the declaring fence's opening line. No parent
+search or registry module loading occurs. `Case.module_name` stores the optional
+name; `Document.module_declarations` stores names and opening line numbers.
+The execution context stores the module name, startup root, and source root.
 
-A bare name can work if it names an appropriate local path. Arbitrary binaries,
-shell commands, `.mbt` files, and packages named only by registry identifiers
-are not executable case targets. Missing paths, unsupported file kinds, and
-nonexecutable packages are execution/build errors, not output mismatches.
+Declared fences additionally accept executable package names relative to the
+module's `source` directory. Missing, empty, or null `source` means the module
+root; otherwise it must resolve to a subdirectory inside the module root.
+For `user/foo`, `cmd/boo` refers to `user/foo/cmd/boo`. The short name `foo` first
+considers root package `user/foo`, then same-name subpackage `user/foo/foo`.
+A package is callable if its configuration declares `pkgtype(kind: "executable")`
+or legacy `is-main: true`. If only the subpackage is callable it is selected;
+if both are callable the root wins. If neither is callable the case errors.
+A selected package's compilation or backend failure errors without fallback.
+
+Each ambiguous pipeline segment emits one independent `WARNING` on mooncram's
+stderr with document position, both full names, and the chosen package. Warnings
+never enter captured program output, mismatch diagnostics, updated expectations,
+or error counts. Package names cannot be absolute directory paths, use `./` or
+`../`, contain traversal, or cross another `moon.mod`/`moon.mod.json` boundary,
+including through symlinks. `moon.pkg` is parsed with `moonbitlang/moon_config@0.4.2`;
+legacy `moon.pkg.json` is read as JSON. Invalid configurations are errors.
+Arbitrary binaries, shell commands, `.mbt` files, and registry modules are not
+case targets. Targets are never searched through `PATH`.
 Remaining arguments are forwarded to the tested program, so its `--version`
 or `--target` is not interpreted as a mooncram option.
 
@@ -308,8 +331,8 @@ items are placeholders, not shell syntax:
 | Case kind | Build preflight | Program invocation |
 | --- | --- | --- |
 | `.mbtx` script | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
-| Wasm package | `moon -C <package> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
-| Native package | `moon -C <package> run --build-only --target native <package>` | `<artifact> <args...>` |
+| Wasm package | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
+| Native package | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
 
 Scripts always use Wasm, including when the CLI specifies `native`.
 Mooncram requests a build for every segment of every case, in segment order.
@@ -595,9 +618,9 @@ For example:
 
 | Counter | Meaning |
 | --- | --- |
-| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports and cases in documents that failed to parse. |
+| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports and cases in documents that failed to parse or validate module declarations. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
-| `errors` | Caught per-case errors plus document read/parse/update errors. A parse failure counts as one document error. |
+| `errors` | Caught per-case errors plus document read/parse/module-validation/update errors. A parse or module-validation failure counts as one document error. |
 | `updated` | Mismatching cases in documents successfully written, or eligible for a dry-run document diff. Counts cases, not files or changed lines. |
 
 Documents whose updates are suppressed or whose write fails do not contribute
@@ -625,7 +648,7 @@ expected exit statuses.
 | Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
+| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt), [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 | Reports and local edits | [report/report.mbt](report/report.mbt), [update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 
