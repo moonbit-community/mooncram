@@ -401,9 +401,10 @@ successful build output is not part of the program expectation.
 
 Pipeline segments run concurrently, with OS pipes passing intermediate routed
 output to the next stdin as raw bytes, without decoding or newline normalization.
-Only the final routed output is captured and compared with the expectation.
+Only the final routed output is captured for stdout assertions.
 Unredirected stderr is drained concurrently and buffered, then concatenated in
-segment order for mismatch diagnostics; it does not affect matching.
+segment order without added separator bytes for mismatch diagnostics and paired
+`@STDERR` assertions. Unmarked cases do not match stderr.
 `2>&1` sends stderr to the same OS pipe as routed stdout, preserving
 pipe write order, and excludes it from diagnostic collection. When both markers
 are present, only original stderr uses the output pipe. `>/dev/null` drains
@@ -462,7 +463,7 @@ and execution. `test`, `update` and `update --dry-run` use the same flow.
 
 ## 6. Expectations, line matching, and exit status
 
-A case passes only when all of the following match:
+For unmarked cases, a case passes only when all of the following match:
 
 1. Program exit status.
 2. Number of routed output lines.
@@ -517,7 +518,7 @@ There are no optional-line, repetition, or line-skipping annotations.
 `(escaped)` supports control characters and syntax-looking output through JSON
 escapes. Its decoded value must not contain LF; use separate expectation lines
 for separate output lines. `(no-eol)` is allowed only on the final output line,
-optionally followed by the final exit-status marker. An exact empty line with
+in that stream, optionally followed by the final case exit-status marker. An exact empty line with
 `(no-eol)` is invalid: represent empty output by omitting output lines.
 
 ````markdown
@@ -549,6 +550,56 @@ equal the entire actual line. This also anchors alternatives such as
 installed MoonBit standard library. Invalid patterns are document parse errors.
 Neither glob nor regex matching spans multiple output lines.
 
+### 6.3 Paired stdout and stderr assertions
+
+Use `@STDOUT` and `@STDERR` to assert both streams in one execution:
+
+````markdown
+```mooncram
+$ ./cli.mbtx
+@STDOUT
+result
+@STDERR (empty)
+
+$ ./cli.mbtx --invalid
+@STDOUT (ignore)
+@STDERR
+error: invalid argument
+[2]
+```
+````
+
+Both case-sensitive markers must appear exactly once, in either order. A missing
+partner, duplicate marker, nonempty expectation before the first marker, or
+unknown marker annotation is a parse error with a file and line number.
+Marker forms are exactly `@STDOUT` / `@STDERR`, optionally followed by
+` (ignore)` or ` (empty)`. To match a marker-looking output line literally, use
+JSON escaping, for example `"@STDOUT" (escaped)`.
+
+A plain section uses the usual exact, glob, regex and escaped line matchers;
+`(no-eol)` applies independently to the last line of each stream. A plain section
+with no output lines requires empty output. `(ignore)` skips content assertions;
+`(empty)` requires exactly zero characters, so even one newline fails. Neither
+annotated form accepts output lines. Trailing bare empty lines in each section
+are separators; use `"" (escaped)` to assert an empty output line. The final
+`[N]` belongs to the whole case, with default exit code `0`.
+
+`@STDOUT` selects the final segment's routed output. `@STDERR` selects all
+unmerged stderr, concatenated in pipeline order without added separators.
+Redirection still applies: merged or discarded bytes are not recovered.
+There is no comparison of timing between streams. Ignored streams are still
+captured and checked for UTF-8, with the same deadlines and process cleanup.
+Cases without stream markers keep the existing single-output behavior.
+
+The two stream constraints and the case exit code must all match. Markers are
+recognized only when the exact uppercase name is followed by end of line, a
+space or a tab; any following text other than the exact supported annotation
+is an error. `@stdout` and `@STDOUTish` are ordinary output. Bare empty lines
+before the first marker are allowed separators. Bare empty lines within a
+plain section remain output when followed by more output in that section.
+An earlier `[N]` is output; only the final case line sets the exit code.
+No CLI options or fence settings are added.
+
 ## 7. Reports and color
 
 Passing cases produce no individual report. Expectation mismatches produce a report
@@ -568,6 +619,13 @@ syntax, including escaping, `(no-eol)`, nonzero status markers, and retained
 matching patterns. It is not a raw dump of program output. If diagnostic stderr is
 nonempty, the report appends `--- diagnostic stderr` and its normalized text,
 ensuring a final newline. Successful cases do not print diagnostic stderr.
+
+For paired cases, only failed content constraints produce diffs. Their headers
+are `--- expected @STDOUT` / `+++ actual @STDOUT`, or the equivalent `@STDERR`
+headers. Ignored streams produce no content diff. Exit status is shown once in
+the case header. Stderr shown in its own diff is not repeated as diagnostic
+stderr; ignored stderr remains available for diagnosis if another assertion
+fails.
 
 Errors are written to **stderr**:
 
@@ -599,7 +657,8 @@ strip ANSI bytes emitted by tested programs or control their own color policy.
 `update` uses the same parser, execution, comparisons, and failure reports as
 `test`. Only mismatching cases receive edits; passing cases remain untouched.
 Edits replace the expectation span after the command, leaving the command,
-fences, surrounding prose, and separator lines in place.
+fences, surrounding prose, and separator lines in place. The line rendering
+rules below apply within each matched stream.
 
 For each actual output line at index `i`, rendering first tries to retain the
 existing expectation at the same index if its matcher still matches. This
@@ -610,7 +669,7 @@ separator/status ambiguity. Matching is by line index, not by searching for
 the same text elsewhere in the output.
 
 New exact output lines are JSON-escaped with `(escaped)` when they are empty,
-begin with a space, `$`, or `[`, contain a backtick or a control character below
+begin with a space, `$`, or `[`, look like a stream marker, contain a backtick or a control character below
 U+0020 or U+007F, or end with a recognized annotation suffix: ` (escaped)`,
 ` (glob)`, ` (regex)`, or ` (no-eol)`. Other lines, including unknown
 parenthesized suffixes, are written literally. The last output line gets
@@ -622,6 +681,16 @@ and newline spelling are reused when available. Extra lines use the command
 line's prefix and newline. This preserves list/quote layout and LF/CRLF/CR
 spellings, including mixed line endings, by source position. Text outside the
 edited spans is retained, including a missing final document newline.
+
+For paired cases, rendering keeps the original section order, leading and
+section separator blanks, and every unchanged section. `(ignore)` remains.
+A satisfied `(empty)` remains; a violated `(empty)` becomes a plain marker
+with rendered output. Still-matching patterns are retained by line index
+independently within each stream. All marker-looking output is JSON-escaped,
+including in legacy cases, so re-parsing and repeated updates are idempotent.
+Rows retain their own section's existing prefixes and newline spellings; newly
+added output rows use the command's layout without shifting the other section's
+layout. An unchanged explicit final status marker also keeps its spelling.
 
 In dry-run mode, each document with eligible edits additionally prints:
 
