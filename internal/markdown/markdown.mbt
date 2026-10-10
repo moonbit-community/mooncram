@@ -145,7 +145,7 @@ fn parse_document_with_env(
         next += 1
       }
       // Trailing empty source lines separate cases; explicit empty output lines
-      // use (equal) or (escaped), so updates never introduce ambiguity.
+      // use "" (escaped), so updates never introduce ambiguity.
       let mut end = next
       while end > i + 1 && code[end - 1].v == "" {
         end -= 1

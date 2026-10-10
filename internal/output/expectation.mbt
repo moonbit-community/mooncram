@@ -17,9 +17,7 @@ fn exit_marker(text : String) -> Int? raise {
 
 ///|
 fn parse_expected_line(raw : String) -> ExpectedLine raise {
-  let matcher = if raw.has_suffix(" (equal)") {
-    Equal(raw[:raw.length() - 8].to_owned())
-  } else if raw.has_suffix(" (escaped)") {
+  let matcher = if raw.has_suffix(" (escaped)") {
     let encoded = raw[:raw.length() - 10].to_owned()
     let value = @json.parse(encoded) catch {
       _ => raise @diagnostic.Failure("(escaped) requires a JSON string")

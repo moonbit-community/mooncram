@@ -228,10 +228,10 @@ function writeDocument(directory, filename, content) {
 function argumentCases(program) {
   return block(
     `$ ${program} args 'Moon Bit' "a'b" '' '$HOME' '*' '|' --version\n` +
-      '["Moon Bit","a\'b","","$HOME","*","|","--version"] (equal)\n',
+      '["Moon Bit","a\'b","","$HOME","*","|","--version"]\n',
   ) + block(
     `$ ${program} args ${PATH_ARGUMENTS.map(quoteArgument).join(" ")}\n` +
-      `${JSON.stringify(PATH_ARGUMENTS)} (equal)\n`,
+      `${JSON.stringify(PATH_ARGUMENTS)}\n`,
   );
 }
 
@@ -435,10 +435,10 @@ async function testImports({ executable, docs, project, directory, target }) {
     block("$ remote hello\nHello, Moon Bit!\n", ""), // import declared later
     imports,
     block('$ export MODE=imported\n$ remote args "${MODE}" \'a|b\' \'\' --target native\n' +
-      '["imported","a|b","","--target","native"] (equal)\n' +
+      '["imported","a|b","","--target","native"]\n' +
       '$ remote context\nimported\nyes\ncwd contents\n', ""),
     block("$ Remote invocation --version\n" +
-      '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"] (equal)\n'),
+      '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"]\n'),
     block(`$ remote hello|${LOCAL_PACKAGE} echo|Remote echo\nHello, Moon Bit!\n`),
     block(`$ ${LOCAL_PACKAGE} hello|remote echo\nHello, Moon Bit!\n`),
     block(`$ remote streams >/dev/null 2>&1|${LOCAL_PACKAGE} echo\ntwo\n`),
@@ -597,12 +597,12 @@ function testExports({ cli, docs, target }) {
   const args = '${MODE} ${VALUE} ${EMPTY} pre${VALUE}post ${NESTED} \\${UNDEFINED} $MODE';
   const expected = JSON.stringify(["parent-doc", value, "", `pre${value}post`, "${UNDEFINED}", "${UNDEFINED}", "$MODE"]);
   const source = [
-    block(`$ ${LOCAL_PACKAGE} args \${MODE}\n["parent"] (equal)\n`),
+    block(`$ ${LOCAL_PACKAGE} args \${MODE}\n["parent"]\n`),
     block('$ export MODE=${MODE}-doc\n' +
       `$ export VALUE=${quoteArgument(value)}\n` +
       "$ export EMPTY=\n$ export FILE=relative.txt\n$ export NESTED='${UNDEFINED}'\n"),
     ...[SCRIPT_COMMAND, LOCAL_PACKAGE].map(program => block(
-      `$ ${program} args ${args}\n${expected} (equal)\n` +
+      `$ ${program} args ${args}\n${expected}\n` +
       `$ ${program} context\nparent-doc\nyes\ncwd contents\n` +
       `$ ${program} read-file \${FILE}\ncwd contents\n`,
     )),
@@ -654,7 +654,7 @@ function testExports({ cli, docs, target }) {
 function testExportCasing({ cli, docs, target }) {
   const windows = process.platform === "win32";
   const checkBoth = (name, reference, value) => [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
-    `$ ${program} check-env ${name} \${${reference}}\n${value || " (equal)"}\n`).join("");
+    `$ ${program} check-env ${name} \${${reference}}\n${value || '"" (escaped)'}\n`).join("");
   const modeKey = windows ? "MODE" : "mode";
   const newKey = windows ? "MOONCRAM_CASE_VALUE" : "Mooncram_Case_Value";
   const source = block(
@@ -740,6 +740,34 @@ function testUpdates({ cli, docs, target }) {
   cli(["update", update, "--target", target]);
   assert.deepEqual(fs.readFileSync(update), updated);
   assert(!fs.readdirSync(docs).some(name => name.startsWith(".mooncram-")));
+}
+
+function testEqualLiteral({ cli, docs, target }) {
+  const line = "hello (equal)";
+  fs.writeFileSync(join(docs, "equal-line.txt"), line + "\n");
+  fs.writeFileSync(join(docs, "equal-tail.txt"), line);
+  const cases = [SCRIPT_COMMAND, LOCAL_PACKAGE].flatMap(program => [
+    [`${program} read-file equal-line.txt`, line],
+    [`${program} read-file equal-tail.txt`, line + " (no-eol)"],
+  ]);
+  const source = expectation => block(cases.map(([command, output]) =>
+    `$ ${command}\n${expectation(output)}\n`).join(""));
+  const document = writeDocument(docs, "equal-literal.md", source(output => output));
+  cli(["test", document, "--target", target]);
+
+  fs.writeFileSync(document, source(output => output.replace(" (equal)", "")));
+  const failure = cli(["test", document, "--target", target], { expected: EXIT_CODE.FAILURE });
+  assert(failure.stdout.includes("4 cases, 4 failed, 0 errors"));
+  cli(["update", document, "--target", target]);
+  const updated = fs.readFileSync(document, "utf8");
+  assert.equal(updated, source(output => output));
+  cli(["test", document, "--target", target]);
+  cli(["update", document, "--target", target]);
+  assert.equal(fs.readFileSync(document, "utf8"), updated);
+
+  const removedSuffix = writeDocument(docs, "equal-suffix.md",
+    block(`$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit! (equal)\n`));
+  cli(["test", removedSuffix, "--target", target], { expected: EXIT_CODE.FAILURE });
 }
 
 function testUpdateErrors({ cli, docs, project, target }) {
@@ -830,13 +858,13 @@ function testRedirections({ cli, docs, target }) {
   ];
   for (const program of [LOCAL_PACKAGE, SCRIPT_COMMAND]) {
     cases.push([`${program} args '2>&1' ">/dev/null" 2\\>\\&1 \\>/dev/null`,
-      '["2>&1",">/dev/null","2>&1",">/dev/null"] (equal)\n']);
+      '["2>&1",">/dev/null","2>&1",">/dev/null"]\n']);
   }
   fs.rmSync(join(docs, "downstream-eof.txt"), { force: true });
   const passing = writeDocument(docs, "redirections.md",
     block("$ export MARKER='2>&1'\n") +
     cases.map(([command, output]) => block(`$ ${command}\n${output}`)).join("\n") +
-    block(`$ ${LOCAL_PACKAGE} args \${MARKER} "\${MARKER}" after\n["2>&1","2>&1","after"] (equal)\n`));
+    block(`$ ${LOCAL_PACKAGE} args \${MARKER} "\${MARKER}" after\n["2>&1","2>&1","after"]\n`));
   cli(["test", passing, "--target", target]);
 
   // Only unredirected stderr belongs to diagnostics, in segment order.
@@ -1035,6 +1063,7 @@ async function exercise(target) {
 
     testDiagnostics(context);
     testUpdates(context);
+    testEqualLiteral(context);
     console.log(`${target}: diagnostics, dry-run, local updates, escaping, pattern preservation passed`);
 
     testUpdateErrors(context);
