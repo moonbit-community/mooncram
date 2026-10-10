@@ -15,7 +15,7 @@ version = "0.0.2"
 
 readme = "README.md"
 
-repository = ""
+repository = "https://github.com/moonbit-community/mooncram"
 
 license = "Apache-2.0"
 
