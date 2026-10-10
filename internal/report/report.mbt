@@ -40,20 +40,47 @@ pub fn failure_report(
   actual : @output.Captured,
   color : Bool,
 ) -> String {
-  let expected = case.expected.lines.map(l => l.raw)
-  if case.expected.exit_code != 0 {
-    expected.push("[\{case.expected.exit_code}]")
-  }
-  let observed = @output.actual_expectation(actual, case.expected)
   let result = StringBuilder()
   result.write_string(colorize("FAIL \{path}:\{case.line}", Red, color) + "\n")
   result.write_string(
     "  \{case.command}\n  exit: expected \{case.expected.exit_code}, actual \{actual.exit_code}\n",
   )
-  result.write_string(
-    "--- expected\n+++ actual\n" + diff_lines(expected, observed, color),
-  )
-  if actual.diagnostic != "" {
+  let mut stderr_diff = false
+  match case.expected.body {
+    Legacy(content) => {
+      let expected = content.lines.map(l => l.raw)
+      if case.expected.exit_code != 0 {
+        expected.push("[\{case.expected.exit_code}]")
+      }
+      let observed = @output.actual_expectation(actual, case.expected)
+      result.write_string(
+        "--- expected\n+++ actual\n" + diff_lines(expected, observed, color),
+      )
+    }
+    Streams(sections) =>
+      for section in sections {
+        let text = section.stream.select(actual)
+        if section.constraint.matches(text) {
+          continue
+        }
+        let expected = match section.constraint {
+          Match(content) => content.lines.map(l => l.raw)
+          Empty | Ignore => []
+        }
+        result.write_string(
+          "--- expected \{section.stream.label()}\n+++ actual \{section.stream.label()}\n" +
+          diff_lines(
+            expected,
+            @output.actual_stream_expectation(text, section.constraint),
+            color,
+          ),
+        )
+        if section.stream is Stderr {
+          stderr_diff = true
+        }
+      }
+  }
+  if actual.diagnostic != "" && !stderr_diff {
     result.write_string("--- diagnostic stderr\n\{actual.diagnostic}")
     if !actual.diagnostic.has_suffix("\n") {
       result.write_string("\n")

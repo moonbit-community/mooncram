@@ -150,3 +150,117 @@ test "annotation recognition requires exact suffix spelling" {
     assert_output(line + "\n", "hello\n", 0, false)
   }
 }
+
+///|
+fn assert_streams(
+  body : String,
+  stdout : String,
+  stderr : String,
+  code : Int,
+  matches : Bool,
+) -> Unit raise {
+  let expected = parse_example("$ ./a.mbtx\n" + body).cases[0].expected
+  assert_eq(
+    expected.matches({ output: stdout, diagnostic: stderr, exit_code: code, }),
+    matches,
+  )
+}
+
+///|
+test "paired streams match independently in either order" {
+  for
+    body in [
+      "@STDOUT\nout\n@STDERR\nerr\n[2]\n", "@STDERR\nerr\n\n@STDOUT\nout\n[2]\n",
+    ] {
+    assert_streams(body, "out\n", "err\n", 2, true)
+    assert_streams(body, "wrong\n", "err\n", 2, false)
+    assert_streams(body, "out\n", "wrong\n", 2, false)
+    assert_streams(body, "out\n", "err\n", 0, false)
+  }
+}
+
+///|
+test "stream constraints distinguish empty from newline and keep ignore content unchecked" {
+  for body in ["@STDOUT\n@STDERR (empty)\n", "@STDERR\n@STDOUT (empty)\n"] {
+    assert_streams(body, "", "", 0, true)
+    assert_streams(body, "\n", "", 0, false)
+    assert_streams(body, "", "\n", 0, false)
+  }
+  assert_streams(
+    "@STDOUT (ignore)\n@STDERR (empty)\n", "any\ntext", "", 0, true,
+  )
+  assert_streams(
+    "@STDOUT (empty)\n@STDERR (ignore)\n", "", "any\ntext", 0, true,
+  )
+  assert_streams(
+    "@STDOUT (ignore)\n@STDERR (ignore)\n", "anything", "anything", 1, false,
+  )
+  assert_streams(
+    "@STDOUT\n\"\" (escaped)\n@STDERR\n\"\" (escaped)\n", "\n", "\n", 0, true,
+  )
+}
+
+///|
+test "each stream has independent patterns and final newline" {
+  let body = "@STDOUT\nv* (glob) (no-eol)\n\n@STDERR\nerror [0-9]+ (regex)\n\"@STDOUT (empty)\" (escaped) (no-eol)\n"
+  assert_streams(body, "version", "error 42\n@STDOUT (empty)", 0, true)
+  assert_streams(body, "version\n", "error 42\n@STDOUT (empty)", 0, false)
+  assert_streams(body, "version", "error 42\n@STDOUT (empty)\n", 0, false)
+  assert_streams(
+    "@STDERR\nerr (no-eol)\n@STDOUT\nout\n", "out\n", "err", 0, true,
+  )
+  assert_streams(
+    "@STDOUT\nout (no-eol)\n@STDERR\nerr\n", "out", "err\n", 0, true,
+  )
+  assert_output("\"@STDERR\" (escaped)\n", "@STDERR\n", 0, true)
+  assert_output("@stdout\n@STDOUTish\n", "@stdout\n@STDOUTish\n", 0, true)
+}
+
+///|
+test "stream parser rejects malformed pairs and reports exact source positions" {
+  for
+    (body, message) in [
+      ("@STDOUT\n", "example.md:3: @STDOUT and @STDERR must both appear once"),
+      (
+        "@STDERR (ignore)\n", "example.md:3: @STDOUT and @STDERR must both appear once",
+      ),
+      ("@STDOUT\n@STDERR\n@STDOUT\n", "example.md:5: duplicate @STDOUT"),
+      ("@STDERR\n@STDERR (empty)\n", "example.md:4: duplicate @STDERR"),
+      (
+        "old\n@STDOUT\n@STDERR\n", "example.md:3: expected output before a stream marker",
+      ),
+      (
+        "@STDOUT (glob)\n@STDERR\n", "example.md:3: unknown stream marker annotation",
+      ),
+      (
+        "@STDOUT\n@STDERR (EMPTY)\n", "example.md:4: unknown stream marker annotation",
+      ),
+      (
+        "@STDOUT\n@STDERR (ignore) \n", "example.md:4: unknown stream marker annotation",
+      ),
+      ("@STDOUT (empty)\nx\n@STDERR\n", "example.md:4: (ignore) and (empty)"),
+      (
+        "@STDOUT\n@STDERR (ignore)\n\"\" (escaped)\n", "example.md:5: (ignore) and (empty)",
+      ),
+      ("@STDOUT\na (no-eol)\nb\n@STDERR\n", "example.md:5: (no-eol)"),
+      (
+        "@STDOUT\n@STDERR\n\"\" (escaped) (no-eol)\n", "example.md:5: an empty output line",
+      ),
+    ] {
+    assert_error_contains(
+      () => ignore(parse_example("$ ./a.mbtx\n" + body)),
+      message,
+    )
+  }
+  // Error positions also survive Markdown container prefixes.
+  assert_error_contains(
+    () => {
+      ignore(
+        @markdown.parse_document(
+          "quote.md", "> ```mooncram\n> $ ./a.mbtx\n> @STDERR (unknown)\n> ```\n",
+        ),
+      )
+    },
+    "quote.md:3: unknown stream marker annotation",
+  )
+}

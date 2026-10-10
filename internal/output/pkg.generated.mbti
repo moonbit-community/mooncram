@@ -8,6 +8,10 @@ import {
 // Values
 pub fn actual_expectation(Captured, Expectation) -> Array[String]
 
+pub fn actual_expectation_layout(Captured, Expectation) -> Array[(String, Int?)]
+
+pub fn actual_stream_expectation(String, StreamConstraint) -> Array[String]
+
 pub fn normalize_output(String) -> String
 
 pub fn output_lines(String) -> (Array[String], Bool)
@@ -24,15 +28,49 @@ pub(all) struct Captured {
 }
 
 pub struct Expectation {
-  lines : Array[ExpectedLine]
+  body : ExpectedBody
   exit_code : Int
-  no_eol : Bool
+  source_lines : Array[String]
 }
 pub fn Expectation::matches(Self, Captured) -> Bool
+
+pub(all) enum ExpectedBody {
+  Legacy(StreamExpectation)
+  Streams(Array[StreamSection])
+}
 
 pub struct ExpectedLine {
   raw : String
   // private fields
+}
+
+pub(all) enum Stream {
+  Stdout
+  Stderr
+} derive(Eq)
+pub fn Stream::equal(Self, Self) -> Bool
+pub fn Stream::label(Self) -> String
+pub fn Stream::not_equal(Self, Self) -> Bool
+pub fn Stream::select(Self, Captured) -> String
+
+pub(all) enum StreamConstraint {
+  Match(StreamExpectation)
+  Ignore
+  Empty
+}
+pub fn StreamConstraint::matches(Self, String) -> Bool
+
+pub struct StreamExpectation {
+  lines : Array[ExpectedLine]
+  no_eol : Bool
+}
+
+pub struct StreamSection {
+  stream : Stream
+  constraint : StreamConstraint
+  start : Int
+  content_end : Int
+  end : Int
 }
 
 // Type aliases
