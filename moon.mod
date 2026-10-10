@@ -30,4 +30,5 @@ import {
   "moonbit-community/cmark@0.4.9",
   "moonbit-community/chalk@0.0.1",
   "moonbitlang/x@0.5.5",
+  "moonbitlang/moon_config@0.4.2",
 }

@@ -1,5 +1,6 @@
 ///|
 async fn run_cli(cli : Cli) -> Int {
+  let startup_cwd = @path.Path(".").resolve().to_string()
   let files = @files.discover(cli.paths)
   let color = @report.use_color(cli.color)
   let mut total = 0
@@ -11,6 +12,9 @@ async fn run_cli(cli : Cli) -> Int {
       let source = @fs.read_file(file).text()
       // Parse the whole document before executing anything in it.
       let document = @markdown.parse_document(file, source)
+      let module_context = @execute.validate_document_modules(
+        document, startup_cwd,
+      )
       let cwd = @path.Path(file).dirname().to_string()
       let edits = []
       let mut document_error = false
@@ -20,6 +24,10 @@ async fn run_cli(cli : Cli) -> Int {
           let actual = @execute.execute_case(
             case,
             cwd,
+            module_context~,
+            warning=message => {
+              @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
+            },
             target=cli.target,
             timeout_ms=cli.timeout_ms,
           )

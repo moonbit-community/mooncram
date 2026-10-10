@@ -7,11 +7,18 @@ import {
 }
 
 // Values
-pub async fn execute_case(@markdown.Case, String, target~ : String, timeout_ms~ : Int) -> @output.Captured
+pub async fn execute_case(@markdown.Case, String, module_context~ : ModuleContext?, warning~ : async (String) -> Unit, target~ : String, timeout_ms~ : Int) -> @output.Captured
+
+pub async fn validate_document_modules(@markdown.Document, String) -> ModuleContext?
 
 // Errors
 
 // Types and methods
+pub struct ModuleContext {
+  name : String
+  root : String
+  source_root : String
+}
 
 // Type aliases
 
