@@ -159,6 +159,47 @@ command are separators. Empty lines between nonempty expectations are output.
 Use `"" (escaped)` for an explicit empty output line, especially at the end of
 output. Thus empty output and a single newline remain distinct.
 
+## Paired stdout and stderr assertions
+
+Use `@STDOUT` and `@STDERR` to assert both streams in one execution:
+
+````markdown
+```mooncram
+$ ./cli.mbtx
+@STDOUT
+result
+@STDERR (empty)
+
+$ ./cli.mbtx --invalid
+@STDOUT (ignore)
+@STDERR
+error: invalid argument
+[2]
+```
+````
+
+Both case-sensitive markers must appear exactly once, in either order. A missing
+partner, duplicate marker, nonempty expectation before the first marker, or
+unknown marker annotation is a parse error with a file and line number.
+Marker forms are exactly `@STDOUT` / `@STDERR`, optionally followed by
+` (ignore)` or ` (empty)`. To match a marker-looking output line literally, use
+JSON escaping, for example `"@STDOUT" (escaped)`.
+
+A plain section uses the usual exact, glob, regex and escaped line matchers;
+`(no-eol)` applies independently to the last line of each stream. A plain section
+with no output lines requires empty output. `(ignore)` skips content assertions;
+`(empty)` requires exactly zero characters, so even one newline fails. Neither
+annotated form accepts output lines. Trailing bare empty lines in each section
+are separators; use `"" (escaped)` to assert an empty output line. The final
+`[N]` belongs to the whole case, with default exit code `0`.
+
+`@STDOUT` selects the final segment's routed output. `@STDERR` selects all
+unmerged stderr, concatenated in pipeline order without added separators.
+Redirection still applies: merged or discarded bytes are not recovered.
+There is no comparison of timing between streams. Ignored streams are still
+captured and checked for UTF-8, with the same deadlines and process cleanup.
+Cases without stream markers keep the existing single-output behavior.
+
 ## File tool imports
 
 Declare fixed-version Mooncakes executable packages once per Markdown file:
@@ -253,9 +294,10 @@ inherit mooncram's environment with the case's document exports applied.
 The first segment receives immediate EOF on stdin; later segments
 receive the preceding segment's routed output as raw bytes.
 
-Only the final routed output is compared with the expectation. Unredirected
-stderr is drained concurrently and concatenated in segment order as
-`diagnostic stderr` when an assertion fails. Merged stderr uses the same OS pipe
+Unmarked cases compare the final routed output. Paired cases also compare
+unmerged stderr with `@STDERR`. Unredirected stderr is drained concurrently and
+concatenated in segment order without added separators; it is available as
+`diagnostic stderr` when an assertion fails, unless already shown in a stderr diff. Merged stderr uses the same OS pipe
 as routed stdout and is included in matching, without a second diagnostic copy.
 Captured streams must be valid UTF-8 and have no configured size limit.
 Intermediate pipe data is neither decoded nor normalized. Discarded stdout is
@@ -277,6 +319,12 @@ not sandboxed or isolated in a temporary workspace.
 patterns keep their spelling. Commands, fence markers, container prefixes,
 surrounding prose, and document line endings are preserved. Special output is
 escaped automatically, including missing final newlines and nonzero statuses.
+
+Paired updates keep marker order and unchanged sections, including `(ignore)`.
+A satisfied `(empty)` remains; a nonempty actual stream replaces it with a plain
+marker and concrete expectations. Patterns are retained independently per
+stream. Marker-looking actual lines are escaped automatically. Failure reports
+label each failing stream `@STDOUT` or `@STDERR` and show stderr once.
 
 `--dry-run` runs the same commands and displays document diffs without writing
 Markdown. Commands can still produce their normal filesystem side effects.
