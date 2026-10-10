@@ -2,6 +2,7 @@
 priv struct Command {
   program : String
   args : Array[String]
+  imported : @markdown.ToolImport?
   stderr_to_stdout : Bool
   stdout_to_null : Bool
 }
@@ -73,19 +74,26 @@ async fn capture_pipeline(
         errors.push(group.spawn(() => reader.read_all().text()))
         writer
       }
+      let process = @process.spawn(
+        group,
+        command.program,
+        command.args,
+        cwd~,
+        extra_env~,
+        inherit_env=true,
+        stdin=inputs[i],
+        stdout=stdout_writer,
+        stderr=stderr_writer,
+        cancel_handler=@process.hard_cancel(),
+      )
+      // Monitor every segment concurrently. A failure here cancels the group,
+      // whose process tasks hard-cancel and reap all remaining children.
       processes.push(
-        @process.spawn(
-          group,
-          command.program,
-          command.args,
-          cwd~,
-          extra_env~,
-          inherit_env=true,
-          stdin=inputs[i],
-          stdout=stdout_writer,
-          stderr=stderr_writer,
-          cancel_handler=@process.hard_cancel(),
-        ),
+        group.spawn(() => {
+          let status = process.wait()
+          check_import_status(command.imported, i + 1, status)
+          status
+        }),
       )
     }
     let mut exit_code = 0
@@ -102,6 +110,19 @@ async fn capture_pipeline(
       exit_code,
     }
   })
+}
+
+///|
+fn check_import_status(
+  imported : @markdown.ToolImport?,
+  segment : Int,
+  status : Int,
+) -> Unit raise {
+  if imported is Some(binding) && (status == 255 || status == -1) {
+    raise @diagnostic.Failure(
+      "import '\{binding.name}' (\{binding.coordinate}), pipeline segment \{segment}: reserved execution status \{status}",
+    )
+  }
 }
 
 ///|

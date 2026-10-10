@@ -25,6 +25,7 @@ async fn run_cli(cli : Cli) -> Int {
             case,
             cwd,
             module_context~,
+            imports=document.imports,
             warning=message => {
               @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
             },

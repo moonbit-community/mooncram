@@ -4,6 +4,7 @@ package "moonbit-community/mooncram/internal/markdown"
 import {
   "moonbit-community/mooncram/internal/markdown/command",
   "moonbit-community/mooncram/internal/output",
+  "moonbitlang/core/debug",
 }
 
 // Values
@@ -31,7 +32,17 @@ pub struct Document {
   source : String
   cases : Array[Case]
   module_declarations : Array[(String, Int)]
+  imports : Map[String, ToolImport]
 }
+
+pub struct ToolImport {
+  name : String
+  coordinate : String
+  line : Int
+} derive(Eq, @debug.Debug)
+pub fn ToolImport::equal(Self, Self) -> Bool
+pub fn ToolImport::not_equal(Self, Self) -> Bool
+pub fn ToolImport::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 
