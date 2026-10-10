@@ -74,22 +74,46 @@ test "pipeline arguments and original command text are preserved" {
 }
 
 ///|
-test "only bare mooncram info strings are recognized" {
-  let source = "```mooncram\n$ ./bare.mbtx\n```\n\n```mooncram   \n$ ./spaces.mbtx\n```\n\n```mooncram {\"target\":\"native\"}\n$ ./json.mbtx\n```\n\n```mooncram {\n$ ./invalid-json.mbtx\n```\n\n```mooncram trailing text\n$ ./text.mbtx\n```\n"
-  let doc = parse_document("strict.md", source)
-  assert_eq(doc.cases.length(), 2)
-  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./bare.mbtx"]]))
-  assert_eq(doc.cases[1].pipeline, plain_pipeline([["./spaces.mbtx"]]))
+test "module declarations are scoped to each fence and preserve opening lines" {
+  let doc = parse_document(
+    "modules.md", "```mooncram user/foo\n$ foo\n```\n\n> - ```mooncram\n>   $ ./a.mbtx\n>   ```\n\n- ```mooncram user/bar\n  $ export A=x\n  ```\n\n```mooncram user/baz\n$ cmd/boo\n```\n",
+  )
+  assert_eq(doc.cases.length(), 3)
+  assert_eq(doc.cases[0].module_name, Some("user/foo"))
+  assert_eq(doc.cases[1].module_name, None)
+  assert_eq(doc.cases[2].module_name, Some("user/baz"))
+  assert_eq(doc.module_declarations, [
+    ("user/foo", 1),
+    ("user/bar", 9),
+    ("user/baz", 13),
+  ])
+  assert_eq(doc.cases[1].line, 6)
+  assert_eq(
+    parse_document("spaces.md", "```mooncram   \n$ ./a.mbtx\n```\n").cases[0].module_name,
+    None,
+  )
 }
 
 ///|
-test "ignored legacy fences do not produce parse errors" {
-  for suffix in [" {\"stream\":\"stderr\"}", " {", " anything"] {
-    let doc = parse_document(
-      "ignored.md",
-      "```mooncram" + suffix + "\nnot a command\n",
+test "invalid declarations fail at the opening fence including containers" {
+  for
+    suffix in [
+      "user/foo user/bar", "{\"target\":\"native\"}", "{", "./foo", "../foo", "user//foo",
+      "user/foo\tother",
+    ] {
+    assert_error_contains(
+      () => {
+        ignore(
+          parse_document(
+            "strict.md",
+            "text\n\n> - ```mooncram " +
+            suffix +
+            "\n>   $ export A=x\n>   ```\n",
+          ),
+        )
+      },
+      "strict.md:3: invalid mooncram module declaration",
     )
-    assert_eq(doc.cases.length(), 0)
   }
 }
 

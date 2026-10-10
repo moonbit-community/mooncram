@@ -2,6 +2,8 @@
 pub async fn execute_case(
   case : @markdown.Case,
   cwd : String,
+  module_context~ : ModuleContext?,
+  warning~ : async (String) -> Unit,
   target~ : String,
   timeout_ms~ : Int,
 ) -> @output.Captured {
@@ -14,6 +16,12 @@ pub async fn execute_case(
         let command = prepare_command(
           segment.argv,
           cwd,
+          module_context=if case.module_name is Some(_) {
+            module_context
+          } else {
+            None
+          },
+          warning~,
           target~,
           extra_env=case.extra_env,
         )
@@ -35,13 +43,19 @@ pub async fn execute_case(
 async fn prepare_command(
   argv : Array[String],
   cwd : String,
+  module_context~ : ModuleContext?,
+  warning~ : async (String) -> Unit,
   target~ : String,
   extra_env~ : Map[String, String],
 ) -> Command {
   let executable = @files.resolve_from(cwd, argv[0])
   let args = argv[1:].to_owned()
-  let kind = @fs.kind(executable)
-  if kind == Regular && executable.has_suffix(".mbtx") {
+  if executable.has_suffix(".mbtx") {
+    if @fs.kind(executable) != Regular {
+      raise @diagnostic.Failure(
+        "command must name a local .mbtx file: " + argv[0],
+      )
+    }
     // moonx combines build and program statuses. Check compilation first.
     ignore(
       build_artifact(
@@ -56,15 +70,18 @@ async fn prepare_command(
       stderr_to_stdout: false,
       stdout_to_null: false,
     }
-  } else if kind == Directory {
-    if !@fs.exists(@files.resolve_from(executable, "moon.pkg")) &&
-      !@fs.exists(@files.resolve_from(executable, "moon.pkg.json")) {
-      raise @diagnostic.Failure(
-        "directory is not a local MoonBit package: \{executable}",
-      )
-    }
+  } else if module_context is Some(context) {
+    let package_path = resolve_package(context, argv[0], warning~)
     let artifact = build_artifact(
-      ["-C", executable, "run", "--build-only", "--target", target, executable],
+      [
+        "-C",
+        context.root,
+        "run",
+        "--build-only",
+        "--target",
+        target,
+        package_path,
+      ],
       cwd,
       extra_env~,
     )
@@ -85,7 +102,7 @@ async fn prepare_command(
     }
   } else {
     raise @diagnostic.Failure(
-      "command must name a local .mbtx file or executable MoonBit package: \{argv[0]}",
+      "command requires a .mbtx file or a module-declared executable package: \{argv[0]}",
     )
   }
 }

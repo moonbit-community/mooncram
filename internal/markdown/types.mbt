@@ -1,5 +1,6 @@
 ///|
 pub struct Case {
+  module_name : String?
   command : String
   pipeline : Array[@command.PipelineSegment]
   extra_env : Map[String, String]
@@ -18,6 +19,7 @@ pub struct Document {
   path : String
   source : String
   cases : Array[Case]
+  module_declarations : Array[(String, Int)]
 }
 
 ///|

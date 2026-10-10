@@ -82,6 +82,7 @@ fn parse_document_with_env(
   collect_blocks(markdown.block, blocks)
   let lines = source_lines(source)
   let cases = []
+  let module_declarations = []
   let extra_env : Map[String, String] = Map([])
   for block in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
@@ -93,10 +94,21 @@ fn parse_document_with_env(
       is Some(("mooncram", settings)) else {
       continue
     }
-    if !settings.trim().is_empty() {
-      continue
-    }
     let @cmark_base.LinePos(open_line, _) = block.meta.loc.first_line
+    let declaration = settings.trim().to_owned()
+    let module_name = if declaration.is_empty() {
+      None
+    } else {
+      if !valid_module_name(declaration) {
+        raise @diagnostic.located(
+          path,
+          open_line,
+          "invalid mooncram module declaration: " + declaration,
+        )
+      }
+      module_declarations.push((declaration, open_line))
+      Some(declaration)
+    }
     if layout.closing_fence is None {
       raise @diagnostic.located(path, open_line, "unclosed mooncram fence")
     }
@@ -168,6 +180,7 @@ fn parse_document_with_env(
         lines[last_line - 1].end
       }
       cases.push({
+        module_name,
         command: node.v,
         pipeline,
         extra_env: extra_env.copy(),
@@ -185,5 +198,24 @@ fn parse_document_with_env(
       raise @diagnostic.located(path, open_line, "empty mooncram block")
     }
   }
-  { path, source, cases, }
+  { path, source, cases, module_declarations, }
+}
+
+///|
+fn valid_module_name(name : String) -> Bool {
+  name
+  .split("/")
+  .all(part => {
+    !part.is_empty() &&
+    part != "." &&
+    part != ".." &&
+    part
+    .iter()
+    .all(c => {
+      match c {
+        'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => true
+        _ => false
+      }
+    })
+  })
 }
