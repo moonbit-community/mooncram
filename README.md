@@ -49,25 +49,41 @@ Exit status:
 
 ## Test blocks
 
-Only backtick fences whose info string is `mooncram` followed by optional
-whitespace are tests. Any non-whitespace trailing text—including former JSON
-configuration syntax—causes the whole fence to be silently ignored. Other
-languages, tilde fences, and fences inside larger example fences are also
+Only backtick fences with the case-sensitive language `mooncram` are tests.
+The language can be followed by whitespace and one module name, such as
+`mooncram user/foo`. A declaration applies only to its own fence. Multiple words,
+JSON settings, and invalid module names are parsing errors at the opening line.
+Other languages, tilde fences, and fences inside larger example fences are
 ignored. Tests inside block quotes and lists are supported. Empty or unclosed
-recognized test fences are errors.
+test fences are errors.
 
 Each `$ ` line starts a command. Except for `export`, each command starts a case.
-Each pipeline segment must name an existing local
-`.mbtx` file or a directory containing an executable MoonBit package
-(`is-main: true`).
-Local packages are built with `moon run --build-only` and their artifact is run
-with `moonrun` for Wasm or directly for native. Build diagnostics are kept out of
-program output. Scripts are first checked with a build-only invocation, then
-launched with `moonx`, so a compiler failure cannot become an expected program
-exit status. `.mbtx` uses Wasm regardless of `--target`.
+Plain `mooncram` fences support local `.mbtx` scripts. Declared fences also support
+executable packages in the module whose `moon.mod` is in mooncram's startup cwd.
+Every declaration must exactly match that module's `name`; all declarations,
+including export-only fences, are checked before any case in the document runs.
+There is no parent-directory search or registry module loading.
 
-All relative command paths and the program's working directory are relative to
-the Markdown file's directory (the canonical file for symlinks).
+Packages are resolved below the module's `source` directory (the module root if
+`source` is omitted or empty). For `user/foo`, `foo` selects the executable root
+package; `cmd/boo` selects `user/foo/cmd/boo`. If the root is not executable,
+`foo` can select the executable subpackage `user/foo/foo`. Executability means
+`pkgtype(kind: "executable")` or legacy `is-main: true`. If both candidates are
+executable, the root wins and each ambiguous pipeline segment emits one
+`WARNING` to mooncram's stderr, with the document position, both full package
+names, and the selection. Warnings do not affect matching, updates, or error
+counts. A selected package's build/target failure is an error without fallback.
+Package names cannot be absolute paths, start with `./` or `../`, contain path
+traversal, or enter nested modules. Package configurations use `moon.pkg`, with
+`moon.pkg.json` supported for compatibility; invalid configurations are errors.
+
+Local packages are built with `moon -C <module-root> run --build-only` and their
+artifact runs with `moonrun` for Wasm or directly for native. Build diagnostics
+are kept out of program output. Scripts are checked with a build-only invocation,
+then launched with `moonx`. `.mbtx` always uses Wasm regardless of `--target`.
+Script paths are relative to the Markdown directory and may also be absolute.
+Every program runs in the Markdown file's directory (the canonical file for
+symlinks), even when the module is elsewhere.
 Arguments use single/double quotes and backslash escaping. Single quotes are
 literal; outside them a backslash quotes the next character. Quoted empty
 arguments are preserved. `${NAME}` expands in unquoted or double-quoted
@@ -113,15 +129,15 @@ blocks are valid; a run with no actual cases still reports an error. Exports
 reset for each document. The entire document is parsed before any case runs.
 
 ````markdown
-```mooncram
+```mooncram user/foo
 $ export NAME='Moon Bit'
 $ ./hello.mbtx "${NAME}"
 Hello, Moon Bit!
 
-$ ./cmd/main --version
+$ cmd/main --version
 my-cli * (glob)
 
-$ ./producer.mbtx|./cmd/filter|./consumer.mbtx
+$ ./producer.mbtx|cmd/filter|./consumer.mbtx
 filtered output
 ```
 ````
@@ -176,8 +192,8 @@ CR, empty lines, trailing spaces, and the final newline are preserved.
 
 ## Execution behavior
 
-Block-level configuration is not supported. `--target` selects the backend for
-all local package cases, and `--timeout-ms` supplies every case deadline;
+The fence suffix declares only the module; backend and timeout remain CLI
+options. `--target` selects the backend for all local package cases, and `--timeout-ms` supplies every case deadline;
 `.mbtx` scripts still use Wasm. Build processes and every pipeline segment
 inherit mooncram's environment with the case's document exports applied.
 The first segment receives immediate EOF on stdin; later segments
