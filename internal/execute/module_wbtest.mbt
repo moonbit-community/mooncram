@@ -115,6 +115,7 @@ async test "root and same-name subpackage selection matrix with source directory
           "{}"
         },
       )
+      assert_eq(has_local_candidate(context, "foo"), root_main || sub_main)
       if root_main || sub_main {
         assert_eq(
           resolve_package(context, "foo", warning~),
@@ -137,6 +138,10 @@ async test "root and same-name subpackage selection matrix with source directory
     warnings[0].contains("user/foo and user/foo/foo; selected user/foo"),
   )
   @fs.write_file(@files.resolve_from(sub, "moon.pkg"), "pkgtype(kind: false)")
+  assert_async_error_contains(
+    () => ignore(has_local_candidate(context, "foo")),
+    "invalid configuration",
+  )
   assert_async_error_contains(
     () => ignore(resolve_package(context, "foo", warning~)),
     "invalid configuration",

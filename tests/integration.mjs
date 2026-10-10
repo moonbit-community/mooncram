@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -26,6 +26,8 @@ const CANCELLATION_LIMIT_MS = 4000;
 const ANSI_ESCAPE = "\x1b";
 const CRLF = "\r\n";
 const DIRECTORY_LINK_TYPE = process.platform === "win32" ? "junction" : "dir";
+const EXECUTABLE_SUFFIX = process.platform === "win32" ? ".exe" : "";
+const TOOL_DIRECTORIES = (process.env.PATH ?? "").split(delimiter);
 const CLEANUP_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
 // Keep these dependency versions in sync with moon.mod.
 const ASYNC_VERSION = "0.22.4";
@@ -141,6 +143,28 @@ function buildExecutable(target) {
     "moon", "run", "--build-only", "--target", target, ".",
   ]).stdout).artifacts_path[0];
   return target === "wasm" ? ["moonrun", artifact, "--"] : [artifact];
+}
+
+function findTool(name) {
+  const source = TOOL_DIRECTORIES.map(path => resolve(path, name + EXECUTABLE_SUFFIX))
+    .find(path => fs.existsSync(path));
+  assert(source, `missing ${name}`);
+  return source;
+}
+
+function copyExecutable(source, directory, name) {
+  const destination = join(directory, name + EXECUTABLE_SUFFIX);
+  fs.copyFileSync(source, destination);
+  fs.chmodSync(destination, 0o755);
+  return destination;
+}
+
+function copyTool(name, directory) {
+  return copyExecutable(findTool(name), directory, name);
+}
+
+function isolatedExecutable(executable, target, runner) {
+  return target === "wasm" ? [runner, ...executable.slice(1)] : executable;
 }
 
 function createEnvironment() {
@@ -386,6 +410,188 @@ function testPassingCases({ cli, docs, target }) {
   assert(!result.stdout.includes(ANSI_ESCAPE));
 }
 
+async function testImports({ executable, docs, project, directory, target }) {
+  // Substitute a native fixture for moonx, so no remote registry/cache or
+  // network is touched. Real local packages still build and run normally.
+  const tools = join(directory, "import-tools");
+  fs.mkdirSync(tools);
+  const runner = copyTool("moonrun", tools);
+  const cli = createCli(isolatedExecutable(executable, target, runner), project);
+  const stub = join(project, "moonx-double");
+  const helper = fs.readFileSync(join(ROOT, "tests/fixtures/moonx.mbt"), "utf8");
+  writePackage(stub, formatImports([...IMPORTS, "moonbitlang/async/process", "moonbitlang/core/string"]) +
+    MAIN_PACKAGE_CONFIG, helper + PROGRAM.replace("let args = @env.args()", "let args = imported_args()"));
+  const artifact = JSON.parse(run([
+    "moon", "-C", project, "run", "--build-only", "--target", "native", stub,
+  ]).stdout).artifacts_path[0];
+  const double = copyExecutable(artifact, tools, "moonx");
+  const env = { ...createEnvironment(), PATH: tools + delimiter + process.env.PATH,
+    MOONCRAM_TEST_NODE: process.execPath };
+  const invoke = (args, options = {}) => cli(args, { env, ...options });
+  const imports = "```mooncram-import\nremote : fixture/tool@1.2.3\n" +
+    "Remote : fixture/tool/cmd@2.0.0-rc.1+build.007\n```\n";
+  const write = (name, source) => writeDocument(docs, `imports-${name}.md`, source);
+  const passing = write("passing", [
+    block("$ remote hello\nHello, Moon Bit!\n", ""), // import declared later
+    imports,
+    block('$ export MODE=imported\n$ remote args "${MODE}" \'a|b\' \'\' --target native\n' +
+      '["imported","a|b","","--target","native"] (equal)\n' +
+      '$ remote context\nimported\nyes\ncwd contents\n', ""),
+    block("$ Remote invocation --version\n" +
+      '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"] (equal)\n'),
+    block(`$ remote hello|${LOCAL_PACKAGE} echo|Remote echo\nHello, Moon Bit!\n`),
+    block(`$ ${LOCAL_PACKAGE} hello|remote echo\nHello, Moon Bit!\n`),
+    block(`$ remote streams >/dev/null 2>&1|${LOCAL_PACKAGE} echo\ntwo\n`),
+    block("$ remote streams 2>&1\none\ntwo\nthree\n[2]\n", ""),
+    block("$ remote status 3\n[3]\n$ remote status 3|Remote hello\nHello, Moon Bit!\n", ""),
+    block(`$ ${LOCAL_PACKAGE} streams|remote echo\none\nthree\n`),
+  ].join("\n"));
+  // Both tool aliases remain wasm even when local packages use native.
+  for (const backend of TARGETS) invoke(["test", passing, "--target", backend]);
+
+  const isolated = write("isolated", block("$ remote hello\n", ""));
+  const isolation = invoke(["test", passing, isolated, "--target", target], { expected: EXIT_CODE.ERROR });
+  assert(isolation.stderr.includes("command requires a .mbtx file"));
+  const caseSensitive = write("case", imports + block("$ REMOTE hello\n", ""));
+  assert(invoke(["test", caseSensitive], { expected: EXIT_CODE.ERROR }).stderr.includes("command requires"));
+
+  // Executable local collisions error before any pipeline program starts.
+  const collision = "```mooncram-import\ncmd : fixture/tool@1.2.3\n```\n";
+  const sideEffect = join(docs, "side-effect.txt");
+  fs.rmSync(sideEffect, { force: true });
+  const ambiguous = write("ambiguous", collision + block("$ cmd setup|cmd hello\n"));
+  assert(invoke(["test", ambiguous], { expected: EXIT_CODE.ERROR }).stderr.includes("ambiguous import alias 'cmd'"));
+  assert(!fs.existsSync(sideEffect));
+  // Ordinary fences do not probe the module, and non-executable candidates
+  // do not collide. Malformed candidate configs must propagate their error.
+  invoke(["test", write("ordinary", collision + block("$ cmd hello\nHello, Moon Bit!\n", ""))]);
+  const candidate = join(project, "remote");
+  writePackage(candidate, 'pkgtype(kind: "library")\n', LIBRARY_PROGRAM);
+  invoke(["test", passing, "--target", target]);
+  fs.writeFileSync(join(candidate, "moon.pkg"), 'pkgtype(kind: true)\n');
+  const configError = write("config", imports + block("$ remote hello\n"));
+  assert(invoke(["update", configError], { expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
+  fs.rmSync(candidate, CLEANUP_OPTIONS);
+
+  // Root short-name candidates also collide, including a callable same-name
+  // subpackage when the root is a library.
+  const resolutionRoot = join(directory, "import-resolution");
+  fs.mkdirSync(resolutionRoot);
+  fs.writeFileSync(join(resolutionRoot, "moon.mod"), 'name = "fixture/remote"\nsource = "src"\n');
+  for (const rootMain of [true, false]) {
+    const source = join(resolutionRoot, "src");
+    writePackage(source, rootMain ? MAIN_PACKAGE_CONFIG : "", rootMain ? "fn main {}\n" : LIBRARY_PROGRAM);
+    writePackage(join(source, "remote"), MAIN_PACKAGE_CONFIG, "fn main {}\n");
+    const doc = write("root-collision", imports + block("$ remote hello\n", "fixture/remote"));
+    assert(invoke(["test", doc], { cwd: resolutionRoot, expected: EXIT_CODE.ERROR }).stderr.includes("ambiguous import alias"));
+  }
+
+  // Successful updates preserve declarations, source command and CRLF quote/list layout.
+  const command = '$ remote args "${MODE}"';
+  const before = (quotedListItem(imports) + "\n\n" + quotedListItem(block(
+    "$ export MODE='Moon Bit'\n" + command + "\nwrong\n", "")) + "\nTail").replaceAll("\n", CRLF);
+  const update = write("update", before);
+  // Use JSON to express the expected escaped output without hand-escaped quotes.
+  const expectedUpdate = before.replace("wrong", JSON.stringify('["Moon Bit"]') + " (escaped)");
+  const dryRun = invoke(["update", update, "--dry-run"]);
+  assert(dryRun.stdout.includes("would update 1"));
+  assert.equal(fs.readFileSync(update, "utf8"), before);
+  invoke(["update", update]);
+  assert.equal(fs.readFileSync(update, "utf8"), expectedUpdate);
+  invoke(["test", update]);
+
+  const cancelled = [];
+  const failures = [
+    ["remote status 255", 1],
+    ["remote status 255|Remote hello", 1], // final success cannot mask failure
+    ["remote hello|Remote status 255|remote hello", 2],
+    ["remote hello|Remote status 255", 2],
+  ];
+  for (const [slowFirst, importedSlow] of [[true, true], [false, true], [true, false], [false, false]]) {
+    const filename = `import-cancel-${slowFirst}-${importedSlow}.txt`;
+    cancelled.push(filename);
+    const slow = `${importedSlow ? "Remote" : LOCAL_PACKAGE} slow ${filename} >/dev/null`;
+    const fail = `remote reserved-after 255 ${filename}`;
+    failures.push([slowFirst ? `${slow}|${fail}` : `${fail}|${slow}`, slowFirst ? 2 : 1, 255, filename]);
+  }
+  if (process.platform !== "win32") {
+    failures.push(["remote signal", 1, -1],
+      ["remote signal|Remote hello", 1, -1],
+      ["remote hello|Remote signal|remote hello", 2, -1],
+      ["remote hello|Remote signal", 2, -1]);
+    for (const slowFirst of [true, false]) {
+      const filename = `import-signal-${slowFirst}.txt`;
+      cancelled.push(filename);
+      const slow = `Remote slow ${filename} >/dev/null`;
+      const fail = `remote signal-after ${filename}`;
+      failures.push([slowFirst ? `${slow}|${fail}` : `${fail}|${slow}`, slowFirst ? 2 : 1, -1, filename]);
+    }
+  }
+  const good = write("z-other", imports + block("$ remote hello\nwrong\n", ""));
+  for (const [pipeline, segment, status = 255, slowFilename] of failures) {
+    for (const dry of [false, true]) {
+      if (slowFilename) fs.rmSync(join(docs, slowFilename + ".started"), { force: true });
+      const original = imports + block(`$ remote hello\nwrong\n\n$ ${pipeline}\n[${status}]\n`, "mooncram/integration");
+      const bad = write("failure", original);
+      const start = performance.now();
+      const result = invoke(["update", bad, good, "--target", target, "--timeout-ms", "8000", ...(dry ? ["--dry-run"] : [])],
+        { expected: EXIT_CODE.ERROR });
+      assert(performance.now() - start < CANCELLATION_LIMIT_MS, result.stderr);
+      assert(result.stderr.includes(`pipeline segment ${segment}: reserved execution status ${status}`), result.stderr);
+      const failedAlias = pipeline.split("|")[segment - 1].split(" ")[0];
+      const coordinate = failedAlias === "Remote" ? "fixture/tool/cmd@2.0.0-rc.1+build.007" : "fixture/tool@1.2.3";
+      assert(result.stderr.includes(`import '${failedAlias}' (${coordinate})`), result.stderr);
+      assert(result.stderr.includes("Not updating"));
+      assert(!result.stdout.includes(`${bad} (updated)`));
+      assert.equal(fs.readFileSync(bad, "utf8"), original);
+      assert.equal(fs.readFileSync(good, "utf8"), imports + block("$ remote hello\nHello, Moon Bit!\n", ""));
+      if (slowFilename) assert(fs.existsSync(join(docs, slowFilename + ".started")), "cancellation must exercise a running segment");
+    }
+  }
+  for (const filename of cancelled) {
+    assert(fs.existsSync(join(docs, filename + ".started")), "cancellation must exercise a running segment");
+  }
+
+  // Local programs returning 255 still use the usual last-segment status.
+  const localStatus = join(project, "local-status");
+  writePackage(localStatus, formatImports(["moonbitlang/x/sys"]) + MAIN_PACKAGE_CONFIG, "fn main { @sys.exit(255) }\n");
+  invoke(["test", write("local-status", imports + block("$ local-status\n[255]\n$ local-status|remote hello\nHello, Moon Bit!\n")), "--target", target]);
+
+  for (const [operation, diagnostic] of [["slow import-timeout.txt", "timed out"], ["invalid-utf8", ""], ["invalid-stderr", ""]]) {
+    const original = imports + block(`$ remote hello\nwrong\n$ remote ${operation}\n`, "");
+    const bad = write("error", original);
+    for (const dry of [false, true]) {
+      const result = invoke(["update", bad, "--timeout-ms", "350", ...(dry ? ["--dry-run"] : [])], { expected: EXIT_CODE.ERROR });
+      assert(result.stderr.includes(diagnostic));
+      assert(result.stderr.includes("Not updating"));
+      assert.equal(fs.readFileSync(bad, "utf8"), original);
+    }
+  }
+  // Parsing imports precedes all execution, including an earlier side effect.
+  fs.rmSync(sideEffect, { force: true });
+  const parseError = block(`$ ${LOCAL_PACKAGE} setup\nwrong\n`) + imports + imports;
+  const invalid = write("parse-error", parseError);
+  invoke(["update", invalid], { expected: EXIT_CODE.ERROR });
+  assert.equal(fs.readFileSync(invalid, "utf8"), parseError);
+  assert(!fs.existsSync(sideEffect));
+  // No local segment starts when a later local build preflight fails.
+  const preflight = write("preflight", imports + block("$ remote setup|./bad.mbtx\n"));
+  invoke(["test", preflight], { expected: EXIT_CODE.ERROR });
+  assert(!fs.existsSync(sideEffect));
+  // A missing moonx executable is a startup error with document protection.
+  fs.renameSync(double, double + ".disabled");
+  const noMoonxEnv = { ...env, PATH: tools }; // keep lookup wholly isolated
+  const startup = imports + block("$ remote hello\nwrong\n", "");
+  const missing = write("startup", startup);
+  assert(invoke(["update", missing], { env: noMoonxEnv, expected: EXIT_CODE.ERROR }).stderr.includes("@process.spawn()"));
+  assert.equal(fs.readFileSync(missing, "utf8"), startup);
+  await new Promise(resolve => setTimeout(resolve, 5500));
+  for (const filename of [...cancelled, "import-timeout.txt"]) {
+    assert(!fs.existsSync(join(docs, filename)), `uncancelled process wrote ${filename}`);
+  }
+  console.log(`${target}: offline file imports, ambiguity, wasm selection, pipelines, reserved statuses, cancellation and updates passed`);
+}
+
 function testExports({ cli, docs, target }) {
   const value = 'Moon Bit|\'"=value';
   const args = '${MODE} ${VALUE} ${EMPTY} pre${VALUE}post ${NESTED} \\${UNDEFINED} $MODE';
@@ -481,9 +687,7 @@ function testExportCasing({ cli, docs, target }) {
 
 function testBuildEnvironment({ cli, docs, directory, target }) {
   if (process.platform === "win32") return;
-  const realMoon = process.env.PATH.split(delimiter).map(path => join(path, "moon"))
-    .find(path => fs.existsSync(path));
-  assert(realMoon);
+  const realMoon = findTool("moon");
   const tools = join(directory, "build-env-tools");
   fs.mkdirSync(tools);
   const log = join(directory, "build-env.jsonl");
@@ -687,21 +891,20 @@ function testPipelinePreflight({ cli, docs, target }) {
   }
 }
 
-function testPipelineStartupFailure({ cli, docs, directory, project, packageDir, target }) {
+function testPipelineStartupFailure({ executable, docs, directory, project, packageDir, target }) {
   // Remove moonx from PATH while keeping the build tools. The first package
   // starts successfully, then starting the script must fail and cancel it.
-  const toolDirectories = process.env.PATH.split(delimiter);
-  const executableSuffix = process.platform === "win32" ? ".exe" : "";
   const tools = join(directory, "tools");
   fs.mkdirSync(tools);
   for (const name of ["moon", "moonc", "moonrun"]) {
-    const filename = name + executableSuffix;
-    const source = toolDirectories.map(path => join(path, filename)).find(path => fs.existsSync(path));
-    assert(source, `missing ${name}`);
-    fs.symlinkSync(source, join(tools, filename));
+    copyTool(name, tools);
   }
+  const runner = join(tools, "moonrun" + EXECUTABLE_SUFFIX);
+  const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const env = createEnvironment();
-  env.PATH = [tools, ...toolDirectories.filter(path => !fs.existsSync(join(path, "moonx" + executableSuffix)))].join(delimiter);
+  env.PATH = [tools, ...TOOL_DIRECTORIES.filter(path => !fs.existsSync(join(path, "moonx" + EXECUTABLE_SUFFIX)))].join(delimiter);
+  // Copied build tools must still load resources from the original toolchain.
+  env.MOON_TOOLCHAIN_ROOT ??= dirname(dirname(fs.realpathSync(findTool("moonc"))));
   // Changing the tool paths can invalidate native build commands. Warm both
   // artifacts with this environment before measuring startup-failure cleanup.
   run([
@@ -820,7 +1023,7 @@ async function exercise(target) {
   const directory = createTemporaryDirectory(target);
   try {
     const fixtures = createFixtures(directory);
-    const context = { ...fixtures, target, cli: createCli(executable, fixtures.project) };
+    const context = { ...fixtures, target, executable, cli: createCli(executable, fixtures.project) };
 
     testCliArguments(context);
     testModuleResolution(context);
@@ -835,6 +1038,7 @@ async function exercise(target) {
     console.log(`${target}: diagnostics, dry-run, local updates, escaping, pattern preservation passed`);
 
     testUpdateErrors(context);
+    await testImports(context);
     testPipelines(context);
     testRedirections(context);
     testPipelinePreflight(context);
