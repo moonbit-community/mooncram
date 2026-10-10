@@ -145,8 +145,11 @@ filtered output
 
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
-otherwise it is `0`. Pipelines match the final segment's routed output and exit
-code; ordinary upstream nonzero statuses do not override the final status.
+otherwise it is `0`. Pipelines match the final segment's routed output and use
+pipefail by default: after every segment finishes, the exit code is `0` if all
+succeeded, or the rightmost nonzero status in pipeline order otherwise,
+regardless of completion order. Ordinary nonzero statuses can be asserted with
+`[N]` and do not stop later cases.
 Imported commands returning `255` or `-1` are execution errors in any segment. Negative statuses
 denote termination by a signal as reported by the process library. No expected
 output lines means the routed output must be empty.
@@ -197,8 +200,8 @@ Only imported commands reserve statuses `255` and `-1` as execution errors,
 including when the imported program itself returns them. Every segment is
 monitored concurrently; either status cancels and reaps the remaining processes
 and prevents all expectation updates in the document, including dry-run diffs.
-Other nonzero statuses remain assertable; pipelines use the last segment's
-status. Other documents continue processing after errors.
+Other nonzero statuses remain assertable and follow the pipefail rule above.
+Other documents continue processing after errors.
 
 moonx handles remote downloading and caching. Remote fetching begins after
 moonx starts, so other segments may run and produce effects before a fetch

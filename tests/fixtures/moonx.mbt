@@ -12,14 +12,9 @@ async fn imported_args() -> Array[String] {
       println(raw[1:].to_owned().to_json().stringify())
       @sys.exit(0)
     }
-    "status" | "reserved-after" => {
-      if args[1] == "reserved-after" {
-        while !@fs.exists(args[3] + ".started") {
-          @async.sleep(10)
-        }
-      } else {
-        // Let the runner start all pipeline segments before exiting.
-        @async.sleep(100)
+    "reserved-after" => {
+      while !@fs.exists(args[3] + ".started") {
+        @async.sleep(10)
       }
       @sys.exit(@string.parse_int(args[2]))
     }
