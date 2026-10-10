@@ -2,7 +2,7 @@
 
 [中文版本](CLI_SPEC_CN.md)
 
-This document describes the CLI behavior of the current `0.0.2` module.
+This document describes the CLI behavior of the current `0.0.3` module.
 It covers the command line, Markdown input format, process execution, matching,
 reporting, and updates. It is a description of the current implementation, not
 a proposal for additional features. The English and Chinese versions have the
