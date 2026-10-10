@@ -39,6 +39,7 @@ const IMPORTS = [
   "moonbitlang/async/fs",
   "moonbitlang/async/stdio",
   "moonbitlang/core/env",
+  "moonbitlang/core/string",
   "moonbitlang/x/sys",
 ];
 const PACKAGE_IMPORTS = formatImports(IMPORTS);
@@ -419,7 +420,7 @@ async function testImports({ executable, docs, project, directory, target }) {
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const stub = join(project, "moonx-double");
   const helper = fs.readFileSync(join(ROOT, "tests/fixtures/moonx.mbt"), "utf8");
-  writePackage(stub, formatImports([...IMPORTS, "moonbitlang/async/process", "moonbitlang/core/string"]) +
+  writePackage(stub, formatImports([...IMPORTS, "moonbitlang/async/process"]) +
     MAIN_PACKAGE_CONFIG, helper + PROGRAM.replace("let args = @env.args()", "let args = imported_args()"));
   const artifact = JSON.parse(run([
     "moon", "-C", project, "run", "--build-only", "--target", "native", stub,
@@ -441,10 +442,12 @@ async function testImports({ executable, docs, project, directory, target }) {
       '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"]\n'),
     block(`$ remote hello|${LOCAL_PACKAGE} echo|Remote echo\nHello, Moon Bit!\n`),
     block(`$ ${LOCAL_PACKAGE} hello|remote echo\nHello, Moon Bit!\n`),
-    block(`$ remote streams >/dev/null 2>&1|${LOCAL_PACKAGE} echo\ntwo\n`),
+    block(`$ remote streams >/dev/null 2>&1|${LOCAL_PACKAGE} echo\ntwo\n[2]\n`),
     block("$ remote streams 2>&1\none\ntwo\nthree\n[2]\n", ""),
-    block("$ remote status 3\n[3]\n$ remote status 3|Remote hello\nHello, Moon Bit!\n", ""),
-    block(`$ ${LOCAL_PACKAGE} streams|remote echo\none\nthree\n`),
+    block("$ remote status 3\n[3]\n$ remote status 3|Remote hello\nHello, Moon Bit!\n[3]\n", ""),
+    block(`$ ${LOCAL_PACKAGE} streams|remote echo\none\nthree\n[2]\n`),
+    block("$ remote status 3 600|Remote status 2 0|remote status 0\n[2]\n", ""),
+    block("$ remote status 2 0|Remote status 3 600|remote status 0\n[3]\n", ""),
   ].join("\n"));
   // Both tool aliases remain wasm even when local packages use native.
   for (const backend of TARGETS) invoke(["test", passing, "--target", backend]);
@@ -552,10 +555,10 @@ async function testImports({ executable, docs, project, directory, target }) {
     assert(fs.existsSync(join(docs, filename + ".started")), "cancellation must exercise a running segment");
   }
 
-  // Local programs returning 255 still use the usual last-segment status.
+  // Local programs returning 255 remain assertable, including upstream.
   const localStatus = join(project, "local-status");
   writePackage(localStatus, formatImports(["moonbitlang/x/sys"]) + MAIN_PACKAGE_CONFIG, "fn main { @sys.exit(255) }\n");
-  invoke(["test", write("local-status", imports + block("$ local-status\n[255]\n$ local-status|remote hello\nHello, Moon Bit!\n")), "--target", target]);
+  invoke(["test", write("local-status", imports + block("$ local-status\n[255]\n$ local-status|remote hello\nHello, Moon Bit!\n[255]\n")), "--target", target]);
 
   for (const [operation, diagnostic] of [["slow import-timeout.txt", "timed out"], ["invalid-utf8", ""], ["invalid-stderr", ""]]) {
     const original = imports + block(`$ remote hello\nwrong\n$ remote ${operation}\n`, "");
@@ -800,33 +803,68 @@ function testPipelines({ cli, docs, target }) {
   const commands = [
     [`${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo|${SCRIPT_COMMAND} echo`, "Hello, Moon Bit!\n"],
     [`${LOCAL_PACKAGE} context | ${SCRIPT_COMMAND} echo`, "parent\nyes\ncwd contents\n"],
-    [`${LOCAL_PACKAGE} streams | ${LOCAL_PACKAGE} echo`, "one\nthree\n"],
+    [`${LOCAL_PACKAGE} streams | ${LOCAL_PACKAGE} echo`, "one\nthree\n[2]\n"],
     [`${LOCAL_PACKAGE} hello | ${LOCAL_PACKAGE} streams`, "one\nthree\n[2]\n"],
     [`${SCRIPT_COMMAND} raw | ${LOCAL_PACKAGE} echo | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
     [`${LOCAL_PACKAGE} binary | ${SCRIPT_COMMAND} noisy-echo | ${LOCAL_PACKAGE} check-binary`, "all bytes preserved\n"],
-    // The final segment exits without reading its input. Upstream status is ignored.
-    [`${LOCAL_PACKAGE} binary | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
   ];
+  // Change completion order while keeping pipeline positions fixed. The chosen
+  // status is the rightmost failure, not the largest or the last to finish.
+  for (const statuses of [[0, 0, 0], [2, 0, 0], [0, 3, 0], [0, 0, 4],
+    [3, 2, 0], [2, 3, 0], [2, 3, 4]]) {
+    const expected = statuses.findLast(status => status !== 0) ?? 0;
+    for (const delays of [[600, 300, 0], [0, 300, 600]]) {
+      const command = statuses.map((status, i) =>
+        `${i === 1 ? SCRIPT_COMMAND : LOCAL_PACKAGE} status ${status} ${delays[i]}`).join("|");
+      commands.push([command, expected === 0 ? "" : `[${expected}]\n`]);
+    }
+  }
   const passing = writeDocument(docs, "pipeline.md",
     commands.map(([command, output]) => block(`$ ${command}\n${output}`)).join("\n"));
   cli(["test", passing, "--target", target]);
+
+  // A missing status assertion fails the case, while later cases still run.
+  fs.rmSync(join(docs, "side-effect.txt"), { force: true });
+  const missingStatus = writeDocument(docs, "pipeline-missing-status.md", block(
+    `$ ${LOCAL_PACKAGE} streams|${LOCAL_PACKAGE} echo\none\nthree\n$ ${LOCAL_PACKAGE} setup\n`,
+  ));
+  const missing = cli(["test", missingStatus, "--target", target], { expected: EXIT_CODE.FAILURE });
+  assert(missing.stdout.includes("exit: expected 0, actual 2"));
+  assert(missing.stdout.includes("2 cases, 1 failed, 0 errors"));
+  assert.equal(fs.readFileSync(join(docs, "side-effect.txt"), "utf8"), "side effect preserved\n");
 
   const diagnostic = writeDocument(docs, "pipeline-diagnostic.md", block(
     `$ ${LOCAL_PACKAGE} streams | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last\nwrong\n`,
   ));
   const result = cli(["test", diagnostic, "--target", target], { expected: EXIT_CODE.FAILURE });
   assert(result.stdout.includes("diagnostic stderr\ntwo\nmiddle\nlast\n"));
-  assert(result.stdout.includes("expected 0, actual 0"));
+  assert(result.stdout.includes("expected 0, actual 2"));
 
   const command = `$ ${SCRIPT_COMMAND} streams|${LOCAL_PACKAGE} echo`;
   const original = block(`${command}\nwrong\n`);
   const update = writeDocument(docs, "pipeline-update.md", original);
   const dryRun = cli(["update", update, "--target", target, "--dry-run"]);
   assert(dryRun.stdout.includes(command));
+  assert(dryRun.stdout.includes("[2]"));
   assert.equal(fs.readFileSync(update, "utf8"), original);
   cli(["update", update, "--target", target]);
-  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\none\nthree\n`));
+  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\none\nthree\n[2]\n`));
   cli(["test", update, "--target", target]);
+
+  // The consumer closes early and a large upstream write fails. The reported
+  // status depends on the platform and runner, so only require nonzero.
+  for (const command of [
+    `${LOCAL_PACKAGE} binary | ${LOCAL_PACKAGE} hello`,
+    `${LOCAL_PACKAGE} binary 2>&1 | ${LOCAL_PACKAGE} hello`,
+    `${LOCAL_PACKAGE} binary >/dev/null 2>&1 | ${LOCAL_PACKAGE} hello`,
+  ]) {
+    const early = writeDocument(docs, "pipeline-early-close.md", block(`$ ${command}\nHello, Moon Bit!\n`));
+    const result = cli(["test", early, "--target", target], { expected: EXIT_CODE.FAILURE });
+    const status = result.stdout.match(/exit: expected 0, actual (-?\d+)/);
+    assert(status, result.stdout);
+    assert.notEqual(Number(status[1]), 0);
+    assert(result.stdout.includes("1 cases, 1 failed, 0 errors"));
+  }
 }
 
 function testRedirections({ cli, docs, target }) {
@@ -835,13 +873,13 @@ function testRedirections({ cli, docs, target }) {
     [`${SCRIPT_COMMAND} streams >/dev/null`, "[2]\n"],
     [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n"],
     [`${SCRIPT_COMMAND} streams >/dev/null 2>&1`, "two\n[2]\n"],
-    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} echo`, "one\ntwo\nthree\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} echo`, "one\ntwo\nthree\n[2]\n"],
     [`${LOCAL_PACKAGE} hello | ${SCRIPT_COMMAND} relay middle 2>&1|${LOCAL_PACKAGE} echo`, "middle\nHello, Moon Bit!\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams 2>&1`, "one\ntwo\nthree\n[2]\n"],
-    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n"],
+    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n[2]\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null`, "[2]\n"],
-    [`${LOCAL_PACKAGE} streams >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo`, "two\n"],
+    [`${LOCAL_PACKAGE} streams >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo`, "two\n[2]\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle 2>&1 >/dev/null | ${SCRIPT_COMMAND} echo`, "middle\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null 2>&1`, "two\n[2]\n"],
     [`${LOCAL_PACKAGE} invalid-utf8 >/dev/null`, ""],
@@ -852,8 +890,6 @@ function testRedirections({ cli, docs, target }) {
     [`${LOCAL_PACKAGE} large 2>&1 | ${SCRIPT_COMMAND} check-large-merged`, "large streams merged\n"],
     [`${SCRIPT_COMMAND} large >/dev/null 2>&1 | ${LOCAL_PACKAGE} check-large-stderr`, "large stderr preserved\n"],
     [`${LOCAL_PACKAGE} large 2>&1 >/dev/null | ${SCRIPT_COMMAND} check-large-stderr`, "large stderr preserved\n"],
-    [`${LOCAL_PACKAGE} binary 2>&1 | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
-    [`${LOCAL_PACKAGE} binary >/dev/null 2>&1 | ${LOCAL_PACKAGE} hello`, "Hello, Moon Bit!\n"],
     [`${LOCAL_PACKAGE} wait-downstream >/dev/null | ${LOCAL_PACKAGE} signal-eof`, "EOF\n"],
   ];
   for (const program of [LOCAL_PACKAGE, SCRIPT_COMMAND]) {
@@ -870,9 +906,9 @@ function testRedirections({ cli, docs, target }) {
   // Only unredirected stderr belongs to diagnostics, in segment order.
   for (const [command, output, diagnostic] of [
     [`${LOCAL_PACKAGE} streams 2>&1 | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last`,
-      "one\ntwo\nthree\n", "middle\nlast\n"],
+      "one\ntwo\nthree\n[2]\n", "middle\nlast\n"],
     [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last >/dev/null 2>&1`,
-      "last\n", "two\nmiddle\n"],
+      "last\n[2]\n", "two\nmiddle\n"],
     [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n", ""],
   ]) {
     const document = writeDocument(docs, "redirect-diagnostic.md", block(`$ ${command}\nwrong\n`));
@@ -889,7 +925,7 @@ function testRedirections({ cli, docs, target }) {
   assert(cli(["update", update, "--target", target, "--dry-run"]).stdout.includes(command));
   assert.equal(fs.readFileSync(update, "utf8"), original);
   cli(["update", update, "--target", target]);
-  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\ntwo\n`));
+  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\ntwo\n[2]\n`));
   cli(["test", update, "--target", target]);
 
   for (const invalid of ["2>&1", `${LOCAL_PACKAGE} >/dev/null >/dev/null`,
@@ -1073,7 +1109,7 @@ async function exercise(target) {
     testPipelinePreflight(context);
     testPipelineStartupFailure(context);
     testPipelineCaptureFailure(context);
-    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, last status, redirections and updates passed`);
+    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, pipefail, redirections and updates passed`);
     testShellOperatorRejection(context);
     testTimeouts(context);
     const cancelledAt = performance.now();

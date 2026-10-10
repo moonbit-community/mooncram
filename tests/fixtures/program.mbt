@@ -11,6 +11,10 @@ async fn main {
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
     "echo" => @stdio.stdout.write(@stdio.stdin.read_all())
+    "status" => {
+      @async.sleep(@string.parse_int(args.get(3).unwrap_or("100")))
+      @sys.exit(@string.parse_int(args[2]))
+    }
     "check-env" => {
       assert_eq(@env.get_env_var(args[2]), Some(args[3]))
       println(args[3])

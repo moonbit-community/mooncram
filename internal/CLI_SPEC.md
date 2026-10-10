@@ -411,8 +411,11 @@ original stdout concurrently with a fixed 8 KiB byte buffer, without accumulatin
 or decoding it. If neither stream uses the output pipe, its unused write end is
 closed immediately so downstream or final capture can observe EOF. Build
 processes always use the default routes. All captured streams must decode
-successfully. Mooncram waits for every segment to finish and uses
-the final segment's exit status, except for reserved imported statuses below. There is no
+successfully. Pipelines use pipefail by default: Mooncram waits for every segment
+to finish and returns `0` if all succeeded, or the rightmost nonzero exit status
+in pipeline order otherwise. Completion order does not affect this result.
+Ordinary nonzero statuses remain assertable with `[N]` and do not stop later
+cases. Reserved imported statuses follow the error rules below. There is no
 configured output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
@@ -447,8 +450,8 @@ concurrently for all segments. Any imported segment returning either reserved
 status raises an error naming the alias, coordinate, one-based pipeline segment
 and status; remaining processes are immediately cancelled and reaped. A final
 success cannot hide an earlier reserved status, and waiting on a slow upstream
-must not delay detection of a later one. Other statuses retain the existing
-last-segment rule without ordinary pipefail. Reserved statuses, startup/capture
+must not delay detection of a later one. Other statuses follow the pipefail
+rule above. Reserved statuses, startup/capture
 failures and timeouts cancel all document updates and dry-run document diffs.
 
 mooncram adds no remote dependency installation or cache mechanism. moonx owns

@@ -97,8 +97,13 @@ async fn capture_pipeline(
       )
     }
     let mut exit_code = 0
+    // Tasks are stored in pipeline order, so the rightmost nonzero status wins
+    // regardless of completion order. Ordinary failures still await every task.
     for process in processes {
-      exit_code = process.wait()
+      let status = process.wait()
+      if status != 0 {
+        exit_code = status
+      }
     }
     let diagnostic = StringBuilder()
     for stderr in errors {
