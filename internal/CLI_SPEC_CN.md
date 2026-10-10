@@ -112,8 +112,9 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 
 文档按 UTF-8 读取，解码失败属于文档错误。
 Markdown 由 `cmark` 按结构解析，并保留源码位置和排版信息。
-只有起始围栏使用反引号、语言名严格为 `mooncram` 的围栏代码块才会被处理，
-语言名区分大小写。后面允许空白和一个模块名，例如 `mooncram user/foo`。
+起始围栏使用反引号、语言名严格为 `mooncram` 的围栏代码块包含测试，
+`mooncram-import` 围栏声明文件工具导入。语言名区分大小写。
+`mooncram` 后面允许空白和一个模块名，例如 `mooncram user/foo`。
 声明仅作用于当前围栏，普通围栏没有模块名。多个词、旧版 JSON 配置和非法模块名
 在围栏起始行报文档解析错误。模块名和包名由非空的斜杠分隔组件组成，组件仅含
 ASCII 字母、数字、`_`、`-` 或 `.`，不允许 `.` 和 `..` 组件。
@@ -154,6 +155,36 @@ my-cli * (glob)
 执行某个文档中的任何用例之前，会先解析整个文档，包括所有命令和预期结果。
 只要有解析错误，该文档的所有用例都不会执行，包括错误位置之前的用例。
 后续文档仍会继续处理。报告中的行号从 1 开始，对应原始 Markdown 文档中的位置。
+
+### 3.1 文件级工具导入
+
+每份文档允许零个或一个 `mooncram-import` 围栏，语言名后不接受配置。
+围栏识别规则与 `mooncram` 相同，支持较长反引号围栏、列表和引用；忽略波浪号
+围栏和较大示例内部的围栏。有效导入围栏必须闭合且包含至少一条声明，允许空白行。
+import 不计为用例；仅含 import 的文档合法，但整次运行仍遵循无用例报错规则。
+
+每个非空白行必须为 `别名 : user/module[/package]@version`，声明及冒号两侧可有空白。
+别名区分大小写，采用 `[A-Za-z_][A-Za-z0-9_-]*`，保留 `export`。坐标至少含两个
+路径组件，遵循上面的模块／包名规则。版本必须是精确 SemVer `MAJOR.MINOR.PATCH`，
+可追加 `-prerelease` 和 `+build`。核心数字与纯数字预发布标识不允许前导零；
+构建标识允许前导零。标识仅含 ASCII 字母、数字和连字符，以点分隔，不允许空标识。
+拒绝省略版本、`latest`、范围、通配符、默认参数和变量展开。
+
+解析时先收集并校验所有 import，再按原顺序解析命令和 export。
+`Document.imports : Map[String, ToolImport]` 保存别名对应的 `name`、`coordinate`
+和从 1 开始的源码 `line`。绑定对该文档所有用例生效，与声明位置无关，不跨文件。
+重复别名指出两条声明所在行；第二个 import 围栏是文档解析错误，指出两个起始位置。
+其他非法输入定位到错误行或围栏起始行。
+
+````markdown
+```mooncram-import
+moongrep : moonbit-community/moongrep@0.3.5
+```
+```mooncram
+$ moongrep --version
+* (glob)
+```
+````
 
 ## 4. 命令分词与可执行目标选择
 
@@ -238,11 +269,11 @@ Windows 下导出赋值、引用查询和后续覆盖均不区分变量名大小
 `prefix${NAME}suffix` 会拼接为同一个参数。未定义变量、非法或未闭合引用均为带文件
 行号的文档解析错误。整个文档解析成功后才执行用例。
 
-每个管道段的首个词是可执行路径，禁止在其中展开 `${NAME}`，即使变量已定义也会
+每个管道段的首个词选择执行目标，禁止在其中展开 `${NAME}`，即使变量已定义也会
 报解析错误；单引号或转义保护的引用可作为字面路径。作为普通参数传入的文件路径
 遵循参数展开规则。
 
-每个段的第一个参数不能为空。普通 `mooncram` 围栏只能执行普通 `.mbtx` 文件。
+每个段的第一个参数不能为空。普通 `mooncram` 围栏可以执行文件导入别名或普通 `.mbtx` 文件。
 脚本路径相对于规范 Markdown 文件所在目录解析，也接受绝对脚本路径。
 声明模块的围栏同样允许脚本。
 
@@ -266,13 +297,21 @@ Windows 下导出赋值、引用查询和后续覆盖均不区分变量名大小
 `moon.mod.json` 界定的嵌套模块，符号链接也遵循此限制。
 `moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析，兼容以 JSON 读取
 `moon.pkg.json`；配置解析失败会报错。任意二进制、shell 命令、`.mbt` 文件和
-注册表模块不能作为用例目标，也不会通过 `PATH` 查找目标。
+未声明导入的注册表模块不能作为用例目标，也不会通过 `PATH` 查找目标。
 其余参数会转发给被测程序，因此程序自己的 `--version` 或 `--target`
 不会被解释为 mooncram 选项。
 
+每个管道段独立用首个参数查询 `Document.imports`。命中别名时，执行
+`moonx --target wasm <coordinate> -- <args...>`；保留 `Case.command` 与已解析的
+管道结构。导入工具继承用例的 cwd、环境快照和输出路由。CLI `--target` 仍控制本地包，
+导入工具始终使用 Wasm。模块声明围栏内按本地解析规则探测同名候选，包括根包短名和
+同名子包；任一候选可执行，就在管道启动前报错，要求更换 import 别名。本地配置读取
+或解析失败正常传播，不能视为“找不到包”。未命中别名的段保持原有解析行为。
+远程包仅能通过已声明别名访问。
+
 ## 5. 构建、执行、输出捕获与超时
 
-mooncram 使用外部 MoonBit 工具。构建用例需要 `moon`；脚本还需要 `moonx`，
+mooncram 使用外部 MoonBit 工具。构建本地用例需要 `moon`；脚本和导入还需要 `moonx`，
 Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 运行 mooncram 自身所用的后端，与用例选择的后端相互独立。
 
@@ -283,10 +322,11 @@ Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 | `.mbtx` 脚本 | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
 | Wasm 包 | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | 原生包 | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
+| 导入包 | 无；moonx 获取并构建 | `moonx --target wasm <coordinate> -- <args...>` |
 
 脚本始终使用 Wasm，即使 CLI 指定了 `native`。
-mooncram 按段顺序为每个用例的所有段请求构建，是否复用已有构建由底层工具决定。
-只有所有段通过构建预检查后，才会启动任何被测程序。
+mooncram 按段顺序为每个用例的所有本地段请求构建，是否复用已有构建由底层工具决定。
+只有所有本地段通过构建预检查后，才会启动任何被测程序。
 脚本在运行 `moonx` 之前先进行编译预检查，因此预检查的编译失败不会被接受为
 程序的预期退出状态。
 
@@ -305,7 +345,7 @@ mooncram 按段顺序为每个用例的所有段请求构建，是否复用已�
 两条流都不使用输出管道时，立即关闭其未使用的写端，让下游或最终捕获读到 EOF。
 构建进程始终使用默认路由。
 所有捕获流都必须能够成功解码。等待所有段结束后，使用最后一段的退出状态，
-上游非零状态不会覆盖它。当前没有可配置的输出大小上限，也不实时转发程序输出。
+普通上游非零状态不会覆盖它；导入的保留错误状态遵循下面的规则。当前没有可配置的输出大小上限，也不实时转发程序输出。
 
 构建进程及每个管道段继承 mooncram 的环境，并覆盖该用例的 export 快照；
 工作目录是规范文档的父目录。
@@ -317,15 +357,27 @@ mooncram 按段顺序为每个用例的所有段请求构建，是否复用已�
 比较和报告前会把每个 CRLF 规范化为 LF。独立的 CR、NUL、ANSI 转义、行尾空格、
 空行以及末尾是否有换行符，除此之外均保持有意义的差异。
 
-每个用例共用一个期限，覆盖路径检查、构建、执行和输出捕获。不会为每个子进程重新
+每个用例共用一个期限，覆盖路径检查、构建、远程获取、执行和输出捕获。不会为每个子进程重新
 开始计时，也不是整次运行共用一个超时。到期后，以
 `timed out after N ms (including build)` 报告执行错误。
 直接管理的进程使用强制取消。启动或捕获错误也会取消所有已启动段，
 退出时会关闭所有未消费的管道句柄。当前实现不保证清理脱离管理的后代进程或回滚其影响。
 文件发现、文档解析、报告和文档替换不在这个按用例计算的期限内。
 
-用例以调用者的权限，在实际文档目录中执行本地代码。mooncram 不提供沙箱或临时
+用例以调用者的权限，在实际文档目录中执行代码。mooncram 不提供沙箱或临时
 工作区隔离。`test` 和 `update --dry-run` 也遵循这一规则。
+
+仅导入命令将 `255` 和 `-1` 保留为执行错误，包括导入程序自身返回这些状态。
+并发监视所有段的退出状态；任意导入段返回保留状态都会报错，包含别名、坐标、
+从 1 开始的管道段序号和状态码，并立即取消及回收其他进程。末段成功不能掩盖前段
+保留错误，等待慢速前段也不能延迟发现后段错误。其他状态保持末段状态规则，
+不为普通非零状态增加 pipefail。保留状态、启动／捕获失败及超时均阻止整份文档
+更新及生成试运行文档差异。
+
+mooncram 不增加远程依赖安装或缓存机制。moonx 启动后负责获取、构建和缓存，
+因此其他段可能在远程获取失败前已经运行并产生副作用；不保证获取失败前没有程序
+副作用。远程获取与本地构建、执行共用已有用例期限。`test`、`update` 和
+`update --dry-run` 使用相同执行流程。
 
 ## 6. 预期结果、逐行匹配与退出状态
 
@@ -341,7 +393,7 @@ mooncram 按段顺序为每个用例的所有段请求构建，是否复用已�
 `-`；`+`、内部空格或其他内容不会构成退出状态标记。允许前导零。
 语法符合数字标记、但数值超出整数范围时，会产生解析错误。
 出现在更早位置的类似状态标记的行按普通输出处理。负数状态表示进程库报告的信号
-终止状态。程序退出状态非零是可以匹配的正常结果；构建失败或超时则不是。
+终止状态。除导入的 `255` 和 `-1` 外，非零退出状态是可以匹配的正常结果；构建失败或超时则不是。
 
 没有预期输出行时，要求选定输出为空。空输出、一个换行符，以及末尾没有换行符的
 非空行，是不同的结果：
@@ -536,7 +588,7 @@ Not updating <canonical-file>: execution errors in this document
 
 | 计数 | 含义 |
 | --- | --- |
-| `total` | 尝试执行的用例数，在执行之前递增。包含执行错误用例；不包含 export 和解析或模块声明校验失败文档中的用例。 |
+| `total` | 尝试执行的用例数，在执行之前递增。包含执行错误用例；不包含 export、import 和解析或模块声明校验失败文档中的用例。 |
 | `failed` | 执行完成但输出或退出状态不匹配的用例数。执行错误单独计数。仅在 `test` 汇总中打印。 |
 | `errors` | 捕获到的用例错误与文档读取、解析、模块声明校验、更新错误之和。一次解析或声明校验失败计为一个文档错误。 |
 | `updated` | 已成功写入文档中的不匹配用例数，或试运行中可生成文档差异的不匹配用例数。计量单位是用例，不是文件或变更行。 |
@@ -564,6 +616,7 @@ Not updating <canonical-file>: execution errors in this document
 | 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt)、[execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 | 报告与局部编辑 | [report/report.mbt](report/report.mbt)、[update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
@@ -583,3 +636,6 @@ moon info && moon fmt
 集成测试默认分别运行 Wasm 和 native 两种 mooncram 可执行程序，并使用真实的
 脚本和包进行验证。传入 `--target wasm` 或 `--target native` 可以只选择一种
 CLI 后端；这些是集成测试运行器的选项，与 mooncram 的用例后端选项相互独立。
+
+导入集成测试以本地构建的 fixture 可执行文件替代 moonx，不依赖注册表或网络状态，
+验证固定 Wasm 调用参数、保留错误状态及取消回收行为。

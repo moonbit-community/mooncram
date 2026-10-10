@@ -126,8 +126,8 @@ there are no attempted cases and no recorded errors, the CLI reports
 
 Documents are read as UTF-8; decoding failures are document errors. Markdown
 is parsed structurally with `cmark`, with source locations and layout retained.
-Only fenced code blocks with a backtick opening fence and the exact,
-case-sensitive language name `mooncram` are considered. The info string accepts
+Fenced code blocks with a backtick opening fence and the exact, case-sensitive
+language `mooncram` contain tests; `mooncram-import` declares file tool imports. The info string accepts
 optional whitespace and a single module name, such as `mooncram user/foo`.
 The declaration is scoped to that fence; ordinary fences have no module name.
 Multiple words, JSON settings, or invalid module names are document parsing
@@ -179,6 +179,44 @@ executing any case in that document. A parsing error prevents
 every case in that document from running, even cases before the error. Later
 documents are still processed. Reported source line numbers are one-based
 positions in the original Markdown document.
+
+### 3.1 File tool imports
+
+A document permits zero or one `mooncram-import` fence, with no settings after
+its language name. Recognition follows the same backtick/container rules as
+`mooncram`, including longer fences, lists and quotes. Tilde fences and fences
+inside larger examples are ignored. An eligible import fence must close and
+contain at least one declaration; blank or whitespace-only lines are allowed.
+Imports never count as cases, and an import-only document is legal subject to
+the overall no-cases rule.
+
+Each nonblank line must be `alias : user/module[/package]@version`. Whitespace
+around the colon and declaration is allowed. Aliases are case-sensitive
+`[A-Za-z_][A-Za-z0-9_-]*`; `export` is reserved. Coordinates require at least two
+path components, following the module/package name rules above. Versions must
+be exact SemVer `MAJOR.MINOR.PATCH`, optionally followed by `-prerelease` and
+`+build`. Core numbers and numeric prerelease identifiers have no leading zeros;
+build identifiers may have them. Identifiers contain ASCII letters, digits and
+hyphens, separated by dots, with no empty identifiers. Omitted versions, `latest`,
+ranges, wildcards, default arguments and variable expansion are rejected.
+
+All imports are collected and validated before commands and exports are parsed
+in their original order. `Document.imports : Map[String, ToolImport]` stores each
+alias's `name`, `coordinate` and one-based source `line`. Bindings apply to every
+case in that document regardless of declaration position, and never cross files.
+A duplicate alias reports both declaration lines; a second import fence is a
+document parsing error reporting both opening positions. Other malformed input
+is located at the offending line or opening fence.
+
+````markdown
+```mooncram-import
+moongrep : moonbit-community/moongrep@0.3.5
+```
+```mooncram
+$ moongrep --version
+* (glob)
+```
+````
 
 ## 4. Command tokenization and executable selection
 
@@ -284,7 +322,7 @@ references may appear literally in executable paths. File paths passed as ordina
 arguments follow the normal expansion rules.
 
 The first argument of each segment must be nonempty. A case in an ordinary
-`mooncram` fence can execute only a regular `.mbtx` file. Script paths are resolved
+`mooncram` fence can execute a file import alias or a regular `.mbtx` file. Script paths are resolved
 against the canonical Markdown directory; absolute script paths are accepted.
 Scripts are also allowed in fences with a module declaration.
 
@@ -313,15 +351,27 @@ or error counts. Package names cannot be absolute directory paths, use `./` or
 `../`, contain traversal, or cross another `moon.mod`/`moon.mod.json` boundary,
 including through symlinks. `moon.pkg` is parsed with `moonbitlang/moon_config@0.4.2`;
 legacy `moon.pkg.json` is read as JSON. Invalid configurations are errors.
-Arbitrary binaries, shell commands, `.mbt` files, and registry modules are not
-case targets. Targets are never searched through `PATH`.
+Arbitrary binaries, shell commands and `.mbt` files are not case targets.
+Remote packages can only be accessed through declared aliases. User targets
+are never searched through `PATH`.
 Remaining arguments are forwarded to the tested program, so its `--version`
 or `--target` is not interpreted as a mooncram option.
+
+Each pipeline segment independently checks its first argument against
+`Document.imports`. An alias becomes `moonx --target wasm <coordinate> -- <args...>`;
+`Case.command` and the parsed pipeline are retained unchanged. Imported tools
+inherit the case cwd, environment snapshot and output routes. CLI `--target`
+continues to control local packages; imports always use Wasm. In a declared
+fence, probe the same local candidates used by local resolution (including root
+short-name and same-name subpackage candidates). If any is executable, fail
+before pipeline startup and require a different import alias. Local configuration
+read/parse failures propagate normally; they must not be treated as missing
+packages. Non-alias segments retain their existing resolution behavior.
 
 ## 5. Build, execution, capture, and timeout
 
 Mooncram uses external MoonBit tools. `moon` must be available to build cases;
-scripts also require `moonx`, Wasm packages require `moonrun`, and native
+scripts and imports also require `moonx`, Wasm packages require `moonrun`, and native
 package builds require the corresponding native toolchain. The backend used
 to run mooncram itself is separate from the backend selected for a test case.
 
@@ -333,11 +383,12 @@ items are placeholders, not shell syntax:
 | `.mbtx` script | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
 | Wasm package | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | Native package | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
+| Imported package | None; moonx fetches/builds it | `moonx --target wasm <coordinate> -- <args...>` |
 
 Scripts always use Wasm, including when the CLI specifies `native`.
-Mooncram requests a build for every segment of every case, in segment order.
-All segments must pass preflight before any tested program starts; build reuse
-is performed by the underlying tools. Script preflight checks compilation
+Mooncram requests a build for every local segment of every case, in segment order.
+All local segments must pass preflight before any tested program starts; build
+reuse is performed by the underlying tools. Script preflight checks compilation
 before `moonx` runs so that preflight compiler failures cannot be accepted as
 expected program exits.
 
@@ -362,7 +413,7 @@ or decoding it. If neither stream uses the output pipe, its unused write end is
 closed immediately so downstream or final capture can observe EOF. Build
 processes always use the default routes. All captured streams must decode
 successfully. Mooncram waits for every segment to finish and uses
-the final segment's exit status, regardless of upstream statuses. There is no
+the final segment's exit status, except for reserved imported statuses below. There is no
 configured output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
@@ -377,7 +428,7 @@ routed bytes remain undecoded. Every CRLF pair is normalized to LF before
 comparison and reporting. Standalone CR, NUL, ANSI escapes, trailing spaces, blank lines,
 and the presence or absence of a final newline otherwise remain significant.
 
-One deadline wraps path inspection, build, execution, and output capture for
+One deadline wraps path inspection, build, remote fetching, execution, and output capture for
 each case. It is not a fresh timeout per subprocess or a timeout for the whole
 run. On expiry the case reports
 `timed out after N ms (including build)` as an execution error. Directly managed
@@ -387,9 +438,25 @@ implementation does not promise cleanup of detached descendants or rollback of
 their effects. Discovery, document parsing, reporting, and document replacement
 are outside this per-case deadline.
 
-Cases execute local code with the invoking user's permissions, in the actual
+Cases execute code with the invoking user's permissions, in the actual
 document directory. Mooncram provides no sandbox or temporary workspace
 isolation. This also applies to `test` and `update --dry-run`.
+
+Only imported commands reserve statuses `255` and `-1` as execution errors,
+even if the imported program itself returns them. Statuses are monitored
+concurrently for all segments. Any imported segment returning either reserved
+status raises an error naming the alias, coordinate, one-based pipeline segment
+and status; remaining processes are immediately cancelled and reaped. A final
+success cannot hide an earlier reserved status, and waiting on a slow upstream
+must not delay detection of a later one. Other statuses retain the existing
+last-segment rule without ordinary pipefail. Reserved statuses, startup/capture
+failures and timeouts cancel all document updates and dry-run document diffs.
+
+mooncram adds no remote dependency installation or cache mechanism. moonx owns
+fetching/building/caching, which begins after its process starts. Other segments
+may run and produce effects before remote fetching fails; no pre-fetch guarantee
+is provided. Remote fetching shares the existing case deadline with local builds
+and execution. `test`, `update` and `update --dry-run` use the same flow.
 
 ## 6. Expectations, line matching, and exit status
 
@@ -407,7 +474,8 @@ spaces, and other contents do not make a status marker. Leading zeroes are
 accepted. A syntactically numeric marker outside the integer range is a parse
 error. A status-looking line earlier in the expectation is ordinary output.
 Negative statuses represent signal termination as reported by the process
-library. A nonzero program exit is a normal matchable result; a build failure
+library. A nonzero program exit is a normal matchable result, except for imported `255`
+or `-1`; a build failure
 or timeout is not.
 
 No expectation lines require empty selected output. Empty output, one newline,
@@ -618,7 +686,7 @@ For example:
 
 | Counter | Meaning |
 | --- | --- |
-| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports and cases in documents that failed to parse or validate module declarations. |
+| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports, imports and cases in documents that failed to parse or validate module declarations. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
 | `errors` | Caught per-case errors plus document read/parse/module-validation/update errors. A parse or module-validation failure counts as one document error. |
 | `updated` | Mismatching cases in documents successfully written, or eligible for a dry-run document diff. Counts cases, not files or changed lines. |
@@ -648,6 +716,7 @@ expected exit statuses.
 | Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt), [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 | Reports and local edits | [report/report.mbt](report/report.mbt), [update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
@@ -669,3 +738,7 @@ The integration runner exercises both Wasm and native mooncram executables by
 default, using real scripts and packages. `--target wasm` or `--target native`
 selects one CLI backend; those integration-runner options are separate from
 mooncram's case-target option.
+
+Import integration checks replace moonx with a locally built fixture executable,
+so pinned remote tools are tested without registry/network dependencies. The
+fixture validates the exact wasm invocation, reserved exits and cancellation.
