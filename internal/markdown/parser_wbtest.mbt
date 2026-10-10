@@ -151,7 +151,7 @@ test "exports apply in document order across blocks with independent snapshots" 
 ///|
 test "export-only blocks are legal and exports have no expectations" {
   assert_eq(parse_example("$ export A=x\n\n$ export B=y\n").cases.length(), 0)
-  for output in ["hello", "[0]", "[2]", " (equal)"] {
+  for output in ["hello", "[0]", "[2]", "\"\" (escaped)"] {
     assert_error_contains(
       () => ignore(parse_example("$ export A=x\n" + output + "\n")),
       "example.md:3: export does not accept expected output or an exit code",

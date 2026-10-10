@@ -38,7 +38,7 @@ fn assert_output(
 test "empty output empty lines whitespace and exit status" {
   assert_output("", "", 0, true)
   assert_output("", "\n", 0, false)
-  assert_output(" (equal)\n", "\n", 0, true)
+  assert_output("\"\" (escaped)\n", "\n", 0, true)
   assert_output("hello  \n", "hello  \n", 0, true)
   assert_output("hello  \n", "hello\n", 0, false)
   assert_output("a\n\nb\n", "a\n\nb\n", 0, true)
@@ -61,7 +61,7 @@ test "no-eol escaped controls and syntax conflicts" {
     "\"$ ./looks-like-command\" (escaped)\n\"[1]\" (escaped)\n", "$ ./looks-like-command\n[1]\n",
     0, true,
   )
-  assert_output("literal (glob) (equal)\n", "literal (glob)\n", 0, true)
+  assert_output("\"literal (glob)\" (escaped)\n", "literal (glob)\n", 0, true)
   assert_error_contains(
     () => ignore(parse_example("$ ./a.mbtx\na (no-eol)\nb\n")),
     "example.md:4:",
@@ -113,6 +113,18 @@ test "regex matches whole lines including alternations" {
     () => ignore(parse_example("$ ./a.mbtx\n[ (regex)\n")),
     "example.md:3: invalid regex",
   )
+}
+
+///|
+test "equal suffix matches literal text including with no-eol" {
+  for line in [" (equal)", "hello (equal)", "literal (glob) (equal)"] {
+    let without_suffix = line[:line.length() - 8].to_owned()
+    assert_output(line + "\n", line + "\n", 0, true)
+    assert_output(line + "\n", without_suffix + "\n", 0, false)
+    assert_output(line + " (no-eol)\n", line, 0, true)
+    assert_output(line + " (no-eol)\n", without_suffix, 0, false)
+    assert_output(line + " (no-eol)\n", line + "\n", 0, false)
+  }
 }
 
 ///|

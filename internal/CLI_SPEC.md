@@ -170,9 +170,8 @@ Within the parsed code block:
 - Commands occupy one source line. There is no multiline command continuation,
   comment syntax, or separate setup/teardown syntax inside a test block.
 
-A line of output that would look like a command must use `(escaped)`. Merely
-adding `(equal)` to a line starting with `$ ` does not prevent it from being
-recognized as another command.
+A line of output that would look like a command must use a JSON string with
+`(escaped)`.
 
 The whole document, including all commands and expectations, is parsed before
 executing any case in that document. A parsing error prevents
@@ -484,7 +483,7 @@ and a nonempty final line without a newline are distinct:
 | Actual selected output, in JSON notation | Expectation text |
 | --- | --- |
 | `""` | No output lines. |
-| `"\n"` | One ` (equal)` or `"" (escaped)` line. |
+| `"\n"` | One `"" (escaped)` line. |
 | `"hello\n"` | `hello` |
 | `"hello"` | `hello (no-eol)` |
 | `"hello\n\n"` | `hello` followed by `"" (escaped)`. |
@@ -497,18 +496,19 @@ space. Trailing spaces after an annotation stop it from being a suffix.
 | Suffix | Semantics |
 | --- | --- |
 | None | Exact line equality, including whitespace. |
-| ` (equal)` | Exact equality with the text before this suffix. |
 | ` (escaped)` | Parse the preceding text as a complete JSON string, then use exact equality. |
 | ` (glob)` | Match the entire line with the glob syntax below. |
 | ` (regex)` | Match the entire line with the installed standard-library `Regex`. |
 | ` (no-eol)` | Require no terminating LF on the last output line; follows the matcher suffix, if any. |
 
 Only one matcher suffix is interpreted, after removing a final `(no-eol)`.
-For example, `literal (glob) (equal)` means the literal text `literal (glob)`.
-Unknown parenthesized suffixes are ordinary text and match exactly. For example,
-`hello (foo)` and `hello (glob) (foo)` each match their entire literal line.
+For example, `"literal (glob)" (escaped)` matches the literal text `literal (glob)`.
+Unknown parenthesized suffixes, including `(equal)`, are ordinary text and match
+exactly. For example, `hello (equal)`, `hello (foo)`, and `hello (glob) (foo)`
+each match their entire literal line.
 `hello (foo) (no-eol)` matches `hello (foo)` without a terminating LF.
-Use `(equal)` or `(escaped)` to match a recognized annotation suffix literally.
+Use a JSON string with `(escaped)` to match a recognized annotation suffix
+literally.
 There are no optional-line, repetition, or line-skipping annotations.
 
 `(escaped)` supports control characters and syntax-looking output through JSON
@@ -600,7 +600,7 @@ fences, surrounding prose, and separator lines in place.
 
 For each actual output line at index `i`, rendering first tries to retain the
 existing expectation at the same index if its matcher still matches. This
-preserves still-valid glob/regex patterns and explicit equality/escaping even
+preserves still-valid glob/regex patterns and explicit escaping even
 when another line or the exit status fails. A bare empty expectation and a raw
 line beginning with `[` and ending with `]` are rendered afresh to avoid
 separator/status ambiguity. Matching is by line index, not by searching for
@@ -608,8 +608,8 @@ the same text elsewhere in the output.
 
 New exact output lines are JSON-escaped with `(escaped)` when they are empty,
 begin with a space, `$`, or `[`, contain a backtick or a control character below
-U+0020 or U+007F, or end with a recognized annotation suffix: ` (equal)`,
-` (escaped)`, ` (glob)`, ` (regex)`, or ` (no-eol)`. Other lines, including unknown
+U+0020 or U+007F, or end with a recognized annotation suffix: ` (escaped)`,
+` (glob)`, ` (regex)`, or ` (no-eol)`. Other lines, including unknown
 parenthesized suffixes, are written literally. The last output line gets
 `(no-eol)` exactly when needed. A nonzero actual status appends `[N]`; zero
 requires no marker.

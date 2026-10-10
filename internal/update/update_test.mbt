@@ -60,7 +60,8 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
       ("hello (GLOB)", "hello (GLOB)"),
       ("hello (glob) ", "hello (glob) "),
       ("hello(glob)", "hello(glob)"),
-      ("hello (equal)", "\"hello (equal)\" (escaped)"),
+      ("hello (equal)", "hello (equal)"),
+      ("hello (glob) (equal)", "hello (glob) (equal)"),
       ("hello (escaped)", "\"hello (escaped)\" (escaped)"),
       ("hello (glob)", "\"hello (glob)\" (escaped)"),
       ("hello (regex)", "\"hello (regex)\" (escaped)"),
@@ -99,10 +100,10 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
 ///|
 test "matching patterns and explicit output spellings survive partial failures" {
   let doc = parse_example(
-    "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n (equal)\nhello (foo) (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
+    "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
   )
   let actual : @output.Captured = {
-    output: "version 9\n123\nnew\n\nhello (foo)\nhello (foo)\nhello (foo)\n",
+    output: "version 9\n123\nnew\n\nhello (equal)\nhello (foo)\nhello (foo)\n",
     diagnostic: "",
     exit_code: 2,
   }
@@ -111,7 +112,7 @@ test "matching patterns and explicit output spellings survive partial failures" 
   ])
   assert_true(
     updated.contains(
-      "version * (glob)\n[0-9]+ (regex)\nnew\n (equal)\nhello (foo) (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n[2]",
+      "version * (glob)\n[0-9]+ (regex)\nnew\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n[2]",
     ),
   )
   assert_true(

@@ -153,8 +153,8 @@ output lines means the routed output must be empty.
 
 Bare empty lines at the beginning/end of a block or immediately before the next
 command are separators. Empty lines between nonempty expectations are output.
-Use ` (equal)` or `"" (escaped)` for an explicit empty output line, especially at
-the end of output. Thus empty output and a single newline remain distinct.
+Use `"" (escaped)` for an explicit empty output line, especially at the end of
+output. Thus empty output and a single newline remain distinct.
 
 ## File tool imports
 
@@ -209,17 +209,17 @@ failure is known. Fetching and execution share the case timeout. `test`,
 
 | Suffix | Meaning |
 | --- | --- |
-| none or ` (equal)` | Exact line match |
+| none | Exact line match |
 | ` (glob)` | Whole-line glob: `*`, `?`, `[abc]`, `[a-z]`, `[!a-z]`, `[^a-z]`; backslash quotes a character |
 | ` (regex)` | Whole-line standard-library `Regex` match |
 | ` (escaped)` | Exact match of a JSON string, including control characters |
 | ` (no-eol)` | The final output line has no terminating newline; follows any other suffix |
 
 Glob `?` and sets match one Unicode character. Matching never repeats or skips
-output lines. Unknown parenthesized suffixes such as `(foo)` or `(re)` are
-literal text and match exactly. Malformed globs/regexes and non-final `(no-eol)`
+output lines. Unknown parenthesized suffixes such as `(equal)`, `(foo)`, or `(re)`
+are literal text and match exactly. Malformed globs/regexes and non-final `(no-eol)`
 are errors with file and line locations. To match output ending in a recognized
-annotation literally, use `(equal)` or `(escaped)`.
+annotation literally, use a JSON string with `(escaped)`.
 
 `(escaped)` expects a complete JSON string. It can represent tabs, carriage
 returns, NUL, ANSI escapes, and output that looks like a command, fence, status,

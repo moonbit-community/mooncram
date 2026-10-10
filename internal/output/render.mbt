@@ -7,7 +7,6 @@ fn encode_output_line(text : String) -> String {
     text.has_prefix("$") ||
     text.has_prefix("[") ||
     text.contains("`") ||
-    text.has_suffix(" (equal)") ||
     text.has_suffix(" (escaped)") ||
     text.has_suffix(" (glob)") ||
     text.has_suffix(" (regex)") ||
