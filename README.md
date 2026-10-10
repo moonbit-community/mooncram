@@ -58,11 +58,12 @@ ignored. Tests inside block quotes and lists are supported. Empty or unclosed
 test fences are errors.
 
 Each `$ ` line starts a command. Except for `export`, each command starts a case.
-Plain `mooncram` fences support local `.mbtx` scripts. Declared fences also support
+Plain `mooncram` fences support local `.mbtx` scripts and file import aliases.
+Declared fences also support
 executable packages in the module whose `moon.mod` is in mooncram's startup cwd.
 Every declaration must exactly match that module's `name`; all declarations,
 including export-only fences, are checked before any case in the document runs.
-There is no parent-directory search or registry module loading.
+Local module declarations do not search parent directories or load registry modules.
 
 Packages are resolved below the module's `source` directory (the module root if
 `source` is omitted or empty). For `user/foo`, `foo` selects the executable root
@@ -120,7 +121,7 @@ On Linux and macOS, variable names remain case-sensitive.
 Expansion happens once, without splitting: spaces, quotes and `|` in a value stay
 inside the original argument, and an empty result remains an argument.
 
-The first word of every pipeline segment is an executable path and cannot contain
+The first word of every pipeline segment selects an executable and cannot contain
 an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
 Undefined variables, invalid or unclosed references, invalid assignments, and
 `export` in a pipeline are parsing errors with file and line numbers. Exports
@@ -145,7 +146,8 @@ filtered output
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
 otherwise it is `0`. Pipelines match the final segment's routed output and exit
-code; upstream nonzero statuses do not override the final status. Negative statuses
+code; ordinary upstream nonzero statuses do not override the final status.
+Imported commands returning `255` or `-1` are execution errors in any segment. Negative statuses
 denote termination by a signal as reported by the process library. No expected
 output lines means the routed output must be empty.
 
@@ -153,6 +155,55 @@ Bare empty lines at the beginning/end of a block or immediately before the next
 command are separators. Empty lines between nonempty expectations are output.
 Use ` (equal)` or `"" (escaped)` for an explicit empty output line, especially at
 the end of output. Thus empty output and a single newline remain distinct.
+
+## File tool imports
+
+Declare fixed-version Mooncakes executable packages once per Markdown file:
+
+````markdown
+```mooncram-import
+moongrep : moonbit-community/moongrep@0.3.5
+```
+
+```mooncram
+$ moongrep --version
+* (glob)
+```
+````
+
+A file accepts zero or one `mooncram-import` block. Bindings apply to every test
+block in that file, even before the import block, and reset for the next file.
+Imports do not count as cases. Each nonblank line is `alias : coordinate`; empty
+blocks, duplicate aliases, a second import block, and invalid declarations are
+parsing errors with source positions. A second block reports both locations.
+Import fences follow the same Markdown rules as test fences, including quotes,
+lists and longer backtick fences, and accept no settings after the language.
+
+Aliases are case-sensitive `[A-Za-z_][A-Za-z0-9_-]*`; `export` is reserved.
+Coordinates are `user/module[/package]@version`, using the same path-component
+rules as local package names. The version must be exact SemVer; prerelease and
+build identifiers are supported. Omitted versions, `latest`, ranges, wildcards,
+default arguments and variable expansion in declarations are rejected.
+
+Each pipeline segment resolves its alias independently and runs
+`moonx --target wasm <coordinate> -- <args...>`, preserving the parsed arguments,
+cwd, exports and redirection. Imported tools always use Wasm, including under
+`--target native`. In a module-declared fence, an alias matching an executable
+local candidate is an execution error: choose a different import alias. Invalid
+local configuration is also an error. Non-alias commands follow the local rules.
+Remote packages can only be called through declared aliases.
+
+Only imported commands reserve statuses `255` and `-1` as execution errors,
+including when the imported program itself returns them. Every segment is
+monitored concurrently; either status cancels and reaps the remaining processes
+and prevents all expectation updates in the document, including dry-run diffs.
+Other nonzero statuses remain assertable; pipelines use the last segment's
+status. Other documents continue processing after errors.
+
+moonx handles remote downloading and caching. Remote fetching begins after
+moonx starts, so other segments may run and produce effects before a fetch
+failure is known. Fetching and execution share the case timeout. `test`,
+`update` and `update --dry-run` use the same execution flow.
 
 ## Matching and escaping
 
@@ -209,12 +260,12 @@ drained concurrently with a fixed 8 KiB byte buffer, without accumulation or
 UTF-8 decoding; invalid bytes in discarded output are allowed. Build processes
 always use the default routes.
 
-All segments finish their build preflight before any tested program starts.
+All local segments finish their build preflight before any tested program starts.
 Segments then run concurrently, and mooncram waits for all of them to exit.
-One deadline includes all builds and execution. On timeout or a startup/capture
-error, all directly managed processes are cancelled and pipes are closed; the
+One deadline includes builds, remote fetching and execution. On timeout, a
+startup/capture error, or an imported segment returning `255` or `-1`, all directly managed processes are cancelled and pipes are closed; the
 case is an execution error. Programs must manage their own detached child
-processes. Tests execute local code with the current user's permissions and are
+processes. Tests execute code with the current user's permissions and are
 not sandboxed or isolated in a temporary workspace.
 
 ## Updating expectations
