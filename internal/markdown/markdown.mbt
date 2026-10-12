@@ -131,7 +131,7 @@ fn parse_document_with_env(
           path, line, "expected a command starting with '$ '",
         )
       }
-      let command = @command.parse(node.v[1:].to_owned(), lookup=name => {
+      let command = @command.parse(node.v[1:].to_owned(), case_insensitive~, lookup=name => {
         let key = env_key(name)
         match extra_env.get(key) {
           Some(value) => Some(value)

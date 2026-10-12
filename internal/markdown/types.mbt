@@ -4,6 +4,7 @@ pub struct Case {
   working_directory : WorkingDirectoryDeclaration?
   command : String
   pipeline : Array[@command.PipelineSegment]
+  // Document exports only; temporary assignments live in each pipeline segment.
   extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation

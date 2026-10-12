@@ -6,7 +6,7 @@ import {
 }
 
 // Values
-pub fn parse(String, lookup? : (String) -> String?) -> Command raise
+pub fn parse(String, lookup? : (String) -> String?, case_insensitive? : Bool) -> Command raise
 
 // Errors
 
@@ -22,6 +22,7 @@ pub fn Command::to_repr(Self) -> @debug.Repr
 
 pub(all) struct PipelineSegment {
   argv : Array[String]
+  extra_env : Map[String, String]
   stderr_to_stdout : Bool
   stdout_to_null : Bool
 } derive(Eq, @debug.Debug)
