@@ -342,3 +342,59 @@ test "redirection requires exact raw tokens and whitespace boundaries" {
     "shell operator",
   )
 }
+
+///|
+test "working directory takes one nonempty expanded argument with normal quoting" {
+  for
+    (argument, directory) in [
+      ("../fixtures", "../fixtures"),
+      ("'/absolute path'", "/absolute path"),
+      ("a\\ b", "a b"),
+      ("\"pre${DIR}/post\"", "prea b|${LITERAL}/post"),
+      ("${DIR}", "a b|${LITERAL}"),
+      ("'${MISSING}'", "${MISSING}"),
+      ("\\${MISSING}", "${MISSING}"),
+      ("'2>&1'", "2>&1"),
+    ] {
+    assert_eq(
+      @command.parse("set-current-working-directory " + argument, lookup=_ => {
+        Some("a b|${LITERAL}")
+      }),
+      @command.SetCurrentWorkingDirectory(directory~),
+    )
+  }
+  for argument in ["", "''", "\"\"", "a b", "${EMPTY}", "\"${EMPTY}\""] {
+    assert_error_contains(
+      () => {
+        ignore(
+          @command.parse("set-current-working-directory " + argument, lookup=_ => {
+            Some("")
+          }),
+        )
+      },
+      "exactly one nonempty directory argument",
+    )
+  }
+  assert_error_contains(
+    () => ignore(@command.parse("set-current-working-directory ${MISSING}")),
+    "undefined variable: MISSING",
+  )
+  for
+    command in [
+      "set-current-working-directory dir|./a.mbtx", "./a.mbtx|set-current-working-directory dir",
+      "./a.mbtx|set-current-working-directory dir|./b.mbtx",
+    ] {
+    assert_error_contains(
+      () => ignore(@command.parse(command)),
+      "is not allowed in a pipeline",
+    )
+  }
+  for marker in ["2>&1", ">/dev/null", "2>&1 >/dev/null"] {
+    assert_error_contains(
+      () => {
+        ignore(@command.parse("set-current-working-directory dir " + marker))
+      },
+      "does not accept redirection",
+    )
+  }
+}
