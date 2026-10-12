@@ -153,8 +153,24 @@ On Linux and macOS, variable names remain case-sensitive.
 Expansion happens once, without splitting: spaces, quotes and `|` in a value stay
 inside the original argument, and an empty result remains an argument.
 
-The first word of every pipeline segment selects an executable and cannot contain
-an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
+`$ NAME=value OTHER="${NAME}" command` sets temporary variables for one
+pipeline segment and its build. Only consecutive assignments before the executable
+are recognized, with an unquoted, unescaped name and `=`; names use the same
+`[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting,
+escaping and expansion rules, including empty values and additional `=`.
+Assignments after the executable are ordinary arguments.
+
+Temporary values override document exports and the parent environment. Assignments
+expand from left to right, then arguments expand using the resulting environment:
+`A=new B="${A}" command "${B}"` passes `new`. Self-reference reads the value before
+that assignment; repeated names keep the last value. Each pipeline segment has
+its own temporary environment, and later commands retain the document environment.
+Windows names remain case-insensitive; Linux and macOS names remain case-sensitive.
+Assignments without a command, or temporary prefixes on `export` or
+`set-current-working-directory`, are parsing errors.
+
+After any temporary assignments, the first word selects the segment's executable
+and cannot contain an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
 Undefined variables, invalid or unclosed references, invalid assignments, and
 `export` in a pipeline are parsing errors with file and line numbers. Exports
 have no expected output or exit code and do not count as cases. Export-only
@@ -264,7 +280,8 @@ default arguments and variable expansion in declarations are rejected.
 
 Each pipeline segment resolves its alias independently and runs
 `moonx --target wasm <coordinate> -- <args...>`, preserving the parsed arguments,
-cwd, exports and redirection. Imported tools always use Wasm, including under
+cwd, document exports, temporary assignments and redirection. Imported tools
+always use Wasm, including under
 `--target native`. In a module-declared fence, an alias matching an executable
 local candidate is an execution error: choose a different import alias. Invalid
 local configuration is also an error. Non-alias commands follow the local rules.
@@ -323,7 +340,9 @@ CR, empty lines, trailing spaces, and the final newline are preserved.
 The fence suffix declares only the module; backend and timeout remain CLI
 options. `--target` selects the backend for all local package cases, and `--timeout-ms` supplies every case deadline;
 `.mbtx` scripts still use Wasm. Build processes and every pipeline segment
-inherit mooncram's environment with the case's document exports applied.
+inherit mooncram's environment with the case's document exports applied, then
+overridden by that segment's temporary assignments. Builds and runs receive the
+same environment, including for scripts and imported tools.
 The first segment receives immediate EOF on stdin; later segments
 receive the preceding segment's routed output as raw bytes.
 
