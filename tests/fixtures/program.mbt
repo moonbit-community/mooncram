@@ -23,6 +23,11 @@ async fn main {
       assert_eq(@env.get_env_var(args.get(3).unwrap_or("MODE")), Some(args[2]))
       @stdio.stdout.write(@stdio.stdin.read_all())
     }
+    "check-file-echo" => {
+      assert_eq(@fs.read_file("relative.txt").text(), args[2] + "\n")
+      @stdio.stdout.write(@stdio.stdin.read_all())
+    }
+    "make-directory" => @fs.mkdir(args[2])
     "read-file" => @stdio.stdout.write(@fs.read_file(args[2]))
     "relay" => {
       @stdio.stderr.write(args[2] + "\n")

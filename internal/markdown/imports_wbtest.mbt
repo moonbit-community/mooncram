@@ -99,9 +99,10 @@ test "import grammar rejects expansion defaults malformed paths and versions" {
   for
     declaration in [
       "grep", "grep = user/module@1.2.3", "grep : user/module@1.2.3 : extra", "export : user/module@1.2.3",
-      "1grep : user/module@1.2.3", "-grep : user/module@1.2.3", "a.b : user/module@1.2.3",
-      "a/b : user/module@1.2.3", "${NAME} : user/module@1.2.3", "grep : user/module@1.2.3 --flag",
-      "grep : ${COORD}", "grep : user/module@${VERSION}",
+      "set-current-working-directory : user/module@1.2.3", "1grep : user/module@1.2.3",
+      "-grep : user/module@1.2.3", "a.b : user/module@1.2.3", "a/b : user/module@1.2.3",
+      "${NAME} : user/module@1.2.3", "grep : user/module@1.2.3 --flag", "grep : ${COORD}",
+      "grep : user/module@${VERSION}",
     ] {
     assert_error_contains(
       () => {

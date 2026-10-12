@@ -427,6 +427,7 @@ async function testImports({ executable, docs, project, directory, target }) {
   ]).stdout).artifacts_path[0];
   const double = copyExecutable(artifact, tools, "moonx");
   const env = { ...createEnvironment(), PATH: tools + delimiter + process.env.PATH,
+    MOONCRAM_TEST_REAL_MOONX: findTool("moonx"),
     MOONCRAM_TEST_NODE: process.execPath };
   const invoke = (args, options = {}) => cli(args, { env, ...options });
   const imports = "```mooncram-import\nremote : fixture/tool@1.2.3\n" +
@@ -434,6 +435,9 @@ async function testImports({ executable, docs, project, directory, target }) {
   const write = (name, source) => writeDocument(docs, `imports-${name}.md`, source);
   const passing = write("passing", [
     block("$ remote hello\nHello, Moon Bit!\n", ""), // import declared later
+    block('$ set-current-working-directory "../cwd fixture"\n' +
+      '$ remote context\nparent\nyes\nconfigured contents\n' +
+      `$ remote read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'|Remote check-file-echo 'configured contents'\nconfigured contents\n`),
     imports,
     block('$ export MODE=imported\n$ remote args "${MODE}" \'a|b\' \'\' --target native\n' +
       '["imported","a|b","","--target","native"]\n' +
@@ -697,6 +701,84 @@ function testExportCasing({ cli, docs, target }) {
   assert(cli(["test", document, "--target", target]).stdout.includes(`${cases} cases, 0 failed, 0 errors`));
 }
 
+function testWorkingDirectories({ cli, docs, directory, target }) {
+  const workspace = join(directory, "cwd fixture");
+  createDocuments(workspace);
+  fs.writeFileSync(join(workspace, "relative.txt"), "configured contents\n");
+  // A same-named script in each directory distinguishes script lookup from cwd.
+  const selected = "selected.mbtx";
+  fs.writeFileSync(join(docs, selected), 'fn main { println("document script") }\n');
+  fs.writeFileSync(join(workspace, selected), 'fn main { println("workspace script") }\n');
+  const link = join(docs, "cwd-link");
+  fs.symlinkSync(workspace, link, DIRECTORY_LINK_TYPE);
+  const source = [
+    block('$ export WORKSPACE="../cwd fixture"\n'),
+    block('$ set-current-working-directory "${WORKSPACE}"\n' +
+      '$ export WORKSPACE=unused\n$ ./selected.mbtx\nworkspace script\n' +
+      `$ ${SCRIPT_COMMAND} read-file relative.txt\nconfigured contents\n` +
+      `$ ${LOCAL_PACKAGE} context\nparent\nyes\nconfigured contents\n` +
+      `$ ${LOCAL_PACKAGE} read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'\nconfigured contents\n`),
+    block(`$ set-current-working-directory ${quoteArgument(workspace)}\n` +
+      `$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-file-echo 'configured contents'|${SCRIPT_COMMAND} check-file-echo 'configured contents'\nparent\nyes\nconfigured contents\n`),
+    block('$ set-current-working-directory cwd-link\n$ ./selected.mbtx\nworkspace script\n'),
+    block('$ set-current-working-directory "../cwd fixture"\n'),
+    block('$ ./selected.mbtx\ndocument script\n' +
+      `$ ${LOCAL_PACKAGE} read-file relative.txt\ncwd contents\n`),
+  ].join("\n");
+  const document = writeDocument(docs, "cwd-main.md", source);
+  cli(["test", document, "--target", target]);
+  // Relative directories follow the target Markdown's parent, not its alias.
+  const alias = join(directory, "cwd-document-alias.md");
+  fs.symlinkSync(document, alias, "file");
+  cli(["test", alias, "--target", target]);
+  const only = writeDocument(docs, "cwd-only.md", block('$ set-current-working-directory cwd-link\n'));
+  assert(cli(["test", only], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases found"));
+
+  const directive = '$ set-current-working-directory "../cwd fixture"';
+  const before = ("Intro\n\n> - ```mooncram\n>   " + directive +
+    "\n>   $ ./selected.mbtx\n>   wrong\n>   ```\n\nTail\n").replaceAll("\n", CRLF);
+  const after = before.replace("wrong", "workspace script");
+  const update = writeDocument(docs, "cwd-update.md", before);
+  cli(["update", update, "--target", target, "--dry-run"]);
+  assert.equal(fs.readFileSync(update, "utf8"), before);
+  cli(["update", update, "--target", target]);
+  assert.equal(fs.readFileSync(update, "utf8"), after);
+  cli(["test", update, "--target", target]);
+
+  const drySource = block('$ set-current-working-directory "../cwd fixture"\n' +
+    `$ ${LOCAL_PACKAGE} setup\n$ ./selected.mbtx\nwrong\n`);
+  const dryDocument = writeDocument(docs, "cwd-dry-side-effects.md", drySource);
+  const workspaceEffect = join(workspace, "side-effect.txt");
+  fs.rmSync(workspaceEffect, { force: true });
+  cli(["update", dryDocument, "--target", target, "--dry-run"]);
+  assert.equal(fs.readFileSync(dryDocument, "utf8"), drySource);
+  assert.equal(fs.readFileSync(workspaceEffect, "utf8"), "side effect preserved\n");
+
+  const sideEffect = join(docs, "side-effect.txt");
+  for (const name of ["cwd-missing", "relative.txt", "cwd-not-created-yet"]) {
+    const original = block(`$ ${LOCAL_PACKAGE} setup\n$ ${LOCAL_PACKAGE} hello\nwrong\n` +
+      (name === "cwd-not-created-yet" ? `$ ${LOCAL_PACKAGE} make-directory ${name}\n` : "")) +
+      block(`$ set-current-working-directory ${name}\n`);
+    const invalid = writeDocument(docs, "cwd-invalid.md", original);
+    const line = original.split("\n").findIndex(text => text.startsWith('$ set-current')) + 1;
+    for (const operation of [["test"], ["update"], ["update", "--dry-run"]]) {
+      fs.rmSync(sideEffect, { force: true });
+      const result = cli([...operation, invalid, "--target", target], { expected: EXIT_CODE.ERROR });
+      assert(result.stderr.includes(`cwd-invalid.md:${line}: invalid working directory`), result.stderr);
+      assert(result.stderr.includes(join(docs, name)), result.stderr);
+      assert(result.stdout.includes("0 cases"));
+      assert(!fs.existsSync(sideEffect));
+      assert(!fs.existsSync(join(docs, "cwd-not-created-yet")));
+      assert.equal(fs.readFileSync(invalid, "utf8"), original);
+    }
+    const continuing = writeDocument(docs, "cwd-z-continue.md", block(`$ ${LOCAL_PACKAGE} setup\n`));
+    const result = cli(["test", continuing, invalid, "--target", target], { expected: EXIT_CODE.ERROR });
+    assert(result.stdout.includes("1 cases, 0 failed, 1 errors"));
+    assert(fs.existsSync(sideEffect));
+  }
+  fs.rmSync(sideEffect, { force: true });
+}
+
 function testBuildEnvironment({ cli, docs, directory, target }) {
   if (process.platform === "win32") return;
   const realMoon = findTool("moon");
@@ -705,17 +787,25 @@ function testBuildEnvironment({ cli, docs, directory, target }) {
   const log = join(directory, "build-env.jsonl");
   fs.writeFileSync(join(tools, "moon"), '#!/usr/bin/env node\n' +
     'const fs = require("node:fs");\n' +
-    `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.env.MODE) + "\\n");\n` +
-    `const result = require("node:child_process").spawnSync(${JSON.stringify(realMoon)}, process.argv.slice(2), { stdio: "inherit" });\n` +
+    `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ mode: process.env.MODE, cwd: process.cwd(), args: process.argv.slice(2) }) + "\\n");\n` +
+    `const result = require("node:child_process").spawnSync(${JSON.stringify(realMoon)}, process.argv.slice(2), { encoding: "utf8" });\n` +
+    'process.stderr.write(result.stderr);\n' +
+    'let output = result.stdout;\n' +
+    'if (result.status === 0) { const json = JSON.parse(output); json.artifacts_path = json.artifacts_path.map(p => require("node:path").relative(process.cwd(), p)); output = JSON.stringify(json); }\n' +
+    'process.stdout.write(output);\n' +
     'process.exit(result.status ?? 2);\n', { mode: 0o755 });
   const document = writeDocument(docs, "exports-build.md", block(
-    `$ export MODE=first\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
+    `$ export MODE=first\n$ set-current-working-directory "../cwd fixture"\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
     `$ export MODE=second\n$ ${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo\nHello, Moon Bit!\n`,
   ));
   const env = createEnvironment();
   env.PATH = [tools, env.PATH].join(delimiter);
   cli(["test", document, "--target", target], { env });
-  const modes = fs.readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const builds = fs.readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const modes = builds.map(build => build.mode);
+  assert(builds.every(build => build.cwd === fs.realpathSync(join(directory, "cwd fixture"))));
+  assert(builds.filter(build => build.args[0] === "-C").every(build =>
+    build.args[1] === fs.realpathSync(join(directory, "project"))));
   assert(modes.includes("first") && modes.includes("second"));
   assert(modes.every(mode => mode === "first" || mode === "second"));
 }
@@ -1218,6 +1308,7 @@ async function exercise(target) {
     testPassingCases(context);
     testExports(context);
     testExportCasing(context);
+    testWorkingDirectories(context);
     testBuildEnvironment(context);
     console.log(`${target}: scripts, packages, args, document exports, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
 

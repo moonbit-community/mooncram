@@ -339,3 +339,98 @@ test "final redirection errors retain the document command position" {
     }
   }
 }
+
+///|
+test "working directories are expanded once and reset between blocks" {
+  let source =
+    #|```mooncram
+    #|$ export DIR=../fixtures
+    #|$ set-current-working-directory "${DIR}"
+    #|$ export DIR=elsewhere
+    #|$ ./a.mbtx ${DIR}
+    #|$ ./b.mbtx
+    #|```
+    #|```mooncram
+    #|$ ./c.mbtx ${DIR}
+    #|```
+    #|> - ```mooncram
+    #|>   $ set-current-working-directory '${DIR}'
+    #|>   ```
+    #|```mooncram
+    #|$ set-current-working-directory "${PARENT}"
+    #|$ ./d.mbtx
+    #|```
+    #|
+  let doc = parse_document_with_env(
+    "cwd.md",
+    source,
+    parent_lookup=_ => Some("parent path"),
+    case_insensitive=false,
+  )
+  assert_eq(doc.cases.length(), 4)
+  assert_eq(doc.working_directory_declarations, [
+    { directory: "../fixtures", line: 3, },
+    { directory: "${DIR}", line: 12, },
+    { directory: "parent path", line: 15, },
+  ])
+  assert_eq(
+    doc.cases[0].working_directory,
+    Some(doc.working_directory_declarations[0]),
+  )
+  assert_eq(doc.cases[1].working_directory, doc.cases[0].working_directory)
+  assert_eq(doc.cases[2].working_directory, None)
+  assert_eq(
+    doc.cases[3].working_directory,
+    Some(doc.working_directory_declarations[2]),
+  )
+  assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", "elsewhere"]]))
+  assert_eq(doc.cases[2].pipeline, plain_pipeline([["./c.mbtx", "elsewhere"]]))
+  let only = parse_example("$ set-current-working-directory nonexistent\n\n")
+  assert_eq(only.cases.length(), 0)
+  assert_eq(only.working_directory_declarations, [
+    { directory: "nonexistent", line: 2, },
+  ])
+}
+
+///|
+test "working directory rejects duplicate late and expectation declarations with locations" {
+  assert_error_contains(
+    () => {
+      ignore(
+        parse_example(
+          "$ set-current-working-directory a\n$ export A=x\n$ set-current-working-directory b\n",
+        ),
+      )
+    },
+    "example.md:4: duplicate set-current-working-directory",
+  )
+  for command in ["./a.mbtx", "./a.mbtx|./b.mbtx"] {
+    assert_error_contains(
+      () => {
+        ignore(
+          parse_example(
+            "$ " +
+            command +
+            "\n$ export A=x\n$ set-current-working-directory a\n",
+          ),
+        )
+      },
+      "example.md:4: set-current-working-directory must precede",
+    )
+  }
+  for output in ["hello", "[0]", "[2]", "@STDOUT", "\"\" (escaped)"] {
+    assert_error_contains(
+      () => {
+        ignore(
+          parse_document(
+            "cwd.md",
+            "> - ```mooncram\n>   $ set-current-working-directory a\n>   " +
+            output +
+            "\n>   ```\n",
+          ),
+        )
+      },
+      "cwd.md:3: set-current-working-directory does not accept expected output or an exit code",
+    )
+  }
+}
