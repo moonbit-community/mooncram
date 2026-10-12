@@ -2,7 +2,12 @@
 fn plain_pipeline(
   argvs : Array[Array[String]],
 ) -> Array[@command.PipelineSegment] {
-  argvs.map(argv => { argv, stderr_to_stdout: false, stdout_to_null: false, })
+  argvs.map(argv => {
+    argv,
+    extra_env: Map([]),
+    stderr_to_stdout: false,
+    stdout_to_null: false,
+  })
 }
 
 ///|
@@ -311,8 +316,18 @@ test "redirection keeps source command text and located errors" {
   let doc = parse_example(command + "\nresult\n")
   assert_eq(doc.cases[0].command, command)
   assert_eq(doc.cases[0].pipeline, [
-    { argv: ["./a.mbtx", "arg"], stderr_to_stdout: true, stdout_to_null: true, },
-    { argv: ["./b.mbtx"], stderr_to_stdout: false, stdout_to_null: false, },
+    {
+      argv: ["./a.mbtx", "arg"],
+      extra_env: Map([]),
+      stderr_to_stdout: true,
+      stdout_to_null: true,
+    },
+    {
+      argv: ["./b.mbtx"],
+      extra_env: Map([]),
+      stderr_to_stdout: false,
+      stdout_to_null: false,
+    },
   ])
   for
     invalid in [

@@ -1,7 +1,12 @@
 ///|
 fn plain_pipeline(argvs : Array[Array[String]]) -> @command.Command {
   @command.Pipeline(
-    argvs.map(argv => { argv, stderr_to_stdout: false, stdout_to_null: false, }),
+    argvs.map(argv => {
+      argv,
+      extra_env: Map([]),
+      stderr_to_stdout: false,
+      stdout_to_null: false,
+    }),
   )
 }
 
@@ -225,6 +230,7 @@ test "redirection routes nonfinal segments and rejects final segments" {
           commands[position] += whitespace + suffix
           let expected : Array[@command.PipelineSegment] = Array::makei(count, i => {
             argv: ["./a.mbtx", "arg"],
+            extra_env: Map([]),
             stderr_to_stdout: i == position && stderr_to_stdout,
             stdout_to_null: i == position && stdout_to_null,
           })
@@ -273,9 +279,15 @@ test "quoted escaped and expanded markers remain ordinary arguments" {
       {
         argv: ["./a.mbtx", "${MARKER}", "${MARKER}"],
         stderr_to_stdout: true,
+        extra_env: Map([]),
         stdout_to_null: false,
       },
-      { argv: ["./b.mbtx"], stderr_to_stdout: false, stdout_to_null: false, },
+      {
+        argv: ["./b.mbtx"],
+        extra_env: Map([]),
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      },
     ]),
   )
 }
