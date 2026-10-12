@@ -8,8 +8,9 @@ priv struct Command {
 }
 
 ///|
-/// Only the final routed output is captured. OS pipes carry intermediate bytes without
-/// decoding or normalization. Task-group failure cancels and reaps every child.
+/// Only the final command's stdout is captured. OS pipes carry intermediate
+/// bytes without decoding or normalization. Task-group failure cancels and reaps
+/// every child.
 // ProcessInput.close is hidden/deprecated but is the dependency's cleanup API
 // for inputs that have not been consumed because spawning failed or was cancelled.
 #warnings("-deprecated")
@@ -50,7 +51,10 @@ async fn capture_pipeline(
     let errors = []
     let processes = []
     for i, command in commands {
-      let stdout_writer = if command.stdout_to_null {
+      let is_last = i == commands.length() - 1
+      let stdout_writer = if is_last {
+        out_writer
+      } else if command.stdout_to_null {
         let (reader, writer) = @process.read_from_process()
         readers.push(reader)
         outputs.push(writer)
@@ -64,7 +68,7 @@ async fn capture_pipeline(
       } else {
         outputs[i]
       }
-      let stderr_writer = if command.stderr_to_stdout {
+      let stderr_writer = if !is_last && command.stderr_to_stdout {
         // ProcessOutput permits stdout and stderr of one child to share a pipe.
         outputs[i]
       } else {

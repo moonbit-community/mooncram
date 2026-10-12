@@ -83,6 +83,7 @@ fn expand(
 /// Parse a pipeline or a single environment assignment without invoking a shell.
 /// Only unescaped ${NAME} outside single quotes expands, once, without splitting.
 /// References require lookup; by default all variables are undefined.
+/// Output redirection is allowed only before the final pipeline segment.
 pub fn parse(
   command : String,
   lookup? : (String) -> String? = _ => None,
@@ -161,6 +162,11 @@ pub fn parse(
       args.push(expand(parts, lookup))
     }
     pipeline.push({ argv: args, stderr_to_stdout, stdout_to_null, })
+  }
+  if pipeline is [.., last] && (last.stderr_to_stdout || last.stdout_to_null) {
+    raise @diagnostic.Failure(
+      "redirection is not allowed in the final pipeline segment",
+    )
   }
   Pipeline(pipeline)
 }

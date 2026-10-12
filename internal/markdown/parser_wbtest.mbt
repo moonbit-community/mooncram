@@ -307,12 +307,12 @@ test "Unix environment names remain distinct across casing" {
 
 ///|
 test "redirection keeps source command text and located errors" {
-  let command = "$ ./a.mbtx arg\t>/dev/null 2>&1|./b.mbtx 2>&1"
+  let command = "$ ./a.mbtx arg\t>/dev/null 2>&1|./b.mbtx"
   let doc = parse_example(command + "\nresult\n")
   assert_eq(doc.cases[0].command, command)
   assert_eq(doc.cases[0].pipeline, [
     { argv: ["./a.mbtx", "arg"], stderr_to_stdout: true, stdout_to_null: true, },
-    { argv: ["./b.mbtx"], stderr_to_stdout: true, stdout_to_null: false, },
+    { argv: ["./b.mbtx"], stderr_to_stdout: false, stdout_to_null: false, },
   ])
   for
     invalid in [
@@ -325,5 +325,17 @@ test "redirection keeps source command text and located errors" {
       () => ignore(parse_example("$ " + invalid + "\n")),
       "example.md:2:",
     )
+  }
+}
+
+///|
+test "final redirection errors retain the document command position" {
+  for prefix in ["", "./a.mbtx|", "./a.mbtx|./b.mbtx|"] {
+    for suffix in ["2>&1", ">/dev/null", "2>&1 >/dev/null", ">/dev/null 2>&1"] {
+      assert_error_contains(
+        () => ignore(parse_example("$ " + prefix + "./c.mbtx " + suffix + "\n")),
+        "example.md:2: redirection is not allowed in the final pipeline segment",
+      )
+    }
   }
 }

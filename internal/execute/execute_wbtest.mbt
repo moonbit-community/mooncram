@@ -48,3 +48,48 @@ test "reserved statuses apply only to imports and report binding and segment" {
     check_import_status(Some(binding), 1, status)
   }
 }
+
+///|
+async test "manually redirected final segments fail before preflight" {
+  for command in ["./missing.mbtx", "./missing.mbtx|./missing.mbtx"] {
+    for
+      (stderr_to_stdout, stdout_to_null) in [
+        (true, false),
+        (false, true),
+        (true, true),
+      ] {
+      let case = @markdown.parse_document(
+          "test.md",
+          "```mooncram\n$ " + command + "\n```\n",
+        ).cases[0]
+      let last = case.pipeline.length() - 1
+      case.pipeline[last] = {
+        ..case.pipeline[last],
+        stderr_to_stdout,
+        stdout_to_null,
+      }
+      try
+        execute_case(
+          case,
+          ".",
+          module_context=None,
+          imports={},
+          warning=_ => (),
+          target="wasm",
+          timeout_ms=1000,
+        )
+      catch {
+        e =>
+          assert_eq(
+            @diagnostic.error_text(e),
+            "redirection is not allowed in the final pipeline segment",
+          )
+      } noraise {
+        _ =>
+          fail(
+            "expected final redirection to fail before looking up missing scripts",
+          )
+      }
+    }
+  }
+}
