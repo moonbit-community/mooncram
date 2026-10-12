@@ -1,6 +1,8 @@
 ///|
 fn valid_alias(name : String) -> Bool {
-  if name.is_empty() || name == "export" {
+  if name.is_empty() ||
+    name == "export" ||
+    name == "set-current-working-directory" {
     return false
   }
   for i, c in name {

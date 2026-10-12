@@ -1,6 +1,7 @@
 ///|
 pub struct Case {
   module_name : String?
+  working_directory : WorkingDirectoryDeclaration?
   command : String
   pipeline : Array[@command.PipelineSegment]
   extra_env : Map[String, String]
@@ -20,8 +21,21 @@ pub struct Document {
   source : String
   cases : Array[Case]
   module_declarations : Array[(String, Int)]
+  working_directory_declarations : Array[WorkingDirectoryDeclaration]
   imports : Map[String, ToolImport]
 }
+
+///|
+pub struct WorkingDirectoryDeclaration {
+  directory : String
+  line : Int
+} derive(Debug, Eq)
+
+///|
+pub extend WorkingDirectoryDeclaration with @debug.Debug::{to_repr}
+
+///|
+pub extend WorkingDirectoryDeclaration with Eq::{equal, not_equal}
 
 ///|
 pub struct ToolImport {

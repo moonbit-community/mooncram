@@ -16,6 +16,7 @@ pub extend PipelineSegment with Eq::{equal, not_equal}
 pub(all) enum Command {
   Pipeline(Array[PipelineSegment])
   Export(name~ : String, value~ : String)
+  SetCurrentWorkingDirectory(directory~ : String)
 } derive(Debug, Eq)
 
 ///|
@@ -80,7 +81,7 @@ fn expand(
 }
 
 ///|
-/// Parse a pipeline or a single environment assignment without invoking a shell.
+/// Parse a pipeline, environment assignment or working directory configuration.
 /// Only unescaped ${NAME} outside single quotes expands, once, without splitting.
 /// References require lookup; by default all variables are undefined.
 /// Output redirection is allowed only before the final pipeline segment.
@@ -128,6 +129,30 @@ pub fn parse(
       raise @diagnostic.Failure(
         "expected a local .mbtx file or executable package path",
       )
+    }
+    if executable == "set-current-working-directory" {
+      if stderr_to_stdout || stdout_to_null {
+        raise @diagnostic.Failure(
+          "set-current-working-directory does not accept redirection",
+        )
+      }
+      if words.length() != 1 {
+        raise @diagnostic.Failure(
+          "set-current-working-directory is not allowed in a pipeline",
+        )
+      }
+      if segment.length() != 2 {
+        raise @diagnostic.Failure(
+          "set-current-working-directory requires exactly one nonempty directory argument",
+        )
+      }
+      let directory = expand(segment[1], lookup)
+      if directory.is_empty() {
+        raise @diagnostic.Failure(
+          "set-current-working-directory requires exactly one nonempty directory argument",
+        )
+      }
+      return SetCurrentWorkingDirectory(directory~)
     }
     if executable == "export" {
       if stderr_to_stdout || stdout_to_null {

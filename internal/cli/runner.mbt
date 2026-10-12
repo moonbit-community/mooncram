@@ -15,6 +15,9 @@ async fn run_cli(cli : Cli) -> Int {
       let module_context = @execute.validate_document_modules(
         document, startup_cwd,
       )
+      let working_directories = @execute.validate_document_working_directories(
+        document,
+      )
       let cwd = @path.Path(file).dirname().to_string()
       let edits = []
       let mut document_error = false
@@ -23,7 +26,10 @@ async fn run_cli(cli : Cli) -> Int {
         try {
           let actual = @execute.execute_case(
             case,
-            cwd,
+            match case.working_directory {
+              Some(declaration) => working_directories[declaration.line]
+              None => cwd
+            },
             module_context~,
             imports=document.imports,
             warning=message => {

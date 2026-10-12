@@ -84,6 +84,7 @@ fn parse_document_with_env(
   let lines = source_lines(source)
   let cases = []
   let module_declarations = []
+  let working_directory_declarations = []
   let extra_env : Map[String, String] = Map([])
   for block in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
@@ -115,6 +116,8 @@ fn parse_document_with_env(
     }
     let code = block.v.code.to_array()
     let mut has_command = false
+    let mut has_test_command = false
+    let mut working_directory : WorkingDirectoryDeclaration? = None
     let mut i = 0
     while i < code.length() {
       let node = code[i]
@@ -151,6 +154,29 @@ fn parse_document_with_env(
         end -= 1
       }
       let pipeline = match command {
+        SetCurrentWorkingDirectory(directory~) => {
+          if working_directory is Some(_) {
+            raise @diagnostic.located(
+              path, line, "duplicate set-current-working-directory in this block",
+            )
+          }
+          if has_test_command {
+            raise @diagnostic.located(
+              path, line, "set-current-working-directory must precede the first test command in this block",
+            )
+          }
+          if end != i + 1 {
+            let @cmark_base.LinePos(output_line, _) = code[i + 1].meta.loc.first_line
+            raise @diagnostic.located(
+              path, output_line, "set-current-working-directory does not accept expected output or an exit code",
+            )
+          }
+          let declaration = { directory, line, }
+          working_directory = Some(declaration)
+          working_directory_declarations.push(declaration)
+          i = next
+          continue
+        }
         Export(name~, value~) => {
           if end != i + 1 {
             let @cmark_base.LinePos(output_line, _) = code[i + 1].meta.loc.first_line
@@ -164,6 +190,7 @@ fn parse_document_with_env(
         }
         Pipeline(pipeline) => pipeline
       }
+      has_test_command = true
       let expected = @output.parse_expectation(code[i + 1:end], path)
       let command_line = lines[line - 1]
       let output_layout = code[i + 1:end].map(node => {
@@ -182,6 +209,7 @@ fn parse_document_with_env(
       }
       cases.push({
         module_name,
+        working_directory,
         command: node.v,
         pipeline,
         extra_env: extra_env.copy(),
@@ -199,7 +227,14 @@ fn parse_document_with_env(
       raise @diagnostic.located(path, open_line, "empty mooncram block")
     }
   }
-  { path, source, cases, module_declarations, imports, }
+  {
+    path,
+    source,
+    cases,
+    module_declarations,
+    working_directory_declarations,
+    imports,
+  }
 }
 
 ///|
