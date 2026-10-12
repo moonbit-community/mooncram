@@ -99,7 +99,7 @@ the exact trailing redirection markers below. Quote or escape these characters
 to pass them as ordinary arguments.
 
 Any nonfinal segment can end with `2>&1` to merge stderr into its output pipe,
-or `>/dev/null` to discard its original stdout.
+or `1>/dev/null` to discard its original stdout.
 Combining both markers in either order discards original stdout and sends only
 stderr to the next segment. The final segment, including a single command,
 cannot use either marker or their combination: its stdout and stderr are captured
@@ -109,8 +109,8 @@ internal whitespace and may touch the following `|`. Each kind may occur once,
 and ordinary arguments cannot follow a marker. Fully quoted markers, correctly
 escaped markers, and marker text produced by variable expansion remain ordinary
 arguments. To pass literal `2>&1`, quote it or use `2\>\&1` to escape both special
-characters; literal `>/dev/null` can use `\>/dev/null`. The old `stdout>/null` and
-`stderr>/stdout` syntax, other redirection forms, and redirection on `export` are
+characters; literal `1>/dev/null` can use `1\>/dev/null`. The old `>/dev/null`,
+`stdout>/null` and `stderr>/stdout` syntax, other redirection forms, and redirection on `export` are
 parsing errors with file and line numbers.
 
 `$ set-current-working-directory <dir>` configures the current block. It accepts

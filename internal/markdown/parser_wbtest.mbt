@@ -312,7 +312,7 @@ test "Unix environment names remain distinct across casing" {
 
 ///|
 test "redirection keeps source command text and located errors" {
-  let command = "$ ./a.mbtx arg\t>/dev/null 2>&1|./b.mbtx"
+  let command = "$ ./a.mbtx arg\t1>/dev/null 2>&1|./b.mbtx"
   let doc = parse_example(command + "\nresult\n")
   assert_eq(doc.cases[0].command, command)
   assert_eq(doc.cases[0].pipeline, [
@@ -331,9 +331,9 @@ test "redirection keeps source command text and located errors" {
   ])
   for
     invalid in [
-      "2>&1", ">/dev/null", "./a.mbtx >/dev/null >/dev/null", "./a.mbtx 2>&1 2>&1",
-      "./a.mbtx 2> &1", "./a.mbtx > /dev/null", "./a.mbtx2>&1", "./a.mbtx>/dev/null",
-      "./a.mbtx 2>&1 arg", "export A=x >/dev/null", "export A=x 2>&1", "./a.mbtx stderr>/stdout",
+      "2>&1", "1>/dev/null", "./a.mbtx 1>/dev/null 1>/dev/null", "./a.mbtx 2>&1 2>&1",
+      "./a.mbtx 2> &1", "./a.mbtx 1> /dev/null", "./a.mbtx2>&1", "./a.mbtx1>/dev/null",
+      "./a.mbtx 2>&1 arg", "export A=x 1>/dev/null", "export A=x 2>&1", "./a.mbtx stderr>/stdout",
       "./a.mbtx stdout>/null",
     ] {
     assert_error_contains(
@@ -346,7 +346,8 @@ test "redirection keeps source command text and located errors" {
 ///|
 test "final redirection errors retain the document command position" {
   for prefix in ["", "./a.mbtx|", "./a.mbtx|./b.mbtx|"] {
-    for suffix in ["2>&1", ">/dev/null", "2>&1 >/dev/null", ">/dev/null 2>&1"] {
+    for
+      suffix in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null", "1>/dev/null 2>&1"] {
       assert_error_contains(
         () => ignore(parse_example("$ " + prefix + "./c.mbtx " + suffix + "\n")),
         "example.md:2: redirection is not allowed in the final pipeline segment",

@@ -219,9 +219,9 @@ test "redirection routes nonfinal segments and rejects final segments" {
   for
     (suffix, stderr_to_stdout, stdout_to_null) in [
       ("2>&1", true, false),
-      (">/dev/null", false, true),
-      ("2>&1 >/dev/null", true, true),
-      (">/dev/null 2>&1", true, true),
+      ("1>/dev/null", false, true),
+      ("2>&1 1>/dev/null", true, true),
+      ("1>/dev/null 2>&1", true, true),
     ] {
     for count in [1, 2, 3] {
       for position in 0..<count {
@@ -254,7 +254,7 @@ test "redirection routes nonfinal segments and rejects final segments" {
 
 ///|
 test "quoted escaped and expanded markers remain ordinary arguments" {
-  for marker in ["2>&1", ">/dev/null"] {
+  for marker in ["2>&1", "1>/dev/null"] {
     for
       literal in [
         "'" + marker + "'",
@@ -294,13 +294,13 @@ test "quoted escaped and expanded markers remain ordinary arguments" {
 
 ///|
 test "redirection rejects missing commands duplicates trailing args and exports" {
-  for command in ["2>&1", ">/dev/null", "2>&1 >/dev/null", "./a.mbtx|2>&1"] {
+  for command in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null", "./a.mbtx|2>&1"] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
       "empty pipeline segment",
     )
   }
-  for marker in ["2>&1", ">/dev/null"] {
+  for marker in ["2>&1", "1>/dev/null"] {
     assert_error_contains(
       () => ignore(@command.parse("./a.mbtx " + marker + " " + marker)),
       "duplicate " + marker + " redirection",
@@ -319,12 +319,12 @@ test "redirection rejects missing commands duplicates trailing args and exports"
     )
   }
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx 2>&1 >/dev/null 2>&1")),
+    () => ignore(@command.parse("./a.mbtx 2>&1 1>/dev/null 2>&1")),
     "duplicate 2>&1 redirection",
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx >/dev/null 2>&1 >/dev/null")),
-    "duplicate >/dev/null redirection",
+    () => ignore(@command.parse("./a.mbtx 1>/dev/null 2>&1 1>/dev/null")),
+    "duplicate 1>/dev/null redirection",
   )
 }
 
@@ -332,13 +332,13 @@ test "redirection rejects missing commands duplicates trailing args and exports"
 test "redirection requires exact raw tokens and whitespace boundaries" {
   for
     invalid in [
-      "arg2>&1", "arg>/dev/null", "2 >&1", "2> &1", "2>& 1", "2>\t&1", "2>&\t1",
-      "> /dev/null", ">\t/dev/null", "2>&1>/dev/null", ">/dev/null2>&1", "2>&1'arg'",
-      ">/dev/null\"\"", "2>&1/file", ">/dev/null/file", "2\\>&1", "2>\\&1", "'2'>&1",
-      ">/'dev/null'", "2>&${FD}", ">/dev/${NULL}", "stderr>/stdout", "stdout>/null",
+      "arg2>&1", "arg1>/dev/null", "2 >&1", "2> &1", "2>& 1", "2>\t&1", "2>&\t1",
+      "1> /dev/null", "1>\t/dev/null", "2>&11>/dev/null", "1>/dev/null2>&1", "2>&1'arg'",
+      "1>/dev/null\"\"", "2>&1/file", "1>/dev/null/file", "2\\>&1", "2>\\&1", "'2'>&1",
+      "1>/'dev/null'", "2>&${FD}", "1>/dev/${NULL}", "stderr>/stdout", "stdout>/null",
       "stderr >/stdout", "stderr> /stdout", "stderr>stdout", "stdout>null", "stderr>/null",
       "stdout>/stdout", ">/null", "stderr>>/stdout", "'stderr'>/stdout", "stdout>/'null'",
-      "stderr>/std${SUFFIX}",
+      "stderr>/std${SUFFIX}", ">/dev/null", "2>/dev/null", "'1'>/dev/null",
     ] {
     assert_error_contains(
       () => ignore(@command.parse("./a.mbtx " + invalid)),
@@ -350,7 +350,7 @@ test "redirection requires exact raw tokens and whitespace boundaries" {
     "shell operator",
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx>/dev/null")),
+    () => ignore(@command.parse("./a.mbtx1>/dev/null")),
     "shell operator",
   )
 }
@@ -401,7 +401,7 @@ test "working directory takes one nonempty expanded argument with normal quoting
       "is not allowed in a pipeline",
     )
   }
-  for marker in ["2>&1", ">/dev/null", "2>&1 >/dev/null"] {
+  for marker in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null"] {
     assert_error_contains(
       () => {
         ignore(@command.parse("set-current-working-directory dir " + marker))

@@ -144,7 +144,7 @@ pub fn parse(
         }
         StdoutToNull => {
           if stdout_to_null {
-            raise @diagnostic.Failure("duplicate >/dev/null redirection")
+            raise @diagnostic.Failure("duplicate 1>/dev/null redirection")
           }
           stdout_to_null = true
         }
@@ -282,7 +282,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
           args.push(StderrToStdout)
           continue end
         }
-        ">/dev/null" => {
+        "1>/dev/null" => {
           args.push(StdoutToNull)
           continue end
         }
