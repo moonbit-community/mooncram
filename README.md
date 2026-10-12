@@ -36,8 +36,9 @@ With no paths, scan the current directory. Directories are searched recursively
 for `.md` files. Directory traversal skips names starting with `.` on every
 platform, entries with the Windows hidden attribute, `_build`, and `target`.
 Directory symlinks are never traversed. File symlinks are resolved and duplicate
-files are run once. Files run in sorted canonical path order, and cases run in
-document order. Commands share filesystem side effects and run serially.
+files are run once. Files run in sorted canonical path order, and cases run
+serially in document order. Segments of the same pipeline run concurrently.
+Filesystem side effects remain visible to later cases.
 
 Exit status:
 
@@ -92,6 +93,9 @@ literal; outside them a backslash quotes the next character. Quoted empty
 arguments are preserved. `${NAME}` expands in unquoted or double-quoted
 arguments; single quotes and escaped dollar signs preserve it literally. `$NAME`
 is literal. There is no glob or tilde expansion or command substitution.
+The underlying command parser rejects NUL, CR and LF. Raw NUL characters in
+Markdown are first replaced by cmark with `U+FFFD` (`�`), so they do not trigger
+the NUL check.
 Unquoted, unescaped `|` separates pipeline segments, with or
 without surrounding spaces. Empty segments (including `||`) are errors.
 Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors, except for
@@ -159,6 +163,9 @@ are recognized, with an unquoted, unescaped name and `=`; names use the same
 `[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting,
 escaping and expansion rules, including empty values and additional `=`.
 Assignments after the executable are ordinary arguments.
+Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
+as temporary assignments. They are ordinary words and can select the executable
+when they are the first word after any temporary assignments.
 
 Temporary values override document exports and the parent environment. Assignments
 expand from left to right, then arguments expand using the resulting environment:
@@ -171,7 +178,7 @@ Assignments without a command, or temporary prefixes on `export` or
 
 After any temporary assignments, the first word selects the segment's executable
 and cannot contain an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
-Undefined variables, invalid or unclosed references, invalid assignments, and
+Undefined variables, invalid or unclosed references, invalid `export` assignments, and
 `export` in a pipeline are parsing errors with file and line numbers. Exports
 have no expected output or exit code and do not count as cases. Export-only
 blocks are valid; a run with no actual cases still reports an error. Exports
