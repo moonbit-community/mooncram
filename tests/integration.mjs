@@ -68,16 +68,16 @@ const INVALID_CLI_ARGUMENTS = [
 ];
 const UPDATE_ERROR_CASES = [
   { command: "bad", diagnostic: "build failed" },
-  { command: "bad >/dev/null 2>&1", diagnostic: "build failed" },
-  { command: "./bad.mbtx 2>&1 >/dev/null", diagnostic: "build failed" },
+  { command: `bad >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
+  { command: `./bad.mbtx 2>&1 >/dev/null | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
   { command: "./bad.mbtx", diagnostic: "build failed" },
   { command: "library" },
   { command: "./missing.mbtx" },
   { command: `${quoteArgument(process.execPath)} hello` },
   { command: `${LOCAL_PACKAGE} invalid-utf8` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr 2>&1` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null 2>&1` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr 2>&1 | ${LOCAL_PACKAGE} echo` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null | ${LOCAL_PACKAGE} echo` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo` },
   { command: `${LOCAL_PACKAGE} hello | bad`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./bad.mbtx`, diagnostic: "build failed" },
   { command: `${LOCAL_PACKAGE} hello | ./missing.mbtx` },
@@ -443,11 +443,11 @@ async function testImports({ executable, docs, project, directory, target }) {
     block(`$ remote hello|${LOCAL_PACKAGE} echo|Remote echo\nHello, Moon Bit!\n`),
     block(`$ ${LOCAL_PACKAGE} hello|remote echo\nHello, Moon Bit!\n`),
     block(`$ remote streams >/dev/null 2>&1|${LOCAL_PACKAGE} echo\ntwo\n[2]\n`),
-    block("$ remote streams 2>&1\none\ntwo\nthree\n[2]\n", ""),
+    block(`$ remote streams 2>&1|Remote echo\none\ntwo\nthree\n[2]\n`, ""),
     block(`$ remote streams|${LOCAL_PACKAGE} relay middle|Remote relay-tail last\n` +
       "@STDOUT\none\nthree\n@STDERR\ntwo\nmiddle\nlast (no-eol)\n[2]\n"),
     block("$ remote dual-tail\n@STDERR\nerr (no-eol)\n@STDOUT\nout (no-eol)\n", ""),
-    block("$ remote streams >/dev/null 2>&1\n@STDOUT\ntwo\n@STDERR (empty)\n[2]\n", ""),
+    block(`$ remote streams >/dev/null 2>&1|Remote echo\n@STDOUT\ntwo\n@STDERR (empty)\n[2]\n`, ""),
     block("$ remote status 3\n[3]\n$ remote status 3|Remote hello\nHello, Moon Bit!\n[3]\n", ""),
     block(`$ ${LOCAL_PACKAGE} streams|remote echo\none\nthree\n[2]\n`),
     block("$ remote status 3 600|Remote status 2 0|remote status 0\n[2]\n", ""),
@@ -522,7 +522,7 @@ async function testImports({ executable, docs, project, directory, target }) {
   for (const [slowFirst, importedSlow] of [[true, true], [false, true], [true, false], [false, false]]) {
     const filename = `import-cancel-${slowFirst}-${importedSlow}.txt`;
     cancelled.push(filename);
-    const slow = `${importedSlow ? "Remote" : LOCAL_PACKAGE} slow ${filename} >/dev/null`;
+    const slow = `${importedSlow ? "Remote" : LOCAL_PACKAGE} slow ${filename}`;
     const fail = `remote reserved-after 255 ${filename}`;
     failures.push([slowFirst ? `${slow}|${fail}` : `${fail}|${slow}`, slowFirst ? 2 : 1, 255, filename]);
   }
@@ -534,7 +534,7 @@ async function testImports({ executable, docs, project, directory, target }) {
     for (const slowFirst of [true, false]) {
       const filename = `import-signal-${slowFirst}.txt`;
       cancelled.push(filename);
-      const slow = `Remote slow ${filename} >/dev/null`;
+      const slow = `Remote slow ${filename}`;
       const fail = `remote signal-after ${filename}`;
       failures.push([slowFirst ? `${slow}|${fail}` : `${fail}|${slow}`, slowFirst ? 2 : 1, -1, filename]);
     }
@@ -725,9 +725,9 @@ function testDualStreams({ cli, docs, target }) {
     [`${program} streams`, "@STDOUT\none\nthree\n@STDERR\ntwo\n[2]\n"],
     [`${program} dual-tail`, "@STDERR\nerr (no-eol)\n\n@STDOUT\nout (no-eol)\n"],
     [`${program} hello`, "@STDOUT\nHello,* (glob)\n@STDERR (empty)\n"],
-    [`${program} streams >/dev/null`, "@STDOUT (empty)\n@STDERR\ntwo\n[2]\n"],
-    [`${program} streams 2>&1`, "@STDOUT\none\ntwo\nthree\n@STDERR (empty)\n[2]\n"],
-    [`${program} streams >/dev/null 2>&1`, "@STDERR (empty)\n@STDOUT\ntwo\n[2]\n"],
+    [`${program} streams >/dev/null | ${LOCAL_PACKAGE} echo`, "@STDOUT (empty)\n@STDERR\ntwo\n[2]\n"],
+    [`${program} streams 2>&1 | ${LOCAL_PACKAGE} echo`, "@STDOUT\none\ntwo\nthree\n@STDERR (empty)\n[2]\n"],
+    [`${program} streams >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, "@STDERR (empty)\n@STDOUT\ntwo\n[2]\n"],
     [`${program} dual-special`, '@STDOUT\n"@STDERR (ignore)" (escaped)\n@STDERR\n"@STDOUT" (escaped)\n'],
     [`${program} large`, "@STDOUT (ignore)\n@STDERR\ne+ (regex)\n"],
   ]);
@@ -736,7 +736,7 @@ function testDualStreams({ cli, docs, target }) {
       "@STDOUT\none\nthree\n@STDERR\ntwo\nmiddle\nlast\n[2]\n"],
     [`${LOCAL_PACKAGE} hello|${SCRIPT_COMMAND} relay-tail middle|${LOCAL_PACKAGE} relay-tail last`,
       "@STDOUT\nHello, Moon Bit!\n@STDERR\nmiddlelast (no-eol)\n"],
-    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} relay middle|${LOCAL_PACKAGE} relay last >/dev/null 2>&1`,
+    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} relay middle|${LOCAL_PACKAGE} relay last >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`,
       "@STDOUT\nlast\n@STDERR\nmiddle\n[2]\n"],
     [`${LOCAL_PACKAGE} large`, "@STDOUT\no* (glob)\n@STDERR\ne* (glob)\n"],
   );
@@ -960,20 +960,20 @@ function testPipelines({ cli, docs, target }) {
 
 function testRedirections({ cli, docs, target }) {
   const cases = [
-    [`${LOCAL_PACKAGE} streams 2>&1`, "one\ntwo\nthree\n[2]\n"],
-    [`${SCRIPT_COMMAND} streams >/dev/null`, "[2]\n"],
-    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n"],
-    [`${SCRIPT_COMMAND} streams >/dev/null 2>&1`, "two\n[2]\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1 | ${LOCAL_PACKAGE} echo`, "one\ntwo\nthree\n[2]\n"],
+    [`${SCRIPT_COMMAND} streams >/dev/null | ${LOCAL_PACKAGE} echo`, "[2]\n"],
+    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null | ${LOCAL_PACKAGE} echo`, "two\n[2]\n"],
+    [`${SCRIPT_COMMAND} streams >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, "two\n[2]\n"],
     [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} echo`, "one\ntwo\nthree\n[2]\n"],
     [`${LOCAL_PACKAGE} hello | ${SCRIPT_COMMAND} relay middle 2>&1|${LOCAL_PACKAGE} echo`, "middle\nHello, Moon Bit!\n"],
-    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams 2>&1`, "one\ntwo\nthree\n[2]\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams 2>&1 | ${LOCAL_PACKAGE} echo`, "one\ntwo\nthree\n[2]\n"],
     [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n[2]\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle >/dev/null | ${SCRIPT_COMMAND} check-eof`, "EOF\n"],
-    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null`, "[2]\n"],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null | ${LOCAL_PACKAGE} echo`, "[2]\n"],
     [`${LOCAL_PACKAGE} streams >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo`, "two\n[2]\n"],
     [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} relay middle 2>&1 >/dev/null | ${SCRIPT_COMMAND} echo`, "middle\n"],
-    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null 2>&1`, "two\n[2]\n"],
-    [`${LOCAL_PACKAGE} invalid-utf8 >/dev/null`, ""],
+    [`${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} streams >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, "two\n[2]\n"],
+    [`${LOCAL_PACKAGE} invalid-utf8 >/dev/null | ${LOCAL_PACKAGE} echo`, ""],
     [`${SCRIPT_COMMAND} raw >/dev/null | ${LOCAL_PACKAGE} check-eof`, "EOF\n"],
     [`${LOCAL_PACKAGE} raw-stderr >/dev/null 2>&1 | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
     [`${SCRIPT_COMMAND} raw-stderr 2>&1 >/dev/null | ${LOCAL_PACKAGE} echo | ${LOCAL_PACKAGE} check-raw`, "raw bytes preserved\n"],
@@ -998,9 +998,9 @@ function testRedirections({ cli, docs, target }) {
   for (const [command, output, diagnostic] of [
     [`${LOCAL_PACKAGE} streams 2>&1 | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last`,
       "one\ntwo\nthree\n[2]\n", "middle\nlast\n"],
-    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last >/dev/null 2>&1`,
+    [`${LOCAL_PACKAGE} streams >/dev/null | ${SCRIPT_COMMAND} relay middle | ${LOCAL_PACKAGE} relay last >/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`,
       "last\n[2]\n", "two\nmiddle\n"],
-    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null`, "two\n[2]\n", ""],
+    [`${LOCAL_PACKAGE} streams 2>&1 >/dev/null | ${LOCAL_PACKAGE} echo`, "two\n[2]\n", ""],
   ]) {
     const document = writeDocument(docs, "redirect-diagnostic.md", block(`$ ${command}\nwrong\n`));
     const result = cli(["test", document, "--target", target], { expected: EXIT_CODE.FAILURE });
@@ -1010,7 +1010,7 @@ function testRedirections({ cli, docs, target }) {
     assert.equal(fs.readFileSync(document, "utf8"), block(`$ ${command}\n${output}`));
   }
 
-  const command = `$ ${SCRIPT_COMMAND} streams\t>/dev/null 2>&1|${LOCAL_PACKAGE} echo 2>&1`;
+  const command = `$ ${SCRIPT_COMMAND} streams\t>/dev/null 2>&1|${LOCAL_PACKAGE} echo`;
   const original = block(`${command}\nwrong\n`);
   const update = writeDocument(docs, "redirect-update.md", original);
   assert(cli(["update", update, "--target", target, "--dry-run"]).stdout.includes(command));
@@ -1031,6 +1031,28 @@ function testRedirections({ cli, docs, target }) {
     const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
     assert(result.stderr.includes("redirect-invalid.md:2:"));
     assert.equal(fs.readFileSync(document, "utf8"), original);
+  }
+}
+
+function testFinalRedirectionRejection({ cli, docs, target }) {
+  const sideEffect = join(docs, "side-effect.txt");
+  fs.rmSync(sideEffect, { force: true });
+  for (const prefix of ["", `${LOCAL_PACKAGE} hello|`, `${LOCAL_PACKAGE} hello|${SCRIPT_COMMAND} echo|`]) {
+    for (const suffix of ["2>&1", ">/dev/null", "2>&1 >/dev/null", ">/dev/null 2>&1"]) {
+      const command = prefix + `${LOCAL_PACKAGE} streams ` + suffix;
+      const original = block(
+        `$ ${LOCAL_PACKAGE} setup\n$ ${LOCAL_PACKAGE} hello\nwrong\n$ ` + command + "\n",
+      );
+      const document = writeDocument(docs, "final-redirect-invalid.md", original);
+      for (const args of [["test"], ["update"], ["update", "--dry-run"]]) {
+        const result = cli([...args, document, "--target", target], { expected: EXIT_CODE.ERROR });
+        assert(result.stderr.includes(
+          "final-redirect-invalid.md:5: redirection is not allowed in the final pipeline segment",
+        ), result.stderr);
+        assert.equal(fs.readFileSync(document, "utf8"), original);
+        assert(!fs.existsSync(sideEffect), "a document with invalid final redirection must not execute");
+      }
+    }
   }
 }
 
@@ -1069,9 +1091,11 @@ function testPipelineStartupFailure({ executable, docs, directory, project, pack
     "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
   ], { cwd: docs, env });
   for (const suffix of ["", " 2>&1", " >/dev/null", " >/dev/null 2>&1"]) {
+    const downstream = `${SCRIPT_COMMAND} echo` + suffix +
+      (suffix ? ` | ${LOCAL_PACKAGE} echo` : "");
     const original = block(
       `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
-      `$ ${LOCAL_PACKAGE} slow slow-spawn.txt >/dev/null 2>&1 | ${SCRIPT_COMMAND} echo${suffix}\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-spawn.txt >/dev/null 2>&1 | ${downstream}\n`,
     );
     const document = writeDocument(docs, "startup-error.md", original);
     const start = performance.now();
@@ -1091,9 +1115,11 @@ function testPipelineStartupFailure({ executable, docs, directory, project, pack
 
 function testPipelineCaptureFailure({ cli, docs, target }) {
   for (const suffix of ["", " 2>&1"]) {
+    const downstream = `${LOCAL_PACKAGE} invalid-stderr` + suffix +
+      (suffix ? ` | ${LOCAL_PACKAGE} echo` : "");
     const original = block(
       `$ ${LOCAL_PACKAGE} hello\nwrong\n\n` +
-      `$ ${LOCAL_PACKAGE} slow slow-capture.txt >/dev/null | ${LOCAL_PACKAGE} invalid-stderr${suffix}\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-capture.txt >/dev/null | ${downstream}\n`,
     );
     const document = writeDocument(docs, "capture-error.md", original);
     const start = performance.now();
@@ -1131,7 +1157,7 @@ function testTimeouts({ cli, docs }) {
       fs.rmSync(join(docs, `slow-${segment}.txt.started`), { force: true });
     }
     const pipeline = writeDocument(docs, "slow-pipeline.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt 2>&1 | ${LOCAL_PACKAGE} slow slow-middle.txt >/dev/null 2>&1 | ${LOCAL_PACKAGE} slow slow-last.txt >/dev/null\nwrong\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt 2>&1 | ${LOCAL_PACKAGE} slow slow-middle.txt >/dev/null 2>&1 | ${LOCAL_PACKAGE} slow slow-last.txt\nwrong\n`,
     ));
     const original = fs.readFileSync(pipeline);
     const pipelineStart = performance.now();
@@ -1148,7 +1174,7 @@ function testTimeouts({ cli, docs }) {
     // Even when the final segment has exited, upstream processes must be
     // awaited and cancelled when the shared deadline expires.
     const early = writeDocument(docs, "slow-upstream.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt >/dev/null | ${LOCAL_PACKAGE} slow slow-middle.txt 2>&1 | ${LOCAL_PACKAGE} hello >/dev/null\nHello, Moon Bit!\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt >/dev/null | ${LOCAL_PACKAGE} slow slow-middle.txt 2>&1 | ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`,
     ));
     assert(cli([
       "test", early, "--target", backend, "--timeout-ms", "1500",
@@ -1199,6 +1225,7 @@ async function exercise(target) {
     await testImports(context);
     testPipelines(context);
     testRedirections(context);
+    testFinalRedirectionRejection(context);
     testPipelinePreflight(context);
     testPipelineStartupFailure(context);
     testPipelineCaptureFailure(context);
