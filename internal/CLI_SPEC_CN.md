@@ -238,7 +238,7 @@ $ ./producer.mbtx|cmd/filter|./consumer.mbtx
 | --- | --- | --- |
 | 无 | 下一段 | 诊断 stderr |
 | `2>&1` | 下一段 | 同一输出管道 |
-| `>/dev/null` | 丢弃 | 诊断 stderr |
+| `1>/dev/null` | 丢弃 | 诊断 stderr |
 | 两者组合，任意顺序 | 丢弃 | 下一段 |
 
 标记内部不能有空格或制表符，与前面的命令、参数或其他标记之间必须有至少一个
@@ -248,12 +248,12 @@ $ ./producer.mbtx|cmd/filter|./consumer.mbtx
 
 分词阶段按原文中的精确标记分类，在变量展开之前完成。完整引用、正确转义的
 标记及变量展开产生的标记文本保持普通参数语义。字面量 `2>&1` 必须引用或写成
-`2\>\&1`，同时转义 `>` 和 `&`；字面量 `>/dev/null` 可以写成 `\>/dev/null`。
-旧写法 `stdout>/null` 和 `stderr>/stdout` 会被拒绝。不根据展开后的 argv 判断
+`2\>\&1`，同时转义 `>` 和 `&`；字面量 `1>/dev/null` 可以写成 `1\>/dev/null`。
+旧写法 `>/dev/null`、`stdout>/null` 和 `stderr>/stdout` 会被拒绝。不根据展开后的 argv 判断
 重定向。例如：
 
 ```text
-$ ./producer.mbtx >/dev/null 2>&1|cmd/filter
+$ ./producer.mbtx 1>/dev/null 2>&1|cmd/filter
 ```
 
 `$ set-current-working-directory <dir>` 设置当前块的工作目录，恰好接受一个非空参数，
@@ -387,7 +387,7 @@ mooncram 按段顺序为每个用例的所有本地段请求构建，是否复�
 拼接时不添加分隔字节。无标记用例不匹配 stderr；双流模式通过 `@STDERR` 断言其内容。
 `2>&1` 将 stderr 与路由后的 stdout 连到同一根系统管道，
 保留管道写入顺序，不再收集到诊断；两种标记同时出现时，仅原 stderr 使用输出
-管道。`>/dev/null` 使用固定 8 KiB 字节缓冲区并发排空原 stdout，不累积或解码。
+管道。`1>/dev/null` 使用固定 8 KiB 字节缓冲区并发排空原 stdout，不累积或解码。
 两条流都不使用输出管道时，立即关闭其未使用的写端，让下游读到 EOF。
 构建进程始终使用默认路由。
 所有捕获流都必须能够成功解码。管道默认采用 pipefail：等待所有段结束后，

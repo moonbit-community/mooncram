@@ -277,7 +277,7 @@ stderr are always captured separately.
 | --- | --- | --- |
 | None | Next segment | Diagnostic stderr |
 | `2>&1` | Next segment | Same output pipe |
-| `>/dev/null` | Discarded | Diagnostic stderr |
+| `1>/dev/null` | Discarded | Diagnostic stderr |
 | Both, in either order | Discarded | Next segment |
 
 Markers contain no spaces or tabs and require at least one space or tab between
@@ -290,12 +290,12 @@ parsing errors, retaining the document filename and command line number.
 Classification uses exact raw tokens during tokenization, before variable
 expansion. Fully quoted or correctly escaped markers and marker text produced by
 expansion remain ordinary arguments. Literal `2>&1` requires quoting or `2\>\&1`,
-escaping both `>` and `&`; literal `>/dev/null` can use `\>/dev/null`. The old
-`stdout>/null` and `stderr>/stdout` syntax is rejected. Expanded argv is never
-checked for redirection syntax. For example:
+escaping both `>` and `&`; literal `1>/dev/null` can use `1\>/dev/null`. The old
+`>/dev/null`, `stdout>/null` and `stderr>/stdout` syntax is rejected. Expanded
+argv is never checked for redirection syntax. For example:
 
 ```text
-$ ./producer.mbtx >/dev/null 2>&1|cmd/filter
+$ ./producer.mbtx 1>/dev/null 2>&1|cmd/filter
 ```
 
 `$ set-current-working-directory <dir>` declares one working directory for the
@@ -470,7 +470,7 @@ segment order without added separator bytes for mismatch diagnostics and paired
 `@STDERR` assertions. Unmarked cases do not match stderr.
 `2>&1` sends stderr to the same OS pipe as routed stdout, preserving
 pipe write order, and excludes it from diagnostic collection. When both markers
-are present, only original stderr uses the output pipe. `>/dev/null` drains
+are present, only original stderr uses the output pipe. `1>/dev/null` drains
 original stdout concurrently with a fixed 8 KiB byte buffer, without accumulating
 or decoding it. If neither stream uses the output pipe, its unused write end is
 closed immediately so downstream can observe EOF. Build

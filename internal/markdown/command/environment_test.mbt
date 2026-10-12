@@ -80,7 +80,7 @@ test "quoted escaped expanded and invalid names are ordinary words" {
 ///|
 test "temporary assignments stay within one pipeline segment and retain routes" {
   let pipeline = segments(
-    "A=first ./a.mbtx ${A} >/dev/null 2>&1|A=${A}-second ./b.mbtx ${A}|./c.mbtx ${A}",
+    "A=first ./a.mbtx ${A} 1>/dev/null 2>&1|A=${A}-second ./b.mbtx ${A}|./c.mbtx ${A}",
     lookup=_ => Some("parent"),
   )
   assert_eq(pipeline.map(segment => segment.argv), [
@@ -154,14 +154,14 @@ test "temporary assignment errors and actual executable expansion are rejected" 
     assert_error_contains(() => ignore(segments(command)), "undefined variable")
   }
   assert_eq(segments("A=x '${A}'")[0].argv, ["${A}"])
-  for command in ["A=x ./a.mbtx >/dev/null", "A=x ./a.mbtx 2>&1"] {
+  for command in ["A=x ./a.mbtx 1>/dev/null", "A=x ./a.mbtx 2>&1"] {
     assert_error_contains(
       () => ignore(segments(command)),
       "final pipeline segment",
     )
   }
   assert_error_contains(
-    () => ignore(segments("A=x ./a.mbtx >/dev/null B=y|./b.mbtx")),
+    () => ignore(segments("A=x ./a.mbtx 1>/dev/null B=y|./b.mbtx")),
     "ordinary arguments cannot follow redirection",
   )
 }
