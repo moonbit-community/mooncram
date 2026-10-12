@@ -1114,6 +1114,9 @@ function testPipelineStartupFailure({ executable, docs, directory, project, pack
 }
 
 function testPipelineCaptureFailure({ cli, docs, target }) {
+  // Warm the package with the same build environment before timing cancellation.
+  const warm = writeDocument(docs, "capture-warm.md", block(`$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`));
+  cli(["test", warm, "--target", target]);
   for (const suffix of ["", " 2>&1"]) {
     const downstream = `${LOCAL_PACKAGE} invalid-stderr` + suffix +
       (suffix ? ` | ${LOCAL_PACKAGE} echo` : "");
@@ -1124,7 +1127,10 @@ function testPipelineCaptureFailure({ cli, docs, target }) {
     const document = writeDocument(docs, "capture-error.md", original);
     const start = performance.now();
     const result = cli(["update", document, "--target", target], { expected: EXIT_CODE.ERROR });
-    assert(performance.now() - start < CANCELLATION_LIMIT_MS);
+    const elapsed = performance.now() - start;
+    const diagnostic = `${target}: pipeline capture failure with suffix ${JSON.stringify(suffix)} took ${elapsed.toFixed(0)} ms` +
+      `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
+    assert(elapsed < CANCELLATION_LIMIT_MS, diagnostic);
     assert(result.stderr.includes("Not updating"));
     assert.equal(fs.readFileSync(document, "utf8"), original);
   }
