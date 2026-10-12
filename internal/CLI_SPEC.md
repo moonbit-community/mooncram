@@ -116,7 +116,8 @@ Documents run in sorted canonical-path order, independently of argument order.
 Cases run serially in document order. Filesystem side effects from earlier
 cases remain visible to later cases. Each process starts in the block's working
 directory (the canonical document's parent by default) and inherits mooncram's
-environment, overridden by the exports in effect for that case.
+environment, overridden by the exports in effect for that case and then by the
+segment's temporary assignments.
 
 A document without cases is allowed when other documents contain cases. If
 there are no attempted cases and no recorded errors, the CLI reports
@@ -227,11 +228,17 @@ It is not passed to a shell. The command parser returns
 `Command::Export(name~ : String, value~ : String)`, or
 `Command::SetCurrentWorkingDirectory(directory~ : String)`, with `Debug` and `Eq`.
 Its optional `lookup` callback resolves variables; without it references are
-undefined. Returned arguments, assignment values and directory names have
-already been expanded.
-`PipelineSegment` has `argv : Array[String]`, `stderr_to_stdout : Bool`, and
-`stdout_to_null : Bool`, with `Debug` and `Eq`. Both flags default to `false`
-when their markers are absent; `Case.pipeline` stores these segments.
+undefined. Optional `case_insensitive : Bool = false` normalizes temporary
+assignment names and reference lookup keys to ASCII uppercase when enabled; the
+document parser enables it on Windows. Returned arguments, assignment values and
+directory names have already been expanded.
+`PipelineSegment` has `argv : Array[String]`, `extra_env : Map[String, String]`,
+`stderr_to_stdout : Bool`, and `stdout_to_null : Bool`, with `Debug` and `Eq`.
+Both flags default to `false`
+when their markers are absent; `Case.pipeline` stores these segments. Segment
+`extra_env` contains only temporary assignments, while `Case.extra_env` retains
+the document export snapshot. The executor copies that snapshot and overlays
+each segment's temporary values for both its build and run.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -354,8 +361,25 @@ remain arguments; `prefix${NAME}suffix` concatenates into one argument. Undefine
 variables and invalid or unclosed references are document parsing errors, with
 file and source line numbers. The whole document must parse before any case runs.
 
-The first word of every pipeline segment cannot contain an expandable `${NAME}`;
-this is a parsing error even if the variable is defined. Single-quoted or escaped
+`$ NAME=value OTHER="${NAME}" command` sets temporary variables for one
+pipeline segment and its build. Only consecutive assignments before the executable
+are recognized, with an unquoted, unescaped name and `=`; names use the same
+`[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting,
+escaping and expansion rules, including empty values and additional `=`.
+Assignments after the executable are ordinary arguments.
+
+Temporary values override document exports and the parent environment. Assignments
+expand from left to right, then arguments expand using the resulting environment:
+`A=new B="${A}" command "${B}"` passes `new`. Self-reference reads the value before
+that assignment; repeated names keep the last value. Each pipeline segment has
+its own temporary environment, and later commands retain the document environment.
+Windows names remain case-insensitive; Linux and macOS names remain case-sensitive.
+Assignments without a command, or temporary prefixes on `export` or
+`set-current-working-directory`, are parsing errors.
+
+After any temporary assignments, the first word selects the segment's executable
+and cannot contain an expandable `${NAME}`. This is a parsing error even if the
+variable is defined. Single-quoted or escaped
 references may appear literally in executable paths. File paths passed as ordinary
 arguments follow the normal expansion rules.
 
@@ -459,7 +483,9 @@ cases. Reserved imported statuses follow the error rules below. There is no
 configured output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
-override names using the case's export snapshot. Their working directory is the
+override names using the case's export snapshot, then that segment's temporary
+assignments. The same merged environment is used for its build and execution,
+including script preflight and imported moonx tools. Their working directory is the
 validated block directory, or the canonical document's parent by default.
 Build processes and the first pipeline segment receive immediate EOF on stdin rather than
 mooncram's interactive input. Later segments receive the preceding routed output.
