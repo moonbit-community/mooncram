@@ -8,6 +8,13 @@ pub async fn execute_case(
   target~ : String,
   timeout_ms~ : Int,
 ) -> @output.Captured {
+  // Validate before preflight builds, including manually constructed cases.
+  if case.pipeline is [.., last] &&
+    (last.stderr_to_stdout || last.stdout_to_null) {
+    raise @diagnostic.Failure(
+      "redirection is not allowed in the final pipeline segment",
+    )
+  }
   @async.with_timeout(
     timeout_ms,
     () => {

@@ -210,7 +210,7 @@ test "every executable path rejects expansion but accepts protected references" 
 }
 
 ///|
-test "redirection routes every segment and combinations ignore order" {
+test "redirection routes nonfinal segments and rejects final segments" {
   for
     (suffix, stderr_to_stdout, stdout_to_null) in [
       ("2>&1", true, false),
@@ -218,7 +218,7 @@ test "redirection routes every segment and combinations ignore order" {
       ("2>&1 >/dev/null", true, true),
       (">/dev/null 2>&1", true, true),
     ] {
-    for count in [1, 3] {
+    for count in [1, 2, 3] {
       for position in 0..<count {
         for whitespace in [" ", "\t", " \t "] {
           let commands = Array::make(count, "./a.mbtx arg")
@@ -229,10 +229,17 @@ test "redirection routes every segment and combinations ignore order" {
             stdout_to_null: i == position && stdout_to_null,
           })
           // A marker can touch the following pipe, but requires preceding space.
-          assert_eq(
-            @command.parse(commands.join("|")),
-            @command.Pipeline(expected),
-          )
+          if position == count - 1 {
+            assert_error_contains(
+              () => ignore(@command.parse(commands.join("|"))),
+              "redirection is not allowed in the final pipeline segment",
+            )
+          } else {
+            assert_eq(
+              @command.parse(commands.join("|")),
+              @command.Pipeline(expected),
+            )
+          }
         }
       }
     }
@@ -261,13 +268,14 @@ test "quoted escaped and expanded markers remain ordinary arguments" {
     )
   }
   assert_eq(
-    @command.parse("./a.mbtx '${MARKER}' \\${MARKER} 2>&1"),
+    @command.parse("./a.mbtx '${MARKER}' \\${MARKER} 2>&1|./b.mbtx"),
     @command.Pipeline([
       {
         argv: ["./a.mbtx", "${MARKER}", "${MARKER}"],
         stderr_to_stdout: true,
         stdout_to_null: false,
       },
+      { argv: ["./b.mbtx"], stderr_to_stdout: false, stdout_to_null: false, },
     ]),
   )
 }
