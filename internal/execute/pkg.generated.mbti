@@ -11,6 +11,8 @@ pub async fn execute_case(@markdown.Case, String, module_context~ : ModuleContex
 
 pub async fn validate_document_modules(@markdown.Document, String) -> ModuleContext?
 
+pub async fn validate_document_working_directories(@markdown.Document) -> Map[Int, String]
+
 // Errors
 
 // Types and methods

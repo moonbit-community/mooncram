@@ -15,6 +15,7 @@ pub fn parse_document(String, String) -> Document raise
 // Types and methods
 pub struct Case {
   module_name : String?
+  working_directory : WorkingDirectoryDeclaration?
   command : String
   pipeline : Array[@command.PipelineSegment]
   extra_env : Map[String, String]
@@ -32,6 +33,7 @@ pub struct Document {
   source : String
   cases : Array[Case]
   module_declarations : Array[(String, Int)]
+  working_directory_declarations : Array[WorkingDirectoryDeclaration]
   imports : Map[String, ToolImport]
 }
 
@@ -43,6 +45,14 @@ pub struct ToolImport {
 pub fn ToolImport::equal(Self, Self) -> Bool
 pub fn ToolImport::not_equal(Self, Self) -> Bool
 pub fn ToolImport::to_repr(Self) -> @debug.Repr
+
+pub struct WorkingDirectoryDeclaration {
+  directory : String
+  line : Int
+} derive(Eq, @debug.Debug)
+pub fn WorkingDirectoryDeclaration::equal(Self, Self) -> Bool
+pub fn WorkingDirectoryDeclaration::not_equal(Self, Self) -> Bool
+pub fn WorkingDirectoryDeclaration::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

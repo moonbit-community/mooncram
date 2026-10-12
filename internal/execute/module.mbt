@@ -44,7 +44,7 @@ fn config_json(
 }
 
 ///|
-/// Check every declaration before executing any case, including export-only fences.
+/// Check every declaration before executing any case, including configuration-only fences.
 pub async fn validate_document_modules(
   document : @markdown.Document,
   startup_cwd : String,
