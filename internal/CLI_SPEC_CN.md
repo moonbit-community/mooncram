@@ -101,7 +101,8 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 文件发现错误。
 
 文档按排序后的规范路径依次执行，不受输入参数排列顺序影响。用例按文档顺序
-串行执行。先前用例对文件系统的修改对后续用例可见；每个进程在块的工作目录
+串行执行，同一管道的各段并发执行。先前用例对文件系统的修改对后续用例可见；
+每个进程在块的工作目录
 启动（默认为规范文档的父目录），继承 mooncram 的环境，先覆盖该用例生效的 export 变量，
 再覆盖该段的临时变量。
 
@@ -216,7 +217,8 @@ $ moongrep --version
 | 单引号之外且 `$` 未转义的 `${NAME}` | 展开环境变量；结果不重新分词或递归展开。 |
 
 反斜杠不解释 C 或 JSON 转义序列：单引号之外的 `\n` 表示 `n`，不是换行符。
-末尾反斜杠、未闭合引号，以及命令中的 NUL、CR 或 LF 都会导致解析错误。
+末尾反斜杠或未闭合引号会导致解析错误。底层命令解析器拒绝 NUL、CR 和 LF。
+Markdown 中的原始 NUL 会先被 cmark 替换为 `U+FFFD`（`�`），因此不会触发 NUL 检查。
 
 空管道段（包括开头或结尾的 `|`、`||`）会导致解析错误。引号内或转义的 `|`
 是普通参数字符。例如支持：
@@ -306,6 +308,8 @@ Windows 下导出赋值、引用查询和后续覆盖均不区分变量名大小
 仅识别实际执行目标之前连续出现的赋值，变量名和 `=` 必须未引用、未转义；
 变量名沿用 `[A-Za-z_][A-Za-z0-9_]*`。值复用现有引号、转义和展开规则，
 可以为空或包含额外的 `=`。执行目标之后的赋值形式仍是普通参数。
+`9A=x`、`A-B=x` 等含非法变量名的词不会被识别为临时赋值，而会按普通词处理；
+若它们是跳过临时赋值后的首个词，就会被选为执行目标。
 
 临时值优先于文档级 export 和父进程环境。多个赋值从左到右展开，再使用最终环境
 展开参数：`A=new B="${A}" command "${B}"` 传入 `new`。自引用读取本次赋值之前的值，
@@ -717,7 +721,7 @@ Not updating <canonical-file>: execution errors in this document
 | 入口与参数 | [main.mbt](../main.mbt)、[cli/cli.mbt](cli/cli.mbt)、[cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
 | 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
-| Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt)、[execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |

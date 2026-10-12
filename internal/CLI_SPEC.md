@@ -113,8 +113,9 @@ with status `2`; already discovered files are not executed. Symlinks ending in
 `.md` whose targets cannot be inspected can also produce discovery errors.
 
 Documents run in sorted canonical-path order, independently of argument order.
-Cases run serially in document order. Filesystem side effects from earlier
-cases remain visible to later cases. Each process starts in the block's working
+Cases run serially in document order. Segments of the same pipeline run
+concurrently. Filesystem side effects from earlier cases remain visible to later
+cases. Each process starts in the block's working
 directory (the canonical document's parent by default) and inherits mooncram's
 environment, overridden by the exports in effect for that case and then by the
 segment's temporary assignments.
@@ -253,7 +254,9 @@ each segment's temporary values for both its build and run.
 
 Backslash does not interpret C/JSON escape sequences: `\n` contributes `n`,
 not a newline, unless the backslash is inside single quotes. A trailing
-backslash, an unclosed quote, or a NUL/CR/LF in a command is a parsing error.
+backslash or an unclosed quote is a parsing error. The underlying command parser
+rejects NUL, CR and LF. Raw NUL characters in Markdown are first replaced by cmark
+with `U+FFFD` (`�`), so they do not trigger the NUL check.
 
 Empty pipeline segments, including leading/trailing `|` and `||`, are parsing
 errors. Quoted or escaped `|` is an ordinary argument character. For example:
@@ -367,6 +370,9 @@ are recognized, with an unquoted, unescaped name and `=`; names use the same
 `[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting,
 escaping and expansion rules, including empty values and additional `=`.
 Assignments after the executable are ordinary arguments.
+Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
+as temporary assignments. They are ordinary words and can select the executable
+when they are the first word after any temporary assignments.
 
 Temporary values override document exports and the parent environment. Assignments
 expand from left to right, then arguments expand using the resulting environment:
@@ -852,7 +858,7 @@ expected exit statuses.
 | Entry point and arguments | [main.mbt](../main.mbt), [cli/cli.mbt](cli/cli.mbt), [cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
 | Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
-| Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command.mbt](markdown/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
+| Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt), [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
