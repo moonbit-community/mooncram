@@ -57,12 +57,14 @@ Other languages, tilde fences, and fences inside larger example fences are
 ignored. Tests inside block quotes and lists are supported. Empty or unclosed
 test fences are errors.
 
-Each `$ ` line starts a command. Except for `export`, each command starts a case.
+Each `$ ` line starts a command. Except for `export` and
+`set-current-working-directory`, each command starts a case.
 Plain `mooncram` fences support local `.mbtx` scripts and file import aliases.
 Declared fences also support
 executable packages in the module whose `moon.mod` is in mooncram's startup cwd.
 Every declaration must exactly match that module's `name`; all declarations,
-including export-only fences, are checked before any case in the document runs.
+including configuration-only fences, are checked before any case in the
+document runs.
 Local module declarations do not search parent directories or load registry modules.
 
 Packages are resolved below the module's `source` directory (the module root if
@@ -82,9 +84,9 @@ Local packages are built with `moon -C <module-root> run --build-only` and their
 artifact runs with `moonrun` for Wasm or directly for native. Build diagnostics
 are kept out of program output. Scripts are checked with a build-only invocation,
 then launched with `moonx`. `.mbtx` always uses Wasm regardless of `--target`.
-Script paths are relative to the Markdown directory and may also be absolute.
-Every program runs in the Markdown file's directory (the canonical file for
-symlinks), even when the module is elsewhere.
+Script paths are relative to the block's working directory and may also be absolute.
+By default, every program runs in the canonical Markdown file's directory,
+even when the module is elsewhere.
 Arguments use single/double quotes and backslash escaping. Single quotes are
 literal; outside them a backslash quotes the next character. Quoted empty
 arguments are preserved. `${NAME}` expands in unquoted or double-quoted
@@ -110,6 +112,34 @@ arguments. To pass literal `2>&1`, quote it or use `2\>\&1` to escape both speci
 characters; literal `>/dev/null` can use `\>/dev/null`. The old `stdout>/null` and
 `stderr>/stdout` syntax, other redirection forms, and redirection on `export` are
 parsing errors with file and line numbers.
+
+`$ set-current-working-directory <dir>` configures the current block. It accepts
+exactly one nonempty argument, using the same quotes, escapes and `${NAME}`
+expansion as command arguments. It may appear once per block, before the first
+actual test command; earlier exports are allowed. It accepts no pipeline,
+redirection, expected output or exit code, and does not count as a case.
+
+Relative directories always resolve against the canonical Markdown file's
+parent; absolute paths and directory symlinks are supported. The directory is
+expanded when declared, using earlier document exports and the parent environment;
+later exports do not change it. Exports persist across blocks, while the working
+directory resets to the document directory at each new block. Scripts, build
+processes, imported tools, all pipeline segments and relative file arguments use
+the configured directory. Local modules still resolve from mooncram's startup cwd.
+
+Every declared directory must exist before any case or build in the document
+runs, including declarations in configuration-only blocks. Earlier cases cannot
+create it. An invalid directory prevents all cases and updates in that document;
+other documents continue. Configuration-only blocks are legal, but a run with no
+actual cases still reports the existing no-cases error.
+
+For `docs/example.md`, this selects `fixtures/tool.mbtx` and runs in `fixtures/`:
+
+```text
+$ export WORKSPACE=../fixtures
+$ set-current-working-directory "${WORKSPACE}"
+$ ./tool.mbtx input.txt
+```
 
 `$ export NAME=value` sets one variable for subsequent commands in the same
 Markdown document, including later test blocks. Names must match
@@ -225,7 +255,8 @@ parsing errors with source positions. A second block reports both locations.
 Import fences follow the same Markdown rules as test fences, including quotes,
 lists and longer backtick fences, and accept no settings after the language.
 
-Aliases are case-sensitive `[A-Za-z_][A-Za-z0-9_-]*`; `export` is reserved.
+Aliases are case-sensitive `[A-Za-z_][A-Za-z0-9_-]*`; `export` and
+`set-current-working-directory` are reserved.
 Coordinates are `user/module[/package]@version`, using the same path-component
 rules as local package names. The version must be exact SemVer; prerelease and
 build identifiers are supported. Omitted versions, `latest`, ranges, wildcards,

@@ -114,9 +114,9 @@ with status `2`; already discovered files are not executed. Symlinks ending in
 
 Documents run in sorted canonical-path order, independently of argument order.
 Cases run serially in document order. Filesystem side effects from earlier
-cases remain visible to later cases. Each process starts in the canonical
-document's directory and inherits mooncram's environment, overridden by the
-exports in effect for that case.
+cases remain visible to later cases. Each process starts in the block's working
+directory (the canonical document's parent by default) and inherits mooncram's
+environment, overridden by the exports in effect for that case.
 
 A document without cases is allowed when other documents contain cases. If
 there are no attempted cases and no recorded errors, the CLI reports
@@ -141,8 +141,8 @@ are supported; the Markdown container prefix is not part of the command or
 output. Normal Markdown indentation rules apply before parsing lines.
 
 An eligible fence must have a closing fence and at least one command (an export
-also satisfies this requirement). An unclosed or empty eligible fence is a
-document parsing error. Ignored fences do not
+or a working directory declaration also satisfies this requirement). An unclosed
+or empty eligible fence is a document parsing error. Ignored fences do not
 produce mooncram parsing errors.
 
 ````markdown
@@ -158,7 +158,8 @@ my-cli * (glob)
 Within the parsed code block:
 
 - A line beginning exactly with `$ ` starts a command; an export sets the
-  environment and any other command starts a case. A line consisting only of
+  environment, `set-current-working-directory` configures the block, and every
+  other command starts a case. A line consisting only of
   `$` is also treated as a command start, then rejected as an empty command.
 - Before the first command, only completely empty lines are ignored. Any other
   line is an error. `$` followed only by a tab is not the `$ ` command prefix.
@@ -191,8 +192,8 @@ the overall no-cases rule.
 
 Each nonblank line must be `alias : user/module[/package]@version`. Whitespace
 around the colon and declaration is allowed. Aliases are case-sensitive
-`[A-Za-z_][A-Za-z0-9_-]*`; `export` is reserved. Coordinates require at least two
-path components, following the module/package name rules above. Versions must
+`[A-Za-z_][A-Za-z0-9_-]*`; `export` and `set-current-working-directory` are reserved.
+Coordinates require at least two path components, following the module/package name rules above. Versions must
 be exact SemVer `MAJOR.MINOR.PATCH`, optionally followed by `-prerelease` and
 `+build`. Core numbers and numeric prerelease identifiers have no leading zeros;
 build identifiers may have them. Identifiers contain ASCII letters, digits and
@@ -220,11 +221,14 @@ $ moongrep --version
 ## 4. Command tokenization and executable selection
 
 The text after the leading `$` is tokenized directly into an array of pipeline
-segments or a single export assignment. It is not passed to a shell. The command parser returns
-`Command::Pipeline(Array[PipelineSegment])` or
-`Command::Export(name~ : String, value~ : String)`, with `Debug` and `Eq`.
+segments, a single export assignment, or a working directory configuration.
+It is not passed to a shell. The command parser returns
+`Command::Pipeline(Array[PipelineSegment])`,
+`Command::Export(name~ : String, value~ : String)`, or
+`Command::SetCurrentWorkingDirectory(directory~ : String)`, with `Debug` and `Eq`.
 Its optional `lookup` callback resolves variables; without it references are
-undefined. Returned arguments and assignment values have already been expanded.
+undefined. Returned arguments, assignment values and directory names have
+already been expanded.
 `PipelineSegment` has `argv : Array[String]`, `stderr_to_stdout : Bool`, and
 `stdout_to_null : Bool`, with `Debug` and `Eq`. Both flags default to `false`
 when their markers are absent; `Case.pipeline` stores these segments.
@@ -287,6 +291,38 @@ checked for redirection syntax. For example:
 $ ./producer.mbtx >/dev/null 2>&1|cmd/filter
 ```
 
+`$ set-current-working-directory <dir>` declares one working directory for the
+current fence. It requires exactly one nonempty expanded argument, reusing normal
+quoting, escaping and variable lookup. Each block permits at most one declaration,
+before its first actual test command; exports may precede it. Duplicates, late
+declarations, pipes, redirection, expected output and exit codes are parsing errors
+with source locations. Blank separators are allowed. This directive is not a case;
+configuration-only fences are legal, with the usual no-cases rule for a whole run.
+
+The parser does not inspect the filesystem. It stores the argument as expanded
+at declaration time using earlier document exports or the parent environment;
+later assignments cannot change it. `WorkingDirectoryDeclaration` contains
+`directory : String` and its one-based `line : Int`. `Case.working_directory`
+is optional; `Document.working_directory_declarations` retains every declaration,
+including those in fences without cases. Configuration resets at each fence;
+document exports continue across fences.
+
+After parsing and module validation, before any case or build in that document,
+`validate_document_working_directories` checks every declaration. Relative paths
+resolve against the canonical Markdown file's parent, never another block's cwd;
+absolute paths are accepted. Targets must already be directories, including
+symlink targets, and are resolved to real absolute paths. Earlier cases cannot
+create these directories. The returned `Map[Int, String]` maps declaration lines
+to validated directories. The CLI selects each case's directory from that map,
+using the document directory when no declaration applies.
+
+Validation failures are one document error, located at the directive and showing
+the resolved path: zero cases execute and no update occurs in that document,
+while later documents continue. A directory removed after validation follows the
+normal execution-error rules. This changes no filesystem side-effect or dry-run
+rules. Local modules still resolve from startup cwd and package builds retain
+`moon -C <module-root>`; their subprocess cwd is the configured block directory.
+
 `$ export NAME=value` sets exactly one variable. The assignment is split at the
 first literal `=`; the name must match `[A-Za-z_][A-Za-z0-9_]*` and cannot contain
 variable references. Empty values and additional `=` characters are allowed.
@@ -325,13 +361,13 @@ arguments follow the normal expansion rules.
 
 The first argument of each segment must be nonempty. A case in an ordinary
 `mooncram` fence can execute a file import alias or a regular `.mbtx` file. Script paths are resolved
-against the canonical Markdown directory; absolute script paths are accepted.
+against the block's working directory; absolute script paths are accepted.
 Scripts are also allowed in fences with a module declaration.
 
 Before executing any case in a document, all declarations must exactly match
 `name` in the `moon.mod` located directly in mooncram's startup cwd. This includes
-export-only fences. Missing/invalid configuration or a mismatched declaration is
-a document error reported at the declaring fence's opening line. No parent
+configuration-only fences. Missing/invalid configuration or a mismatched
+declaration is a document error reported at the declaring fence's opening line. No parent
 search or registry module loading occurs. `Case.module_name` stores the optional
 name; `Document.module_declarations` stores names and opening line numbers.
 The execution context stores the module name, startup root, and source root.
@@ -396,8 +432,8 @@ expected program exits.
 
 A successful build must return stdout containing JSON with an `artifacts_path`
 array containing exactly one string. Additional object fields are allowed.
-Relative artifact paths are resolved against the document directory. The script
-preflight validates this response too, although `moonx` receives the script path.
+Relative artifact paths are resolved against that build's working directory.
+The script preflight validates this response too, although `moonx` receives the script path.
 Nonzero build status, invalid JSON, or a missing/invalid artifact array is an
 execution error. Build stdout/stderr are included in build-error diagnostics;
 successful build output is not part of the program expectation.
@@ -424,8 +460,8 @@ configured output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
 override names using the case's export snapshot. Their working directory is the
-canonical document's parent directory. Build processes
-and the first pipeline segment receive immediate EOF on stdin rather than
+validated block directory, or the canonical document's parent by default.
+Build processes and the first pipeline segment receive immediate EOF on stdin rather than
 mooncram's interactive input. Later segments receive the preceding routed output.
 
 Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
@@ -441,11 +477,11 @@ run. On expiry the case reports
 processes use hard cancellation. A startup or capture error also cancels every
 started segment, and all unconsumed pipe handles are closed on exit. The
 implementation does not promise cleanup of detached descendants or rollback of
-their effects. Discovery, document parsing, reporting, and document replacement
-are outside this per-case deadline.
+their effects. Discovery, document parsing, declaration validation, reporting,
+and document replacement are outside this per-case deadline.
 
-Cases execute code with the invoking user's permissions, in the actual
-document directory. Mooncram provides no sandbox or temporary workspace
+Cases execute code with the invoking user's permissions, in the configured
+working directory. Mooncram provides no sandbox or temporary workspace
 isolation. This also applies to `test` and `update --dry-run`.
 
 Only imported commands reserve statuses `255` and `-1` as execution errors,
