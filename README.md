@@ -96,11 +96,13 @@ Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors, except for
 the exact trailing redirection markers below. Quote or escape these characters
 to pass them as ordinary arguments.
 
-Any segment, including a single command, can end with `2>&1` to merge
-stderr into its output pipe, or `>/dev/null` to discard its original stdout.
+Any nonfinal segment can end with `2>&1` to merge stderr into its output pipe,
+or `>/dev/null` to discard its original stdout.
 Combining both markers in either order discards original stdout and sends only
-stderr to the next segment or final capture. Each marker must be separated from
-the preceding command, argument or marker by a space or tab; it contains no
+stderr to the next segment. The final segment, including a single command,
+cannot use either marker or their combination: its stdout and stderr are captured
+separately. Each marker must be separated from the preceding command, argument
+or marker by a space or tab; it contains no
 internal whitespace and may touch the following `|`. Each kind may occur once,
 and ordinary arguments cannot follow a marker. Fully quoted markers, correctly
 escaped markers, and marker text produced by variable expansion remain ordinary
@@ -145,7 +147,7 @@ filtered output
 
 Lines after a command describe its output. By default each line must match
 exactly, including trailing spaces. A final `[N]` sets the expected exit code;
-otherwise it is `0`. Pipelines match the final segment's routed output and use
+otherwise it is `0`. Pipelines match the final segment's stdout and use
 pipefail by default: after every segment finishes, the exit code is `0` if all
 succeeded, or the rightmost nonzero status in pipeline order otherwise,
 regardless of completion order. Ordinary nonzero statuses can be asserted with
@@ -193,7 +195,7 @@ annotated form accepts output lines. Trailing bare empty lines in each section
 are separators; use `"" (escaped)` to assert an empty output line. The final
 `[N]` belongs to the whole case, with default exit code `0`.
 
-`@STDOUT` selects the final segment's routed output. `@STDERR` selects all
+`@STDOUT` selects the final segment's stdout. `@STDERR` selects all
 unmerged stderr, concatenated in pipeline order without added separators.
 Redirection still applies: merged or discarded bytes are not recovered.
 There is no comparison of timing between streams. Ignored streams are still
@@ -294,7 +296,7 @@ inherit mooncram's environment with the case's document exports applied.
 The first segment receives immediate EOF on stdin; later segments
 receive the preceding segment's routed output as raw bytes.
 
-Unmarked cases compare the final routed output. Paired cases also compare
+Unmarked cases compare the final command's stdout. Paired cases also compare
 unmerged stderr with `@STDERR`. Unredirected stderr is drained concurrently and
 concatenated in segment order without added separators; it is available as
 `diagnostic stderr` when an assertion fails, unless already shown in a stderr diff. Merged stderr uses the same OS pipe

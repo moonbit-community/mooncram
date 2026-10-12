@@ -257,14 +257,17 @@ Quoting or escaping them passes them literally. There is no wildcard or tilde ex
 `*`, and `~` are literal arguments; `'$(cmd)'` is literal, while unquoted
 `$(cmd)` is rejected because of its parentheses.
 
-Each segment, including a single command, accepts these trailing markers:
+Only nonfinal segments accept these trailing markers. The final segment,
+including a single command, rejects either marker or their combination with
+"redirection is not allowed in the final pipeline segment". Its stdout and
+stderr are always captured separately.
 
 | Markers | Original stdout | Original stderr |
 | --- | --- | --- |
-| None | Next segment or final capture | Diagnostic stderr |
-| `2>&1` | Next segment or final capture | Same output pipe |
+| None | Next segment | Diagnostic stderr |
+| `2>&1` | Next segment | Same output pipe |
 | `>/dev/null` | Discarded | Diagnostic stderr |
-| Both, in either order | Discarded | Next segment or final capture |
+| Both, in either order | Discarded | Next segment |
 
 Markers contain no spaces or tabs and require at least one space or tab between
 the marker and the preceding command, argument or marker. The following `|`
@@ -401,7 +404,7 @@ successful build output is not part of the program expectation.
 
 Pipeline segments run concurrently, with OS pipes passing intermediate routed
 output to the next stdin as raw bytes, without decoding or newline normalization.
-Only the final routed output is captured for stdout assertions.
+Only the final command's stdout is captured for stdout assertions.
 Unredirected stderr is drained concurrently and buffered, then concatenated in
 segment order without added separator bytes for mismatch diagnostics and paired
 `@STDERR` assertions. Unmarked cases do not match stderr.
@@ -410,7 +413,7 @@ pipe write order, and excludes it from diagnostic collection. When both markers
 are present, only original stderr uses the output pipe. `>/dev/null` drains
 original stdout concurrently with a fixed 8 KiB byte buffer, without accumulating
 or decoding it. If neither stream uses the output pipe, its unused write end is
-closed immediately so downstream or final capture can observe EOF. Build
+closed immediately so downstream can observe EOF. Build
 processes always use the default routes. All captured streams must decode
 successfully. Pipelines use pipefail by default: Mooncram waits for every segment
 to finish and returns `0` if all succeeded, or the rightmost nonzero exit status
@@ -584,7 +587,7 @@ annotated form accepts output lines. Trailing bare empty lines in each section
 are separators; use `"" (escaped)` to assert an empty output line. The final
 `[N]` belongs to the whole case, with default exit code `0`.
 
-`@STDOUT` selects the final segment's routed output. `@STDERR` selects all
+`@STDOUT` selects the final segment's stdout. `@STDERR` selects all
 unmerged stderr, concatenated in pipeline order without added separators.
 Redirection still applies: merged or discarded bytes are not recovered.
 There is no comparison of timing between streams. Ignored streams are still
