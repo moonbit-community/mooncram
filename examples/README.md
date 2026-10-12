@@ -18,24 +18,26 @@ $ mooncram --version
 A file can also import a fixed-version Mooncakes tool:
 
 ```mooncram-import
-moongrep : moonbit-community/moongrep@0.3.5
+mbtcram : moonbit-community/mooncram@0.0.3
 ```
 
 ```mooncram
-$ moongrep help
-Usage: moongrep <command>
+$ mbtcram help
+Usage: mooncram [options] <command>
 
-Scan MoonBit source files with structural and taint rules.
+Run MoonBit command examples in Markdown mooncram fences.
 
 Commands:
-  scan  Scan MoonBit source files.
-  lint  Scan MoonBit source files with embedded builtin rules.
-  docs  Print embedded moongrep documentation.
-  dump  Parse a MoonBit impl or expression and print untyped CST debug output.
-  help  Print help for the subcommand(s).
+  test    Check command output and exit status
+  update  Update failing expectations in place
+  help    Print help for the subcommand(s).
 
 Options:
-  -h, --help  Show help information.
+  -h, --help                 Show help information.
+  -V, --version              Show version information.
+  --target <target>          Package target: wasm or native [default: wasm]
+  --timeout-ms <timeout-ms>  Per-case time limit, including build [default: 60000]
+  --color <color>            Color: auto, always, never [default: auto]
 ```
 
 The declaration applies to every test fence in that file, including earlier
