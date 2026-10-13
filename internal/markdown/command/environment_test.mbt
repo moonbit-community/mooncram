@@ -1,8 +1,8 @@
 ///|
 fn segments(
   command : String,
-  lookup? : (String) -> String? = _ => None,
-  case_insensitive? : Bool = false,
+  lookup~ : (String) -> String? = _ => None,
+  case_insensitive~ : Bool = false,
 ) -> Array[@command.PipelineSegment] raise {
   guard @command.parse(command, lookup~, case_insensitive~)
     is Pipeline(segments) else {

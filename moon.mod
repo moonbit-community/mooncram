@@ -27,7 +27,7 @@ description = "A simple and powerful testing toolkit for MoonBit CLI application
 
 import {
   "moonbitlang/async@0.22.4",
-  "moonbit-community/cmark@0.4.9",
+  "moonbit-community/cmark@0.4.12",
   "moonbit-community/chalk@0.0.1",
   "moonbitlang/x@0.5.5",
   "moonbitlang/moon_config@0.4.2",

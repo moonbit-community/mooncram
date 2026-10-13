@@ -6,7 +6,7 @@ pub async fn execute_case(
   imports~ : Map[String, @markdown.ToolImport],
   warning~ : async (String) -> Unit,
   target~ : String,
-  timeout_ms~ : Int,
+  timeout_ms~ : Int32,
 ) -> @output.Captured {
   // Validate before preflight builds, including manually constructed cases.
   if case.pipeline is [.., last] &&

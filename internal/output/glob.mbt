@@ -58,7 +58,7 @@ fn parse_glob(pattern : String) -> Array[GlobToken] raise {
 }
 
 ///|
-fn glob_char(chars : Array[Char], start : Int) -> (Char, Int) raise {
+fn glob_char(chars : Array[Char], start : Int32) -> (Char, Int32) raise {
   let i = if chars[start] == '\\' { start + 1 } else { start }
   if i >= chars.length() {
     raise @diagnostic.Failure("trailing backslash in glob set")

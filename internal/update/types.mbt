@@ -1,6 +1,6 @@
 ///|
 struct Edit {
-  start : Int
-  end : Int
+  start : Int32
+  end : Int32
   text : String
 }

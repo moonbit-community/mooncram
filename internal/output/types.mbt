@@ -38,9 +38,9 @@ pub struct StreamSection {
   stream : Stream
   constraint : StreamConstraint
   // Row offsets into Expectation.source_lines; end includes separator blanks.
-  start : Int
-  content_end : Int
-  end : Int
+  start : Int32
+  content_end : Int32
+  end : Int32
 }
 
 ///|
@@ -52,7 +52,7 @@ pub(all) enum ExpectedBody {
 ///|
 pub struct Expectation {
   body : ExpectedBody
-  exit_code : Int
+  exit_code : Int32
   source_lines : Array[String]
 }
 
@@ -60,5 +60,5 @@ pub struct Expectation {
 pub(all) struct Captured {
   output : String
   diagnostic : String
-  exit_code : Int
+  exit_code : Int32
 }

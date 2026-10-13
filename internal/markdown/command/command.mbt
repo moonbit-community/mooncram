@@ -44,11 +44,11 @@ fn valid_name(name : String) -> Bool {
   let mut first = true
   for c in name {
     if first {
-      if !(c is ('A'..='Z' | 'a'..='z' | '_')) {
+      if !(c is ('A'..<='Z' | 'a'..<='z' | '_')) {
         return false
       }
       first = false
-    } else if !(c is ('A'..='Z' | 'a'..='z' | '_' | '0'..='9')) {
+    } else if !(c is ('A'..<='Z' | 'a'..<='z' | '_' | '0'..<='9')) {
       return false
     }
   }
@@ -59,7 +59,7 @@ fn valid_name(name : String) -> Bool {
 fn expand(
   parts : Array[Part],
   lookup : (String) -> String?,
-  executable? : Bool = false,
+  executable~ : Bool = false,
 ) -> String raise {
   let result = StringBuilder()
   for part in parts {
@@ -91,8 +91,8 @@ fn expand(
 /// Output redirection is allowed only before the final pipeline segment.
 pub fn parse(
   command : String,
-  lookup? : (String) -> String? = _ => None,
-  case_insensitive? : Bool = false,
+  lookup~ : (String) -> String? = _ => None,
+  case_insensitive~ : Bool = false,
 ) -> Command raise {
   let words = tokenize(command)
   let pipeline : Array[PipelineSegment] = []

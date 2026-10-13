@@ -7,8 +7,8 @@ fn valid_alias(name : String) -> Bool {
   }
   for i, c in name {
     match c {
-      'a'..='z' | 'A'..='Z' | '_' => ()
-      '0'..='9' | '-' if i > 0 => ()
+      'a'..<='z' | 'A'..<='Z' | '_' => ()
+      '0'..<='9' | '-' if i > 0 => ()
       _ => return false
     }
   }
@@ -19,7 +19,7 @@ fn valid_alias(name : String) -> Bool {
 fn semver_number(value : String) -> Bool {
   !value.is_empty() &&
   (value.length() == 1 || value[0] != '0') &&
-  value.iter().all(c => c is ('0'..='9'))
+  value.iter().all(c => c is ('0'..<='9'))
 }
 
 ///|
@@ -28,10 +28,10 @@ fn semver_identifiers(value : String, prerelease~ : Bool) -> Bool {
   .split(".")
   .all(part => {
     !part.is_empty() &&
-    part.iter().all(c => c is ('a'..='z' | 'A'..='Z' | '0'..='9' | '-')) &&
+    part.iter().all(c => c is ('a'..<='z' | 'A'..<='Z' | '0'..<='9' | '-')) &&
     (
       !prerelease ||
-      !part.iter().all(c => c is ('0'..='9')) ||
+      !part.iter().all(c => c is ('0'..<='9')) ||
       semver_number(part.to_owned())
     )
   })
@@ -79,7 +79,7 @@ fn collect_imports(
   blocks : Array[@cmark.Node[@cmark.CodeBlock]],
 ) -> Map[String, ToolImport] raise {
   let imports : Map[String, ToolImport] = Map([])
-  let mut first_line : Int? = None
+  let mut first_line : Int32? = None
   for block in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
     if !layout.opening_fence.v.has_prefix("`") {

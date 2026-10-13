@@ -124,8 +124,8 @@ async fn capture_pipeline(
 ///|
 fn check_import_status(
   imported : @markdown.ToolImport?,
-  segment : Int,
-  status : Int,
+  segment : Int32,
+  status : Int32,
 ) -> Unit raise {
   if imported is Some(binding) && (status == 255 || status == -1) {
     raise @diagnostic.Failure(

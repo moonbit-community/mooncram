@@ -12,6 +12,6 @@ pub fn error_text(error : Error) -> String {
 }
 
 ///|
-pub fn located(file : String, line : Int, message : String) -> Failure {
+pub fn located(file : String, line : Int32, message : String) -> Failure {
   Failure("\{file}:\{line}: \{message}")
 }
