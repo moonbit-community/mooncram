@@ -63,7 +63,7 @@ pub fn actual_stream_expectation(
 pub fn actual_expectation_layout(
   actual : Captured,
   expected : Expectation,
-) -> Array[(String, Int?)] {
+) -> Array[(String, Int32?)] {
   let rendered = []
   match expected.body {
     Legacy(content) => {

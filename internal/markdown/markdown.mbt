@@ -249,7 +249,7 @@ fn valid_module_name(name : String) -> Bool {
     .iter()
     .all(c => {
       match c {
-        'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => true
+        'a'..<='z' | 'A'..<='Z' | '0'..<='9' | '_' | '-' | '.' => true
         _ => false
       }
     })

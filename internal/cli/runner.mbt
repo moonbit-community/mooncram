@@ -1,5 +1,5 @@
 ///|
-async fn run_cli(cli : Cli) -> Int {
+async fn run_cli(cli : Cli) -> Int32 {
   let startup_cwd = @path.Path(".").resolve().to_string()
   let files = @files.discover(cli.paths)
   let color = @report.use_color(cli.color)

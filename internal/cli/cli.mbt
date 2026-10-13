@@ -4,12 +4,12 @@ priv struct Cli {
   dry_run : Bool
   paths : Array[String]
   target : String
-  timeout_ms : Int
+  timeout_ms : Int32
   color : String
 }
 
 ///|
-fn positive_int(text : String) -> Int raise {
+fn positive_int(text : String) -> Int32 raise {
   if text.is_empty() || !text.iter().all(c => c >= '0' && c <= '9') {
     raise @diagnostic.Failure("expected a positive integer, got '\{text}'")
   }

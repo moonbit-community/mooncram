@@ -2,7 +2,7 @@
 /// Resolve every block's directory before any build or case in the document.
 pub async fn validate_document_working_directories(
   document : @markdown.Document,
-) -> Map[Int, String] {
+) -> Map[Int32, String] {
   let directories = Map([])
   let base = @path.Path(document.path).dirname().to_string()
   for declaration in document.working_directory_declarations {

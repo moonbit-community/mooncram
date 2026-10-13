@@ -1,5 +1,5 @@
 ///|
-fn exit_marker(text : String) -> Int? raise {
+fn exit_marker(text : String) -> Int32? raise {
   if !text.has_prefix("[") || !text.has_suffix("]") {
     return None
   }
@@ -129,7 +129,7 @@ pub fn parse_expectation(
       end -= 1
     }
   }
-  let markers : Array[(Int, Stream, StreamConstraint)] = []
+  let markers : Array[(Int32, Stream, StreamConstraint)] = []
   for i in 0..<end {
     let node = nodes[i]
     let @cmark_base.LinePos(line, _) = node.meta.loc.first_line

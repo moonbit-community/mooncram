@@ -20,7 +20,7 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 fn assert_output(
   body : String,
   output : String,
-  code : Int,
+  code : Int32,
   matches : Bool,
 ) -> Unit raise {
   let expected = parse_example("$ ./a.mbtx\n" + body).cases[0].expected
@@ -156,7 +156,7 @@ fn assert_streams(
   body : String,
   stdout : String,
   stderr : String,
-  code : Int,
+  code : Int32,
   matches : Bool,
 ) -> Unit raise {
   let expected = parse_example("$ ./a.mbtx\n" + body).cases[0].expected
