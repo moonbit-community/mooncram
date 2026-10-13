@@ -11,20 +11,6 @@ fn config_json(
   path : String,
   module_config~ : Bool,
 ) -> Json raise {
-  // moon_config parses the new configuration language. Legacy package files
-  // retain their JSON syntax and go through the JSON parser.
-  if path.has_suffix(".json") {
-    let value = @json.parse(source) catch {
-      e =>
-        raise @diagnostic.Failure(
-          "invalid configuration: \{path}\n\{@diagnostic.error_text(e)}",
-        )
-    }
-    guard value is Object(_) else {
-      raise @diagnostic.Failure("configuration must be an object: " + path)
-    }
-    return value
-  }
   let (ast, reports) = if module_config {
     @moon_config.parse_moon_mod(source, name=path)
   } else {
@@ -153,8 +139,7 @@ async fn belongs_to_module(path : String, root : String) -> Bool {
     return false
   }
   for current = path; current != root; {
-    if @fs.exists(@files.resolve_from(current, "moon.mod")) ||
-      @fs.exists(@files.resolve_from(current, "moon.mod.json")) {
+    if @fs.exists(@files.resolve_from(current, "moon.mod")) {
       return false
     }
     let parent = @path.Path(current).dirname().to_string()
@@ -176,13 +161,8 @@ async fn callable_package(context : ModuleContext, path : String) -> Bool {
     !belongs_to_module(canonical, context.root) {
     return false
   }
-  let current = @files.resolve_from(path, "moon.pkg")
-  let legacy = @files.resolve_from(path, "moon.pkg.json")
-  let config = if @fs.exists(current) {
-    current
-  } else if @fs.exists(legacy) {
-    legacy
-  } else {
+  let config = @files.resolve_from(path, "moon.pkg")
+  if !@fs.exists(config) {
     return false
   }
   callable_config(@fs.read_file(config).text(), config)

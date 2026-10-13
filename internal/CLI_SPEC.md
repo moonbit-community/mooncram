@@ -408,7 +408,7 @@ root; otherwise it must resolve to a subdirectory inside the module root.
 For `user/foo`, `cmd/boo` refers to `user/foo/cmd/boo`. The short name `foo` first
 considers root package `user/foo`, then same-name subpackage `user/foo/foo`.
 A package is callable if its configuration declares `pkgtype(kind: "executable")`
-or legacy `is-main: true`. If only the subpackage is callable it is selected;
+or `options("is-main": true)`. If only the subpackage is callable it is selected;
 if both are callable the root wins. If neither is callable the case errors.
 A selected package's compilation or backend failure errors without fallback.
 
@@ -416,9 +416,9 @@ Each ambiguous pipeline segment emits one independent `WARNING` on mooncram's
 stderr with document position, both full names, and the chosen package. Warnings
 never enter captured program output, mismatch diagnostics, updated expectations,
 or error counts. Package names cannot be absolute directory paths, use `./` or
-`../`, contain traversal, or cross another `moon.mod`/`moon.mod.json` boundary,
-including through symlinks. `moon.pkg` is parsed with `moonbitlang/moon_config@0.4.2`;
-legacy `moon.pkg.json` is read as JSON. Invalid configurations are errors.
+`../`, contain traversal, or cross another `moon.mod` boundary,
+including through symlinks. `moon.pkg` is parsed with `moonbitlang/moon_config@0.4.2`.
+Invalid configurations are errors.
 Arbitrary binaries, shell commands and `.mbt` files are not case targets.
 Remote packages can only be accessed through declared aliases. User targets
 are never searched through `PATH`.
