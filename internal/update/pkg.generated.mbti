@@ -7,14 +7,15 @@ import {
 }
 
 // Values
-pub fn apply_edits(String, Array[Edit]) -> String
-
-pub fn case_edit(@markdown.Case, @output.Captured) -> Edit
+pub fn generate(@markdown.Document, Array[(Int, @output.Captured)]) -> Generated raise
 
 // Errors
 
 // Types and methods
-type Edit
+pub struct Generated {
+  source : String
+  changed_cases : Int
+}
 
 // Type aliases
 

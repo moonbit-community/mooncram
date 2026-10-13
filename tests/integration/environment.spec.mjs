@@ -54,7 +54,7 @@ export function testExports({ cli, docs, target }) {
   assert(dryRun.stdout.includes("1 cases, would update 1, 0 errors"));
   assert.equal(fs.readFileSync(update, "utf8"), original);
   cli(["update", update, "--target", target]);
-  assert.equal(fs.readFileSync(update, "utf8"), prefix + block(`${command}\n${JSON.stringify('["parent-updated"]')} (escaped)\n`));
+  assert.equal(fs.readFileSync(update, "utf8"), prefix + block(`${command}\n["parent-updated"]\n`));
   cli(["test", update, "--target", target]);
 
   const sideEffect = join(docs, "side-effect.txt");

@@ -16,6 +16,8 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
         ("\r\n", "\r\n"),
         ("\n", "\r\n"),
         ("\r\n", "\n"),
+        ("\r", "\r"),
+        ("\n", "\r"),
       ] {
       let before = "Intro" +
         newline +
@@ -57,7 +59,7 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
         "Tail"
       let retained = prefix + "keep * (glob)" + newline
       let source = before + blank + blank_newline + retained + after
-      for (output, rendered) in [("new", "new"), ("", "\"\" (escaped)")] {
+      for output in ["new", ""] {
         assert_update(
           source,
           {
@@ -66,8 +68,15 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
             exit_code: 0,
           },
           before +
-          prefix +
-          rendered +
+          (if output == "" {
+            if blank == " " || blank == "  " {
+              ""
+            } else {
+              blank
+            }
+          } else {
+            prefix + output
+          }) +
           blank_newline +
           retained +
           prefix +
@@ -112,7 +121,15 @@ test "retained status-looking output gains a newline without becoming exit statu
         assert_update(
           source,
           { output: line + "\n", diagnostic: "", exit_code, },
-          before + "\"" + line + "\" (escaped)\n" + status + "```\n",
+          before +
+          (if exit_code == 0 && line != "[literal]" {
+            "\"" + line + "\" (escaped)"
+          } else {
+            line
+          }) +
+          "\n" +
+          status +
+          "```\n",
         )
       }
     }
@@ -140,7 +157,10 @@ test "matching annotations survive changes to the final output newline" {
             diagnostic: "",
             exit_code: 0,
           },
-          before + raw + new_suffix + "\n```\n",
+          before +
+          (if output == "[2]" && no_eol { output } else { raw }) +
+          new_suffix +
+          "\n```\n",
         )
       }
     }

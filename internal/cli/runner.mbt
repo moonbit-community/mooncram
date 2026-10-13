@@ -13,9 +13,9 @@ async fn run_cli(cli : Cli) -> Int32 {
       // Parse the whole document before executing anything in it.
       let document = @markdown.parse_document(file, source)
       let context = @resolve.validate_document(document, startup_cwd~)
-      let edits = []
+      let captures = []
       let mut document_error = false
-      for case in document.cases {
+      for i, case in document.cases {
         total += 1
         try {
           let warning : async (String) -> Unit = message => {
@@ -39,9 +39,9 @@ async fn run_cli(cli : Cli) -> Int32 {
             @stdio.stdout.write(
               @report.failure_report(file, case, actual, color),
             )
-            if cli.command is Update(_) {
-              edits.push(@update.case_edit(case, actual))
-            }
+          }
+          if cli.command is Update(_) {
+            captures.push((i, actual))
           }
         } catch {
           e => {
@@ -53,8 +53,12 @@ async fn run_cli(cli : Cli) -> Int32 {
           }
         }
       }
-      if !edits.is_empty() && !document_error {
-        let updated = @update.apply_edits(source, edits)
+      if !captures.is_empty() && !document_error {
+        let generated = @update.generate(document, captures)
+        let updated = generated.source
+        if updated == source {
+          continue
+        }
         if cli.command is Update(dry_run=true) {
           @stdio.stdout.write("--- \{file}\n+++ \{file} (updated)\n")
           @stdio.stdout.write(
@@ -67,9 +71,9 @@ async fn run_cli(cli : Cli) -> Int32 {
         } else {
           @files.write_document(document.path, document.source, updated)
         }
-        updated_cases += edits.length()
+        updated_cases += generated.changed_cases
       }
-      if document_error && !edits.is_empty() {
+      if document_error && !captures.is_empty() {
         @stdio.stderr.write(
           "Not updating \{file}: execution errors in this document\n",
         )

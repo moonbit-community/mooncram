@@ -28,20 +28,38 @@ fn source_lines(source : String) -> Array[SourceLine] {
 ///|
 fn collect_blocks(
   block : @cmark.Block,
-  output : Array[@cmark.Node[@cmark.CodeBlock]],
+  output : Array[(@cmark.Node[@cmark.CodeBlock], Array[Container])],
+  containers : Array[Container],
 ) -> Unit {
   match block {
-    CodeBlock(node) => output.push(node)
+    CodeBlock(node) => output.push((node, containers))
     Blocks(node) =>
       for child in node.v.iter() {
-        collect_blocks(child, output)
+        collect_blocks(child, output, containers)
       }
-    BlockQuote(node) => collect_blocks(node.v.block, output)
+    BlockQuote(node) =>
+      collect_blocks(node.v.block, output, containers + [Quote])
     List(node) =>
       for item in node.v.items.iter() {
-        collect_blocks(item.v.block, output)
+        collect_blocks(
+          item.v.block,
+          output,
+          containers +
+          [
+            Indent(
+              item.v.before_marker +
+              item.v.marker.v.length() +
+              item.v.after_marker,
+            ),
+          ],
+        )
       }
-    ExtFootnoteDefinition(node) => collect_blocks(node.v.block, output)
+    ExtFootnoteDefinition(node) =>
+      collect_blocks(
+        node.v.block,
+        output,
+        containers + [Indent(node.v.indent + 1)],
+      )
     _ => ()
   }
 }
@@ -79,14 +97,15 @@ fn parse_document_with_env(
     layout=true,
   )
   let blocks = []
-  collect_blocks(markdown.block, blocks)
-  let imports = collect_imports(path, blocks)
+  collect_blocks(markdown.block, blocks, [])
+  let imports = collect_imports(path, blocks.map(b => b.0))
   let lines = source_lines(source)
   let cases = []
+  let fences = []
   let module_declarations = []
   let working_directory_declarations = []
   let extra_env : Map[String, String] = Map([])
-  for block in blocks {
+  for (block, containers) in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
     if !layout.opening_fence.v.has_prefix("`") {
       continue
@@ -111,9 +130,18 @@ fn parse_document_with_env(
       module_declarations.push((declaration, open_line))
       Some(declaration)
     }
-    if layout.closing_fence is None {
+    guard layout.closing_fence is Some(closing) else {
       raise @diagnostic.located(path, open_line, "unclosed mooncram fence")
     }
+    let fence = fences.length()
+    let opening = layout.opening_fence
+    fences.push({
+      opening_start: opening.meta.loc.first_ccode,
+      opening_end: opening.meta.loc.first_ccode + backtick_count(opening.v),
+      closing_start: closing.meta.loc.first_ccode,
+      closing_end: closing.meta.loc.first_ccode + backtick_count(closing.v),
+      indent: layout.indent,
+    })
     let code = block.v.code.to_array()
     let mut has_command = false
     let mut has_test_command = false
@@ -148,8 +176,8 @@ fn parse_document_with_env(
             code[next].v != "$" {
         next += 1
       }
-      // Trailing empty source lines separate cases; explicit empty output lines
-      // use "" (escaped), so updates never introduce ambiguity.
+      // Trailing empty source lines separate cases. A final escaped empty line
+      // protects any preceding bare empty output lines from this trimming.
       let mut end = next
       while end > i + 1 && code[end - 1].v == "" {
         end -= 1
@@ -197,10 +225,7 @@ fn parse_document_with_env(
       let output_layout = code[i + 1:end].map(node => {
         let @cmark_base.LinePos(line, _) = node.meta.loc.first_line
         let source_line = lines[line - 1]
-        (
-          source[source_line.start:node.meta.loc.first_ccode].to_owned(),
-          source_line.newline,
-        )
+        line_layout(source, source_line, node, containers)
       })
       let replace_end = if end == i + 1 {
         command_line.end
@@ -216,10 +241,12 @@ fn parse_document_with_env(
         extra_env: extra_env.copy(),
         line,
         expected,
+        fence,
         replace_start: command_line.end,
         replace_end,
         prefix: source[command_line.start:node.meta.loc.first_ccode].to_owned(),
         newline: command_line.newline,
+        command_layout: line_layout(source, command_line, node, containers),
         output_layout,
       })
       i = next
@@ -232,6 +259,7 @@ fn parse_document_with_env(
     path,
     source,
     cases,
+    fences,
     module_declarations,
     working_directory_declarations,
     imports,

@@ -124,8 +124,7 @@ export async function testImports({ executable, docs, project, directory, target
   const before = (quotedListItem(imports) + "\n\n" + quotedListItem(block(
     "$ export MODE='Moon Bit'\n" + command + "\nwrong\n", "")) + "\nTail").replaceAll("\n", CRLF);
   const update = write("update", before);
-  // Use JSON to express the expected escaped output without hand-escaped quotes.
-  const expectedUpdate = before.replace("wrong", JSON.stringify('["Moon Bit-temporary"]') + " (escaped)");
+  const expectedUpdate = before.replace("wrong", '["Moon Bit-temporary"]');
   const dryRun = invoke(["update", update, "--dry-run"]);
   assert(dryRun.stdout.includes("would update 1"));
   assert.equal(fs.readFileSync(update, "utf8"), before);
