@@ -358,15 +358,13 @@ function testModuleResolution({ cli, docs, directory, target }) {
   assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
   writePackage(sourceRoot, 'pkgtype(kind: "library")\n', LIBRARY_PROGRAM);
   assert.equal(invoke("$ foo\nchild\n").stderr, "");
-  fs.unlinkSync(join(sub, "moon.pkg"));
-  fs.writeFileSync(join(sub, "moon.pkg.json"), '{"is-main":true}\n');
+  fs.writeFileSync(join(sub, "moon.pkg"), executable);
   invoke("$ foo\nchild\n");
-  fs.writeFileSync(join(sub, "moon.pkg.json"), '{}\n');
+  fs.writeFileSync(join(sub, "moon.pkg"), 'options("is-main": false)\n');
   assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("no executable package"));
-  fs.writeFileSync(join(sub, "moon.pkg.json"), '{"is-main":true}\n');
   fs.writeFileSync(join(sub, "moon.pkg"), 'pkgtype(kind: true)\n');
   assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
-  fs.unlinkSync(join(sub, "moon.pkg"));
+  fs.writeFileSync(join(sub, "moon.pkg"), executable);
 
   for (const name of [quoteArgument(sub), "./foo", "../foo", "cmd/../foo"]) {
     assert(invoke(`$ ${name}\n`, { expected: EXIT_CODE.ERROR }).stderr.includes("invalid module package name"));
