@@ -400,16 +400,26 @@ not sandboxed or isolated in a temporary workspace.
 
 ## Updating expectations
 
-`update` changes only failing expectations. Passing cases and still-matching
-patterns keep their spelling. Commands, fence markers, container prefixes,
-surrounding prose, and document line endings are preserved. Special output is
-escaped automatically, including missing final newlines and nonzero statuses.
+`update` refreshes expectations and simplifies their spelling, including passing
+cases. Ordinary text such as `[INFO] ready`, `$HOME`, indentation, and inline
+backticks stays readable. Only ambiguous syntax and control characters use JSON
+with `(escaped)`. Internal blank lines remain bare; the final trailing blank is
+protected with `"" (escaped)` when the parser would otherwise treat it as a
+separator. Zero exit statuses are omitted; nonzero statuses use `[N]`, and
+`(no-eol)` follows the actual output.
 
-Paired updates keep marker order and unchanged sections, including `(ignore)`.
-A satisfied `(empty)` remains; a nonempty actual stream replaces it with a plain
-marker and concrete expectations. Patterns are retained independently per
-stream. Marker-looking actual lines are escaped automatically. Failure reports
-label each failing stream `@STDOUT` or `@STDERR` and show stderr once.
+Still-matching glob/regex patterns retain their original spelling, even after
+insertions or deletions, using ordered lookahead independently per stream.
+Paired updates keep marker order, `(ignore)`, and satisfied `(empty)` constraints.
+A nonempty stream replaces `(empty)` with a plain marker and concrete expectations.
+Failure reports label each failing stream `@STDOUT` or `@STDERR` and show stderr once.
+
+Each test fence uses the shortest safe backtick length, at least three, based
+on all cases inside it. Inline backticks do not lengthen fences. Commands,
+surrounding prose, separator lines, and original line endings are preserved;
+output indentation is adjusted as needed for Markdown containers and fences.
+`updated` counts each changed case once, including passing cases and every case
+in a fence whose markers change. Repeating an update produces `updated 0`.
 
 `--dry-run` runs the same commands and displays document diffs without writing
 Markdown. Commands can still produce their normal filesystem side effects.
@@ -417,8 +427,10 @@ Both actual updates and dry runs return `0` when completed successfully, even
 when changes are needed.
 
 A document with parsing, build, or execution errors is never updated. Other
-documents can still run and update. Before committing an update, mooncram checks
-that the source content has not changed, then replaces it atomically using a
-temporary file in the same directory. The replacement uses new-file permissions
+documents can still run and update. Before producing a diff or writing, mooncram
+re-parses the generated document and validates commands, configuration, and
+output matches. A validation failure cancels the entire document update. Before
+committing an update, mooncram checks that the source content has not changed,
+then replaces it atomically using a temporary file in the same directory. The replacement uses new-file permissions
 (`0644`, subject to umask); original permissions, inode identity, and extended
 filesystem metadata are not retained in this version.

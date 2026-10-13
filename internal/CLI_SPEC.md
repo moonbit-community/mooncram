@@ -726,51 +726,61 @@ strip ANSI bytes emitted by tested programs or control their own color policy.
 ## 8. Update rendering and preservation
 
 `update` uses the same parser, execution, comparisons, and failure reports as
-`test`. Only mismatching cases receive edits; passing cases remain untouched.
-Edits replace the expectation span after the command, leaving the command,
-fences, surrounding prose, and separator lines in place. The line rendering
-rules below apply within each matched stream.
+`test`. Every successfully executed case is rendered, including passing cases.
+A document is written or shown as a dry-run diff only when its bytes change. Repeated
+updates leave the file unchanged and report `updated 0`.
 
-For each actual output line at index `i`, rendering first tries to retain the
-existing expectation at the same index if its matcher still matches. This
-preserves still-valid glob/regex patterns and explicit escaping even
-when another line or the exit status fails. Before reusing a spelling, rendering
-removes its final ` (no-eol)` annotation. A bare empty expectation and a raw
-line beginning with `[` and ending with `]` are then rendered afresh with JSON
-escaping to avoid separator/status ambiguity. This includes negative and
-out-of-range status-looking text: adding a final newline to `[2] (no-eol)`
-produces `"[2]" (escaped)`, independently of the actual exit status.
-Matching is by line index, not by searching for the same text elsewhere in the
-output; the new `(no-eol)` annotation always follows the actual output.
+Within each stream, alignment prefers the current expectation when it matches.
+Otherwise it first searches later expectations for one matching the current
+actual line, then searches later actual lines for one matching the current
+expectation. Deleted expectations disappear; inserted lines become exact
+expectations. Matching glob/regex spellings are retained. Exact matches, including
+redundant `(escaped)` spellings, are rendered afresh. `(no-eol)` always follows
+the actual stream's final newline.
 
-New exact output lines are JSON-escaped with `(escaped)` when they are empty,
-begin with a space, `$`, or `[`, look like a stream marker, contain a backtick or a control character below
-U+0020 or U+007F, or end with a recognized annotation suffix: ` (escaped)`,
-` (glob)`, ` (regex)`, or ` (no-eol)`. Other lines, including unknown
-parenthesized suffixes, are written literally. The last output line gets
-`(no-eol)` exactly when needed. A nonzero actual status appends `[N]`; zero
-requires no marker.
+Ordinary text, including indentation, `$HOME`, `[INFO] ready`, `[literal]`, and
+inline backticks, is written directly. JSON strings with `(escaped)` protect
+control characters below U+0020 or U+007F, command forms `$` / `$ `, reserved
+stream markers, and the known annotation suffixes ` (escaped)`, ` (glob)`,
+` (regex)`, and ` (no-eol)`. Numeric bracket lines, including negative and
+out-of-range numbers, are escaped only when they would occupy the final case
+exit-status position. Thus `[2] (no-eol)` can become `"[2]" (escaped)` when a
+newline is added, but stays literal if followed by another output line, stream
+marker, or nonzero exit status. Zero exit statuses are omitted even when
+originally explicit; all nonzero statuses use canonical `[N]` spelling.
 
-For replacement line `i`, an existing output line's Markdown container prefix
-and newline spelling are reused when available. If the old content is empty or
-contains only spaces/tabs and changes to nonempty text, it uses the command
-line's full container prefix while retaining the old line's newline spelling.
-Blank lines may omit indentation that nonempty replacement text needs, including
-an explicit `"" (escaped)` output line. Extra lines use the command
-line's prefix and newline. This preserves list/quote layout and LF/CRLF/CR
-spellings, including mixed line endings, by source position. Text outside the
-edited spans is retained, including a missing final document newline.
+Internal empty output lines stay bare. Only the final trailing empty line is
+written as `"" (escaped)` when needed to prevent trimming: at the end of each
+stream section, or at the end of legacy output without a following nonzero
+status. Earlier empty lines in the same trailing run remain bare. Empty output
+produces no output lines. An internal blank also uses `"" (escaped)` if its bare
+LF would merge with a preceding CR; this preserves both source newline spellings.
 
-For paired cases, rendering keeps the original section order, leading and
-section separator blanks, and every unchanged section. `(ignore)` remains.
-A satisfied `(empty)` remains; a violated `(empty)` becomes a plain marker
-with rendered output. Still-matching patterns are retained by line index
-independently within each stream. All marker-looking output is JSON-escaped,
-including in legacy cases, so re-parsing and repeated updates are idempotent.
-Rows follow the same blank-line rule and otherwise retain their own section's
-existing prefixes and newline spellings; newly
-added output rows use the command's layout without shifting the other section's
-layout. An unchanged explicit final status marker also keeps its spelling.
+All cases in a fence share the shortest safe opening/closing backtick length,
+with a minimum of three; overly long fences shrink too. Only lines that could
+be parsed as closing fences require longer markers. The calculation accounts
+for source indentation before the parser strips optional fence indentation.
+Inline backticks, backticks followed by non-whitespace, and sufficiently
+indented backtick lines do not lengthen the fence.
+
+Aligned rows retain their source container prefix and LF/CRLF/CR newline spelling,
+including mixed newlines. New rows use the command's layout. Underindented blank
+rows receive a complete container prefix when replaced by nonempty text; leading
+output spaces receive enough optional fence indentation to survive parsing.
+Unchanged rows retain their original bytes. Commands, surrounding prose,
+separator lines, and text outside edited spans stay intact, including a missing
+final document newline. Only fence character spans and expectation spans change.
+
+Paired cases retain marker order, leading and section separator blanks,
+`(ignore)`, and satisfied `(empty)` constraints. A violated `(empty)` becomes a
+plain marker with rendered output. Alignment runs independently within each
+stream; new lines never borrow another stream's source layout.
+
+Before writing or showing a diff, mooncram re-parses the entire generated document
+and verifies case count, commands, configuration, and each captured result's
+expectation match. Failure cancels the entire document update. Each changed case
+counts once, including pure normalization; changing shared fence markers counts
+every case in that fence.
 
 In dry-run mode, each document with eligible edits additionally prints:
 
@@ -788,7 +798,8 @@ and run every case, so program effects and build artifacts can be created.
 
 After a case execution error, later cases in the same document still run.
 However, any execution/build/timeout error suppresses **all** expectation edits
-for that document. If edits had been collected, stderr also receives:
+for that document. If any successful case was captured for update, stderr also
+receives:
 
 ```text
 Not updating <canonical-file>: execution errors in this document
@@ -841,7 +852,7 @@ For example:
 | `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports, imports and cases in documents that failed to parse or validate module declarations. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
 | `errors` | Caught per-case errors plus document read/parse/module-validation/update errors. A parse or module-validation failure counts as one document error. |
-| `updated` | Mismatching cases in documents successfully written, or eligible for a dry-run document diff. Counts cases, not files or changed lines. |
+| `updated` | Changed cases in documents successfully written, or eligible for a dry-run document diff, including normalization and every case sharing changed fence markers. Each case counts once, not once per changed line. |
 
 Documents whose updates are suppressed or whose write fails do not contribute
 to `updated`. An update can print `FAIL` reports and still have `updated 0`
