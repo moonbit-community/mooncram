@@ -15,54 +15,20 @@ async fn assert_async_error_contains(
 }
 
 ///|
-test "new and legacy package configurations determine callability" {
+test "package configurations determine callability" {
+  for source in ["pkgtype(kind: \"executable\")", "options(\"is-main\": true)"] {
+    assert_true(callable_config(source, "moon.pkg"))
+  }
   for
-    source in [
-      "pkgtype(kind: \"executable\")", "options(\"is-main\": true)", "{\"is-main\":true}",
-    ] {
-    assert_true(
-      callable_config(
-        source,
-        if source.has_prefix("{") {
-          "moon.pkg.json"
-        } else {
-          "moon.pkg"
-        },
-      ),
-    )
+    source in ["", "pkgtype(kind: \"library\")", "options(\"is-main\": false)"] {
+    assert_true(!callable_config(source, "moon.pkg"))
   }
   for
     source in [
-      "", "pkgtype(kind: \"library\")", "options(\"is-main\": false)", "{\"is-main\":false}",
-    ] {
-    assert_true(
-      !callable_config(
-        source,
-        if source.has_prefix("{") {
-          "moon.pkg.json"
-        } else {
-          "moon.pkg"
-        },
-      ),
-    )
-  }
-  for
-    source in [
-      "pkgtype(kind: true)", "{", "options(\"is-main\": \"yes\")", "options(\"is-main\":true, \"is-main\":false)",
+      "pkgtype(kind: true)", "options(\"is-main\": \"yes\")", "options(\"is-main\":true, \"is-main\":false)",
     ] {
     assert_error_contains(
-      () => {
-        ignore(
-          callable_config(
-            source,
-            if source.has_prefix("{") {
-              "moon.pkg.json"
-            } else {
-              "moon.pkg"
-            },
-          ),
-        )
-      },
+      () => ignore(callable_config(source, "moon.pkg")),
       "moon.pkg",
     )
   }
@@ -108,11 +74,11 @@ async test "root and same-name subpackage selection matrix with source directory
         },
       )
       @fs.write_file(
-        @files.resolve_from(sub, "moon.pkg.json"),
+        @files.resolve_from(sub, "moon.pkg"),
         if sub_main {
-          "{\"is-main\":true}"
+          "pkgtype(kind: \"executable\")"
         } else {
-          "{}"
+          ""
         },
       )
       assert_eq(has_local_candidate(context, "foo"), root_main || sub_main)
@@ -161,21 +127,16 @@ async test "deep packages and nested modules including symlinks stay within modu
     "pkgtype(kind: \"executable\")",
   )
   assert_eq(resolve_package(context, "cmd/deep/boo", warning=_ => ()), deep)
-  for config in ["moon.mod", "moon.mod.json"] {
-    let boundary = @files.resolve_from(dir, "cmd/" + config)
-    @fs.write_file(boundary, "")
-    assert_async_error_contains(
-      () => ignore(resolve_package(context, "cmd/deep/boo", warning=_ => ())),
-      "nested modules",
-    )
-    @fs.symlink(target=deep, @files.resolve_from(dir, "alias"))
-    assert_async_error_contains(
-      () => ignore(resolve_package(context, "alias", warning=_ => ())),
-      "nested modules",
-    )
-    @fs.remove(@files.resolve_from(dir, "alias"))
-    @fs.remove(boundary)
-  }
+  @fs.write_file(@files.resolve_from(dir, "cmd/moon.mod"), "")
+  assert_async_error_contains(
+    () => ignore(resolve_package(context, "cmd/deep/boo", warning=_ => ())),
+    "nested modules",
+  )
+  @fs.symlink(target=deep, @files.resolve_from(dir, "alias"))
+  assert_async_error_contains(
+    () => ignore(resolve_package(context, "alias", warning=_ => ())),
+    "nested modules",
+  )
 }
 
 ///|
