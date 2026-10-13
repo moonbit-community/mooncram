@@ -21,12 +21,15 @@ fn encode_output_line(text : String) -> String {
 }
 
 ///|
-fn render_stream(text : String, expected : StreamExpectation) -> Array[String] {
+pub fn actual_stream_expectation(
+  text : String,
+  expected : Array[ExpectedLine],
+) -> Array[String] {
   let (lines, no_eol) = output_lines(text)
   let rendered = []
   for i, line in lines {
     // Retain matching patterns even when a different line or exit code fails.
-    let mut text = match expected.lines.get(i) {
+    let mut text = match expected.get(i) {
       Some(old) if old.matcher.matches(line) &&
         old.raw != "" &&
         !(old.raw.has_prefix("[") && old.raw.has_suffix("]")) =>
@@ -46,18 +49,6 @@ fn render_stream(text : String, expected : StreamExpectation) -> Array[String] {
 }
 
 ///|
-pub fn actual_stream_expectation(
-  text : String,
-  constraint : StreamConstraint,
-) -> Array[String] {
-  match constraint {
-    Ignore => []
-    Empty => render_stream(text, { lines: [], no_eol: false, })
-    Match(expected) => render_stream(text, expected)
-  }
-}
-
-///|
 // Each rendered row carries its original source-row index, when it has one.
 // Section growth must not borrow another section's prefix or newline spelling.
 pub fn actual_expectation_layout(
@@ -67,7 +58,7 @@ pub fn actual_expectation_layout(
   let rendered = []
   match expected.body {
     Legacy(content) => {
-      for i, line in render_stream(actual.output, content) {
+      for i, line in actual_stream_expectation(actual.output, content.lines) {
         rendered.push((line, Some(i)))
       }
       if actual.exit_code != 0 {
@@ -80,21 +71,25 @@ pub fn actual_expectation_layout(
       }
       for section in sections {
         let text = section.stream.select(actual)
-        if section.constraint.matches(text) {
-          for i in section.start..<section.end {
-            rendered.push((expected.source_lines[i], Some(i)))
+        let lines = match section.constraint {
+          Match(content) if !content.matches(text) => content.lines
+          Empty if !text.is_empty() => []
+          _ => {
+            for i in section.start..<section.end {
+              rendered.push((expected.source_lines[i], Some(i)))
+            }
+            continue
           }
-        } else {
-          rendered.push((section.stream.label(), Some(section.start)))
-          for i, line in actual_stream_expectation(text, section.constraint) {
-            let row = section.start + 1 + i
-            rendered.push(
-              (line, if row < section.content_end { Some(row) } else { None }),
-            )
-          }
-          for i in section.content_end..<section.end {
-            rendered.push((expected.source_lines[i], Some(i)))
-          }
+        }
+        rendered.push((section.stream.label(), Some(section.start)))
+        for i, line in actual_stream_expectation(text, lines) {
+          let row = section.start + 1 + i
+          rendered.push(
+            (line, if row < section.content_end { Some(row) } else { None }),
+          )
+        }
+        for i in section.content_end..<section.end {
+          rendered.push((expected.source_lines[i], Some(i)))
         }
       }
       let last = sections[sections.length() - 1].end

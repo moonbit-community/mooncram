@@ -60,18 +60,16 @@ pub fn failure_report(
     Streams(sections) =>
       for section in sections {
         let text = section.stream.select(actual)
-        if section.constraint.matches(text) {
-          continue
-        }
         let expected = match section.constraint {
-          Match(content) => content.lines.map(l => l.raw)
-          Empty | Ignore => []
+          Match(content) if !section.constraint.matches(text) => content.lines
+          Empty if !text.is_empty() => []
+          _ => continue
         }
         result.write_string(
           "--- expected \{section.stream.label()}\n+++ actual \{section.stream.label()}\n" +
           diff_lines(
-            expected,
-            @output.actual_stream_expectation(text, section.constraint),
+            expected.map(l => l.raw),
+            @output.actual_stream_expectation(text, expected),
             color,
           ),
         )
