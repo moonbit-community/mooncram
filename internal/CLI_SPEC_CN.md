@@ -336,17 +336,17 @@ Windows 下变量名仍不区分大小写，Linux 和 macOS 下仍区分大小�
 使用模块根目录；其他值必须解析到模块根目录内的子目录。
 对于 `user/foo`，`cmd/boo` 对应 `user/foo/cmd/boo`。短名称 `foo` 优先考虑根包
 `user/foo`，其次考虑同名子包 `user/foo/foo`。可调用包通过
-`pkgtype(kind: "executable")` 或旧的 `is-main: true` 声明。仅子包可调用时选择子包，
+`pkgtype(kind: "executable")` 或 `options("is-main": true)` 声明。仅子包可调用时选择子包，
 双方可调用时选择根包；双方都不可调用时报错。选中包编译失败或不支持目标后端时
 直接报错，不回退。
 
 每个发生歧义的管道段向 mooncram 的 stderr 独立输出一次 `WARNING`，包含文档位置、
 两个完整包名和选择结果。警告不进入捕获输出、不匹配诊断、更新内容或错误计数。
-包名不接受绝对目录、`./`、`../`、路径穿越，也不得跨入其他 `moon.mod` 或
-`moon.mod.json` 界定的嵌套模块，符号链接也遵循此限制。
-`moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析，兼容以 JSON 读取
-`moon.pkg.json`；配置解析失败会报错。任意二进制、shell 命令、`.mbt` 文件和
-未声明导入的注册表模块不能作为用例目标，也不会通过 `PATH` 查找目标。
+包名不接受绝对目录、`./`、`../`、路径穿越，也不得跨入其他 `moon.mod`
+界定的嵌套模块，符号链接也遵循此限制。
+`moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析；配置解析失败会报错。
+任意二进制、shell 命令、`.mbt` 文件和未声明导入的注册表模块不能作为用例目标，
+也不会通过 `PATH` 查找目标。
 其余参数会转发给被测程序，因此程序自己的 `--version` 或 `--target`
 不会被解释为 mooncram 选项。
 

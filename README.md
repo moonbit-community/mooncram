@@ -72,14 +72,14 @@ Packages are resolved below the module's `source` directory (the module root if
 `source` is omitted or empty). For `user/foo`, `foo` selects the executable root
 package; `cmd/boo` selects `user/foo/cmd/boo`. If the root is not executable,
 `foo` can select the executable subpackage `user/foo/foo`. Executability means
-`pkgtype(kind: "executable")` or legacy `is-main: true`. If both candidates are
+`pkgtype(kind: "executable")` or `options("is-main": true)`. If both candidates are
 executable, the root wins and each ambiguous pipeline segment emits one
 `WARNING` to mooncram's stderr, with the document position, both full package
 names, and the selection. Warnings do not affect matching, updates, or error
 counts. A selected package's build/target failure is an error without fallback.
 Package names cannot be absolute paths, start with `./` or `../`, contain path
-traversal, or enter nested modules. Package configurations use `moon.pkg`, with
-`moon.pkg.json` supported for compatibility; invalid configurations are errors.
+traversal, or enter nested modules. Package configurations use `moon.pkg`;
+invalid configurations are errors.
 
 Local packages are built with `moon -C <module-root> run --build-only` and their
 artifact runs with `moonrun` for Wasm or directly for native. Build diagnostics

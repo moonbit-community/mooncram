@@ -63,11 +63,11 @@ mooncram --version
 包位于模块 `source` 指定的源码目录下；未指定或为空时使用模块根目录。
 对于 `user/foo`，`foo` 优先选择可执行根包，`cmd/boo` 选择 `user/foo/cmd/boo`。
 根包不可执行时，`foo` 可选择可执行的同名子包 `user/foo/foo`。
-可执行包通过 `pkgtype(kind: "executable")` 或旧的 `is-main: true` 声明。
+可执行包通过 `pkgtype(kind: "executable")` 或 `options("is-main": true)` 声明。
 双方可执行时选择根包，并为每个歧义管道段向 mooncram 的 stderr 输出一次
 `WARNING`，包含文档位置、两个完整包名和选择结果。警告不参与匹配、更新或错误计数。
 选中包构建失败或不支持目标后端时直接报错，不回退。包名不接受绝对路径、`./`、
-`../`、路径穿越或嵌套模块。包配置使用 `moon.pkg`，兼容 `moon.pkg.json`；
+`../`、路径穿越或嵌套模块。包配置使用 `moon.pkg`；
 配置解析失败会报错。
 
 本地包通过 `moon -C <module-root> run --build-only` 构建，产物在 Wasm 后端下
