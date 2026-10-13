@@ -7,6 +7,7 @@
 在本仓库目录中运行：
 
 ```text
+moon run . -- check README.md
 moon run . -- test README.md
 moon run . -- test examples
 moon run . -- update examples --dry-run
@@ -22,13 +23,14 @@ Hello, Moon Bit!
 ## 命令
 
 ```text
+mooncram check [paths...] [--color auto|always|never]
 mooncram test [paths...] [--target wasm|native] [--timeout-ms N]
 mooncram update [paths...] [--target wasm|native] [--timeout-ms N] [--dry-run]
 mooncram --help
 mooncram --version
 ```
 
-两个命令都支持 `--color auto|always|never`（默认为 `auto`）。`NO_COLOR`
+三个命令都支持 `--color auto|always|never`（默认为 `auto`）。`NO_COLOR`
 环境变量会禁用自动着色。全局选项可以放在子命令之前，也可以放在路径之后。
 如果路径以 `-` 开头，请在它前面加上 `--`。
 
@@ -42,9 +44,29 @@ mooncram --version
 
 | 状态码 | 含义 |
 | --- | --- |
-| `0` | 所有断言通过，或更新／试运行成功完成 |
+| `0` | 检查找到用例且无错误、测试断言全部通过，或更新／试运行成功完成 |
 | `1` | `test` 中有一个或多个断言失败 |
-| `2` | 参数无效，发生解析、构建或执行错误，或未找到任何用例 |
+| `2` | 参数无效，发生解析、校验、构建或执行错误，或未找到任何用例 |
+
+## 不执行程序的检查
+
+`check` 与 `test/update` 共享文件发现、Markdown 解析、命令和预期输出校验，
+以及文档级模块、工作目录校验，然后逐用例、逐管道段解析目标，检查本地脚本存在性、
+可执行包选择、模块边界和导入别名冲突。仅含配置的围栏也会校验。
+检查只读取父进程环境、本地文件及配置，不构建、不下载依赖、不启动子进程，
+也不修改 Markdown。
+
+汇总格式为 `N cases, E errors`。文档解析或声明校验失败计一次错误；目标解析
+失败计当前用例一次错误，跳过该用例剩余管道段，并继续后续用例和文档。
+警告不计错误。整次检查未找到用例时仍报错，返回 `2`。
+`check` 拒绝显式传入 `--target`、`--timeout-ms` 和 `--dry-run`；运行选项仅适用于
+`test/update`，其中 `--dry-run` 仅用于 `update`。
+
+变量展开使用当前父进程环境、平台变量名规则，以及文档 export 和临时赋值，
+因此检查结果依赖环境和当前文件系统。如果后一用例的目标需要由前一用例生成，
+`check` 可能报目标缺失；`test/update` 仍在执行时解析目标，支持这种场景。
+检查不验证 MoonBit 源码是否能编译、后端是否能构建目标、远程坐标是否存在，
+也不验证程序断言是否通过。
 
 ## 测试代码块
 
