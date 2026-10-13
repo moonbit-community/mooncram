@@ -11,13 +11,9 @@ test "quoted list Unicode CRLF source positions and local replacement" {
   assert_eq(case.line, 4)
   assert_eq(case.prefix, ">   ")
   assert_eq(case.newline, "\r\n")
-  let updated = @update.apply_edits(source, [
-    @update.case_edit(case, {
-      output: "新值😀\n",
-      diagnostic: "",
-      exit_code: 0,
-    }),
-  ])
+  let updated = @update.generate(doc, [
+      (0, { output: "新值😀\n", diagnostic: "", exit_code: 0, }),
+    ]).source
   assert_eq(updated, source.replace(old="旧值", new="新值😀"))
   assert_eq(
     @markdown.parse_document("unicode.md", updated).cases[0].expected.source_lines[0],
@@ -35,17 +31,13 @@ test "update special output round trips and is idempotent" {
       "\u0000\u001b\t\r\\\"", "final", "\nlast",
     ] {
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 4, }
-    let updated = @update.apply_edits(source, [
-      @update.case_edit(doc.cases[0], actual),
-    ])
+    let updated = @update.generate(doc, [(0, actual)]).source
     let parsed = @markdown.parse_document("test.md", updated)
     assert_eq(parsed.cases.length(), 2)
     assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-    assert_eq(
-      @update.apply_edits(updated, [@update.case_edit(parsed.cases[0], actual)]),
-      updated,
-    )
-    assert_true(updated.has_suffix("\n\n$ ./b.mbtx\nkeep * (glob)\n```\nTail"))
+    assert_eq(@update.generate(parsed, [(0, actual)]).source, updated)
+    assert_true(updated.contains("\n\n$ ./b.mbtx\nkeep * (glob)\n"))
+    assert_true(updated.has_suffix("\nTail"))
   }
 }
 
@@ -78,27 +70,20 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
       } else {
         rendered
       }
-      let updated = @update.apply_edits(doc.source, [
-        @update.case_edit(doc.cases[0], actual),
-      ])
+      let updated = @update.generate(doc, [(0, actual)]).source
       assert_eq(
         updated,
         doc.source.replace(old="old\n", new=expected_line + "\n"),
       )
       let parsed = @markdown.parse_document("example.md", updated)
       assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-      assert_eq(
-        @update.apply_edits(updated, [
-          @update.case_edit(parsed.cases[0], actual),
-        ]),
-        updated,
-      )
+      assert_eq(@update.generate(parsed, [(0, actual)]).source, updated)
     }
   }
 }
 
 ///|
-test "matching patterns and explicit output spellings survive partial failures" {
+test "matching patterns survive while exact spellings normalize" {
   let doc = parse_example(
     "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
   )
@@ -107,12 +92,10 @@ test "matching patterns and explicit output spellings survive partial failures" 
     diagnostic: "",
     exit_code: 2,
   }
-  let updated = @update.apply_edits(doc.source, [
-    @update.case_edit(doc.cases[0], actual),
-  ])
+  let updated = @update.generate(doc, [(0, actual)]).source
   assert_true(
     updated.contains(
-      "version * (glob)\n[0-9]+ (regex)\nnew\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n[2]",
+      "version * (glob)\n[0-9]+ (regex)\nnew\n\nhello (equal)\nhello (foo)\nhello (foo)\n[2]",
     ),
   )
   assert_true(
@@ -127,10 +110,7 @@ test "exit-only updates and multiple replacements preserve source text" {
   let doc = parse_example("$ ./a.mbtx\n\n$ ./b.mbtx\n[2]\n")
   let one : @output.Captured = { output: "", diagnostic: "", exit_code: 3, }
   let two : @output.Captured = { output: "", diagnostic: "", exit_code: 0, }
-  let updated = @update.apply_edits(doc.source, [
-    @update.case_edit(doc.cases[0], one),
-    @update.case_edit(doc.cases[1], two),
-  ])
+  let updated = @update.generate(doc, [(0, one), (1, two)]).source
   assert_eq(updated, "```mooncram\n$ ./a.mbtx\n[3]\n\n$ ./b.mbtx\n```\n")
 }
 
@@ -139,9 +119,7 @@ test "retained blank and status-looking output is safe when it becomes final" {
   for (body, output) in [("a\n\nb\n", "a\n\n"), ("[2]\nb\n", "[2]\n")] {
     let doc = parse_example("$ ./a.mbtx\n" + body)
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 0, }
-    let updated = @update.apply_edits(doc.source, [
-      @update.case_edit(doc.cases[0], actual),
-    ])
+    let updated = @update.generate(doc, [(0, actual)]).source
     assert_true(
       @markdown.parse_document("example.md", updated).cases[0].expected.matches(
         actual,
@@ -159,9 +137,7 @@ test "existing container spelling and mixed line endings survive an update" {
     diagnostic: "",
     exit_code: 0,
   }
-  let updated = @update.apply_edits(source, [
-    @update.case_edit(doc.cases[0], actual),
-  ])
+  let updated = @update.generate(doc, [(0, actual)]).source
   assert_eq(updated, source.replace(old="> old", new="> new"))
   assert_true(
     @markdown.parse_document("mixed.md", updated).cases[0].expected.matches(
@@ -183,9 +159,7 @@ test "leading output spaces survive optional Markdown fence indentation" {
       diagnostic: "",
       exit_code: 0,
     }
-    let updated = @update.apply_edits(source, [
-      @update.case_edit(doc.cases[0], actual),
-    ])
+    let updated = @update.generate(doc, [(0, actual)]).source
     assert_true(
       @markdown.parse_document("indent.md", updated).cases[0].expected.matches(
         actual,
@@ -202,18 +176,15 @@ fn assert_update(
   wanted : String,
 ) -> Unit raise {
   let doc = @markdown.parse_document("update.md", source)
-  let updated = @update.apply_edits(source, [
-    @update.case_edit(doc.cases[0], actual),
-  ])
+  let updated = @update.generate(doc, [(0, actual)]).source
   assert_eq(updated, wanted)
   let parsed = @markdown.parse_document("update.md", updated)
   assert_eq(parsed.cases.length(), doc.cases.length())
   assert_eq(parsed.cases[0].expected.exit_code, actual.exit_code)
   assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-  assert_eq(
-    @update.apply_edits(updated, [@update.case_edit(parsed.cases[0], actual)]),
-    updated,
-  )
+  let again = @update.generate(parsed, [(0, actual)])
+  assert_eq(again.source, updated)
+  assert_eq(again.changed_cases, 0)
 }
 
 ///|
@@ -238,7 +209,7 @@ test "stream updates preserve order separators patterns and ignored sections" {
   assert_update(
     patterns,
     { output: "version", diagnostic: "error 12\n", exit_code: 0, },
-    patterns,
+    patterns.replace(old="[0]\n", new=""),
   )
 }
 
@@ -256,9 +227,7 @@ test "empty stream constraints convert only when nonempty and literal markers es
       exit_code: 0,
     }
     let doc = @markdown.parse_document("streams.md", source)
-    let updated = @update.apply_edits(source, [
-      @update.case_edit(doc.cases[0], actual),
-    ])
+    let updated = @update.generate(doc, [(0, actual)]).source
     assert_true(updated.contains("@STDOUT\n"))
     assert_true(updated.contains("@STDERR (empty)\n"))
     assert_update(source, actual, updated)

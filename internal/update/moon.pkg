@@ -1,4 +1,6 @@
 import {
+  "moonbit-community/mooncram/internal/diagnostic",
+  "moonbitlang/core/cmp",
   "moonbit-community/mooncram/internal/markdown",
   "moonbit-community/mooncram/internal/output",
 }

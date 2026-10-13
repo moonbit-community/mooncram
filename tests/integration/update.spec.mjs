@@ -50,7 +50,7 @@ function createErrorFixtures(project, docs) {
 
 function assertUpdatedDocument(updated) {
   const text = updated.toString("utf8");
-  assert(text.startsWith("😀 Intro\r\n\r\n> - ```mooncram mooncram/integration\r\n"));
+  assert(text.startsWith("😀 Intro\r\n\r\n> - ````mooncram mooncram/integration\r\n"));
   assert(updated.includes("Hello,* (glob)\r\n") && updated.includes("o* (glob)\r\n"));
   assert(updated.includes("(escaped)") && updated.includes("(no-eol)"));
   assert(text.endsWith("Unchanged tail"));
@@ -94,7 +94,7 @@ export function testUpdates({ cli, docs, target }) {
   const original = updateDocument();
   const update = writeDocument(docs, "update.md", original);
   const result = cli(["update", update, "--dry-run", "--target", target]);
-  assert(result.stdout.includes("would update 2") && result.stdout.includes("(updated)"));
+  assert(result.stdout.includes("would update 3") && result.stdout.includes("(updated)"));
   assert.deepEqual(fs.readFileSync(update), original);
   cli(["update", update, "--target", target]);
   const updated = fs.readFileSync(update);

@@ -21,20 +21,40 @@ pub struct Case {
   extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation
+  fence : Int
   replace_start : Int
   replace_end : Int
   prefix : String
   newline : String
-  output_layout : Array[(String, String)]
+  command_layout : LineLayout
+  output_layout : Array[LineLayout]
 }
 
 pub struct Document {
   path : String
   source : String
   cases : Array[Case]
+  fences : Array[Fence]
   module_declarations : Array[(String, Int)]
   working_directory_declarations : Array[WorkingDirectoryDeclaration]
   imports : Map[String, ToolImport]
+}
+
+pub struct Fence {
+  opening_start : Int
+  opening_end : Int
+  closing_start : Int
+  closing_end : Int
+  indent : Int
+}
+
+pub struct LineLayout {
+  prefix : String
+  newline : String
+  indent : Int
+  fence_start : Int
+  original_fence_start : Int
+  original : String
 }
 
 pub struct ToolImport {
