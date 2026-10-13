@@ -196,17 +196,19 @@ test "leading output spaces survive optional Markdown fence indentation" {
 }
 
 ///|
-fn assert_stream_update(
+fn assert_update(
   source : String,
   actual : @output.Captured,
   wanted : String,
 ) -> Unit raise {
-  let doc = @markdown.parse_document("streams.md", source)
+  let doc = @markdown.parse_document("update.md", source)
   let updated = @update.apply_edits(source, [
     @update.case_edit(doc.cases[0], actual),
   ])
   assert_eq(updated, wanted)
-  let parsed = @markdown.parse_document("streams.md", updated)
+  let parsed = @markdown.parse_document("update.md", updated)
+  assert_eq(parsed.cases.length(), doc.cases.length())
+  assert_eq(parsed.cases[0].expected.exit_code, actual.exit_code)
   assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
   assert_eq(
     @update.apply_edits(updated, [@update.case_edit(parsed.cases[0], actual)]),
@@ -222,18 +224,18 @@ test "stream updates preserve order separators patterns and ignored sections" {
     diagnostic: "err 42\nnew",
     exit_code: 2,
   }
-  assert_stream_update(
+  assert_update(
     source,
     actual,
     source.replace(old="old\n", new="new (no-eol)\n"),
   )
   let patterns = "```mooncram\n$ ./a.mbtx\n@STDOUT\nv* (glob) (no-eol)\n@STDERR\nerror [0-9]+ (regex)\n[0]\n```\n"
-  assert_stream_update(
+  assert_update(
     patterns,
     { output: "version", diagnostic: "error 12\n", exit_code: 3, },
     patterns.replace(old="[0]", new="[3]"),
   )
-  assert_stream_update(
+  assert_update(
     patterns,
     { output: "version", diagnostic: "error 12\n", exit_code: 0, },
     patterns,
@@ -259,9 +261,9 @@ test "empty stream constraints convert only when nonempty and literal markers es
     ])
     assert_true(updated.contains("@STDOUT\n"))
     assert_true(updated.contains("@STDERR (empty)\n"))
-    assert_stream_update(source, actual, updated)
+    assert_update(source, actual, updated)
   }
-  assert_stream_update(
+  assert_update(
     source,
     { output: "", diagnostic: "error\n", exit_code: 1, },
     source.replace(old="@STDERR (empty)\n", new="@STDERR\nerror\n[1]\n"),
@@ -271,13 +273,13 @@ test "empty stream constraints convert only when nonempty and literal markers es
 ///|
 test "growing sections preserve other section prefixes and mixed newlines" {
   let source = "> ```mooncram\r\n>$ ./a.mbtx\n> @STDOUT\r\n> old\n>\r\n>@STDERR\n> keep * (glob)\r\n> ```\r\n"
-  assert_stream_update(
+  assert_update(
     source,
     { output: "first\nsecond\n", diagnostic: "keep me\n", exit_code: 0, },
     source.replace(old="> old\n", new="> first\n>second\n"),
   )
   let source = "> - ```mooncram\r\n>   $ ./a.mbtx\r\n>   @STDERR (ignore)\r\n>\r\n>   @STDOUT (empty)\r\n>   ```\r\n"
-  assert_stream_update(
+  assert_update(
     source,
     { output: "new\n", diagnostic: "ignored", exit_code: 2, },
     source.replace(
@@ -290,7 +292,7 @@ test "growing sections preserve other section prefixes and mixed newlines" {
 ///|
 test "legacy updates escape marker-looking output before it can select dual mode" {
   let source = "```mooncram\n$ ./a.mbtx\nold\n```\n"
-  assert_stream_update(
+  assert_update(
     source,
     { output: "@STDOUT\n@STDERR (ignore)\n", diagnostic: "", exit_code: 0, },
     source.replace(
