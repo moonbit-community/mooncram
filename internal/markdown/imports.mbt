@@ -48,14 +48,13 @@ fn valid_semver(version : String) -> Bool {
     return false
   }
   let release = build[0].to_owned()
-  let core = match release.find("-") {
-    Some(index) => {
-      if !semver_identifiers(release[index + 1:].to_owned(), prerelease=true) {
-        return false
-      }
-      release[:index].to_owned()
+  let core = if release.find("-") is Some(index) {
+    if !semver_identifiers(release[index + 1:].to_owned(), prerelease=true) {
+      return false
     }
-    None => release
+    release[:index].to_owned()
+  } else {
+    release
   }
   let numbers = core.split(".").to_array()
   numbers.length() == 3 && numbers.all(n => semver_number(n.to_owned()))

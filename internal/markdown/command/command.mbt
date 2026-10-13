@@ -108,9 +108,10 @@ pub fn parse(
     }
     let segment_lookup = fn(name : String) {
       let key = env_key(name)
-      match extra_env.get(key) {
-        Some(value) => Some(value)
-        None => lookup(key)
+      if extra_env.get(key) is Some(value) {
+        Some(value)
+      } else {
+        lookup(key)
       }
     }
     let mut stderr_to_stdout = false
