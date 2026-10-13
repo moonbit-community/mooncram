@@ -734,10 +734,14 @@ rules below apply within each matched stream.
 For each actual output line at index `i`, rendering first tries to retain the
 existing expectation at the same index if its matcher still matches. This
 preserves still-valid glob/regex patterns and explicit escaping even
-when another line or the exit status fails. A bare empty expectation and a raw
-line beginning with `[` and ending with `]` are rendered afresh to avoid
-separator/status ambiguity. Matching is by line index, not by searching for
-the same text elsewhere in the output.
+when another line or the exit status fails. Before reusing a spelling, rendering
+removes its final ` (no-eol)` annotation. A bare empty expectation and a raw
+line beginning with `[` and ending with `]` are then rendered afresh with JSON
+escaping to avoid separator/status ambiguity. This includes negative and
+out-of-range status-looking text: adding a final newline to `[2] (no-eol)`
+produces `"[2]" (escaped)`, independently of the actual exit status.
+Matching is by line index, not by searching for the same text elsewhere in the
+output; the new `(no-eol)` annotation always follows the actual output.
 
 New exact output lines are JSON-escaped with `(escaped)` when they are empty,
 begin with a space, `$`, or `[`, look like a stream marker, contain a backtick or a control character below
@@ -748,7 +752,11 @@ parenthesized suffixes, are written literally. The last output line gets
 requires no marker.
 
 For replacement line `i`, an existing output line's Markdown container prefix
-and newline spelling are reused when available. Extra lines use the command
+and newline spelling are reused when available. If the old content is empty or
+contains only spaces/tabs and changes to nonempty text, it uses the command
+line's full container prefix while retaining the old line's newline spelling.
+Blank lines may omit indentation that nonempty replacement text needs, including
+an explicit `"" (escaped)` output line. Extra lines use the command
 line's prefix and newline. This preserves list/quote layout and LF/CRLF/CR
 spellings, including mixed line endings, by source position. Text outside the
 edited spans is retained, including a missing final document newline.
@@ -759,7 +767,8 @@ A satisfied `(empty)` remains; a violated `(empty)` becomes a plain marker
 with rendered output. Still-matching patterns are retained by line index
 independently within each stream. All marker-looking output is JSON-escaped,
 including in legacy cases, so re-parsing and repeated updates are idempotent.
-Rows retain their own section's existing prefixes and newline spellings; newly
+Rows follow the same blank-line rule and otherwise retain their own section's
+existing prefixes and newline spellings; newly
 added output rows use the command's layout without shifting the other section's
 layout. An unchanged explicit final status marker also keeps its spelling.
 
