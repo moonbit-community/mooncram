@@ -1,0 +1,14 @@
+import {
+  "moonbit-community/mooncram/internal/diagnostic",
+  "moonbit-community/mooncram/internal/files",
+  "moonbit-community/mooncram/internal/markdown",
+  "moonbitlang/async/fs",
+  "moonbitlang/moon_config",
+  "moonbitlang/x/path",
+}
+
+supported_targets = "wasm+native"
+
+import {
+  "moonbitlang/async",
+} for "wbtest"

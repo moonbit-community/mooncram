@@ -1,4 +1,17 @@
 ///|
+fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise {
+  try f() catch {
+    e =>
+      assert_true(
+        @diagnostic.error_text(e).contains(expected),
+        msg=@diagnostic.error_text(e),
+      )
+  } noraise {
+    _ => fail("expected error containing: " + expected)
+  }
+}
+
+///|
 async fn assert_async_error_contains(
   f : async () -> Unit,
   expected : String,
@@ -136,6 +149,36 @@ async test "deep packages and nested modules including symlinks stay within modu
   assert_async_error_contains(
     () => ignore(resolve_package(context, "alias", warning=_ => ())),
     "nested modules",
+  )
+  let outside = @fs.realpath(@fs.tmpdir(prefix="mooncram-outside"))
+  defer @fs.rmdir(outside, recursive=true)
+  @fs.write_file(
+    @files.resolve_from(outside, "moon.pkg"),
+    "pkgtype(kind: \"executable\")",
+  )
+  @fs.symlink(target=outside, @files.resolve_from(dir, "outside"))
+  assert_async_error_contains(
+    () => ignore(resolve_package(context, "outside", warning=_ => ())),
+    "no executable package",
+  )
+  // Being inside the module is insufficient when source selects a subdirectory.
+  let src = @files.resolve_from(dir, "src")
+  @fs.mkdir(src)
+  let sibling = @files.resolve_from(dir, "sibling")
+  @fs.mkdir(sibling)
+  @fs.write_file(
+    @files.resolve_from(sibling, "moon.pkg"),
+    "pkgtype(kind: \"executable\")",
+  )
+  @fs.write_file(
+    @files.resolve_from(dir, "moon.mod"),
+    "name = \"user/foo\"\nsource = \"src\"",
+  )
+  @fs.symlink(target=sibling, @files.resolve_from(src, "sibling"))
+  let context = load_module(dir)
+  assert_async_error_contains(
+    () => ignore(resolve_package(context, "sibling", warning=_ => ())),
+    "no executable package",
   )
 }
 
