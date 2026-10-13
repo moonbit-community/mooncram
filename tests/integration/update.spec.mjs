@@ -57,6 +57,39 @@ function assertUpdatedDocument(updated) {
   assert(!text.replaceAll(CRLF, "").includes("\n"));
 }
 
+function testUpdateRoundTrips({ cli, docs, target }) {
+  const blank = quotedListItem(block(
+    `$ ${LOCAL_PACKAGE} read-file update-blank.txt\n\nlast\n`,
+  )).replace(">   \n", ">\n") + "\n";
+  const status = block(`$ ${LOCAL_PACKAGE} read-file update-status.txt\n[2] (no-eol)\n`);
+  for (const { name, output, original, wanted } of [
+    {
+      name: "update-blank",
+      output: "new\nlast\n",
+      original: blank,
+      wanted: blank.replace("\n>\n", "\n>   new\n"),
+    },
+    {
+      name: "update-status",
+      output: "[2]\n",
+      original: status,
+      wanted: status.replace("[2] (no-eol)", '"[2]" (escaped)'),
+    },
+  ]) {
+    fs.writeFileSync(join(docs, `${name}.txt`), output);
+    const document = writeDocument(docs, `${name}.md`, original);
+    const dryRun = cli(["update", document, "--dry-run", "--target", target]);
+    assert(dryRun.stdout.includes("would update 1"));
+    assert.equal(fs.readFileSync(document, "utf8"), original);
+    cli(["update", document, "--target", target]);
+    assert.equal(fs.readFileSync(document, "utf8"), wanted);
+    cli(["check", document]);
+    cli(["test", document, "--target", target]);
+    cli(["update", document, "--target", target]);
+    assert.equal(fs.readFileSync(document, "utf8"), wanted);
+  }
+}
+
 export function testUpdates({ cli, docs, target }) {
   const original = updateDocument();
   const update = writeDocument(docs, "update.md", original);
@@ -69,6 +102,7 @@ export function testUpdates({ cli, docs, target }) {
   cli(["test", update, "--target", target]);
   cli(["update", update, "--target", target]);
   assert.deepEqual(fs.readFileSync(update), updated);
+  testUpdateRoundTrips({ cli, docs, target });
   assert(!fs.readdirSync(docs).some(name => name.startsWith(".mooncram-")));
 }
 
