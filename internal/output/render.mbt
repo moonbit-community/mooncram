@@ -21,6 +21,24 @@ fn encode_output_line(text : String) -> String {
 }
 
 ///|
+fn render_output_line(line : String, expected : ExpectedLine?) -> String {
+  guard expected is Some(old) && old.matcher.matches(line) else {
+    return encode_output_line(line)
+  }
+  let raw = if old.raw.has_suffix(" (no-eol)") {
+    old.raw[:old.raw.length() - 9].to_owned()
+  } else {
+    old.raw
+  }
+  // Check the reusable spelling after removing the old newline annotation.
+  if raw == "" || (raw.has_prefix("[") && raw.has_suffix("]")) {
+    encode_output_line(line)
+  } else {
+    raw
+  }
+}
+
+///|
 pub fn actual_stream_expectation(
   text : String,
   expected : Array[ExpectedLine],
@@ -29,17 +47,7 @@ pub fn actual_stream_expectation(
   let rendered = []
   for i, line in lines {
     // Retain matching patterns even when a different line or exit code fails.
-    let mut text = match expected.get(i) {
-      Some(old) if old.matcher.matches(line) &&
-        old.raw != "" &&
-        !(old.raw.has_prefix("[") && old.raw.has_suffix("]")) =>
-        if old.raw.has_suffix(" (no-eol)") {
-          old.raw[:old.raw.length() - 9].to_owned()
-        } else {
-          old.raw
-        }
-      _ => encode_output_line(line)
-    }
+    let mut text = render_output_line(line, expected.get(i))
     if no_eol && i == lines.length() - 1 {
       text += " (no-eol)"
     }
