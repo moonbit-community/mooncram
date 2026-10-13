@@ -1,13 +1,12 @@
 ///|
 pub async fn execute_case(
   case : @markdown.Case,
-  cwd : String,
-  module_context~ : ModuleContext?,
-  imports~ : Map[String, @markdown.ToolImport],
+  context : @resolve.DocumentContext,
   warning~ : async (String) -> Unit,
   target~ : String,
   timeout_ms~ : Int32,
 ) -> @output.Captured {
+  let cwd = context.cwd_for(case)
   @async.with_timeout(
     timeout_ms,
     () => {
@@ -21,13 +20,7 @@ pub async fn execute_case(
         let command = prepare_command(
           segment.argv,
           cwd,
-          imports~,
-          module_context=if case.module_name is Some(_) {
-            module_context
-          } else {
-            None
-          },
-          warning~,
+          context.resolve_target(case, segment.argv[0], warning~),
           target~,
           extra_env~,
         )
@@ -49,90 +42,67 @@ pub async fn execute_case(
 async fn prepare_command(
   argv : Array[String],
   cwd : String,
-  module_context~ : ModuleContext?,
-  imports~ : Map[String, @markdown.ToolImport],
-  warning~ : async (String) -> Unit,
+  resolved : @resolve.ResolvedTarget,
   target~ : String,
   extra_env~ : Map[String, String],
 ) -> Command {
-  let executable = @files.resolve_from(cwd, argv[0])
   let args = argv[1:].to_owned()
-  if imports.get(argv[0]) is Some(binding) {
-    if module_context is Some(context) &&
-      has_local_candidate(context, binding.name) {
-      raise @diagnostic.Failure(
-        "ambiguous import alias '\{binding.name}' (\{binding.coordinate}): executable package in module \{context.name}; choose a different import alias",
+  match resolved {
+    Imported(binding) =>
+      {
+        program: "moonx",
+        extra_env,
+        args: ["--target", "wasm", binding.coordinate, "--"] + args,
+        imported: Some(binding),
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      }
+    Script(executable) => {
+      // moonx combines build and program statuses. Check compilation first.
+      ignore(
+        build_artifact(
+          ["run", "--build-only", "--target", "wasm", executable],
+          cwd,
+          extra_env~,
+        ),
       )
+      {
+        program: "moonx",
+        extra_env,
+        imported: None,
+        args: [executable, "--"] + args,
+        stderr_to_stdout: false,
+        stdout_to_null: false,
+      }
     }
-    return {
-      program: "moonx",
-      extra_env,
-      args: ["--target", "wasm", binding.coordinate, "--"] + args,
-      imported: Some(binding),
-      stderr_to_stdout: false,
-      stdout_to_null: false,
-    }
-  }
-  if executable.has_suffix(".mbtx") {
-    if @fs.kind(executable) != Regular {
-      raise @diagnostic.Failure(
-        "command must name a local .mbtx file: " + argv[0],
-      )
-    }
-    // moonx combines build and program statuses. Check compilation first.
-    ignore(
-      build_artifact(
-        ["run", "--build-only", "--target", "wasm", executable],
+    Package(module_root, package_path) => {
+      let artifact = build_artifact(
+        [
+          "-C", module_root, "run", "--build-only", "--target", target, package_path,
+        ],
         cwd,
         extra_env~,
-      ),
-    )
-    {
-      program: "moonx",
-      extra_env,
-      imported: None,
-      args: [executable, "--"] + args,
-      stderr_to_stdout: false,
-      stdout_to_null: false,
-    }
-  } else if module_context is Some(context) {
-    let package_path = resolve_package(context, argv[0], warning~)
-    let artifact = build_artifact(
-      [
-        "-C",
-        context.root,
-        "run",
-        "--build-only",
-        "--target",
-        target,
-        package_path,
-      ],
-      cwd,
-      extra_env~,
-    )
-    if target == "wasm" {
-      {
-        program: "moonrun",
-        extra_env,
-        imported: None,
-        args: [artifact, "--"] + args,
-        stderr_to_stdout: false,
-        stdout_to_null: false,
-      }
-    } else {
-      {
-        program: artifact,
-        extra_env,
-        imported: None,
-        args,
-        stderr_to_stdout: false,
-        stdout_to_null: false,
+      )
+      if target == "wasm" {
+        {
+          program: "moonrun",
+          extra_env,
+          imported: None,
+          args: [artifact, "--"] + args,
+          stderr_to_stdout: false,
+          stdout_to_null: false,
+        }
+      } else {
+        {
+          program: artifact,
+          extra_env,
+          imported: None,
+          args,
+          stderr_to_stdout: false,
+          stdout_to_null: false,
+        }
       }
     }
-  } else {
-    raise @diagnostic.Failure(
-      "command requires a .mbtx file or a module-declared executable package: \{argv[0]}",
-    )
   }
 }
 

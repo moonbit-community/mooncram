@@ -1,0 +1,28 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/resolve"
+
+import {
+  "moonbit-community/mooncram/internal/markdown",
+}
+
+// Values
+pub async fn validate_document(@markdown.Document, startup_cwd~ : String) -> DocumentContext
+
+// Errors
+
+// Types and methods
+pub struct DocumentContext {
+  // private fields
+}
+pub fn DocumentContext::cwd_for(Self, @markdown.Case) -> String
+pub async fn DocumentContext::resolve_target(Self, @markdown.Case, String, warning~ : async (String) -> Unit) -> ResolvedTarget
+
+pub(all) enum ResolvedTarget {
+  Script(String)
+  Package(String, String)
+  Imported(@markdown.ToolImport)
+}
+
+// Type aliases
+
+// Traits

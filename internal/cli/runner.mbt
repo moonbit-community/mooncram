@@ -12,13 +12,7 @@ async fn run_cli(cli : Cli) -> Int32 {
       let source = @fs.read_file(file).text()
       // Parse the whole document before executing anything in it.
       let document = @markdown.parse_document(file, source)
-      let module_context = @execute.validate_document_modules(
-        document, startup_cwd,
-      )
-      let working_directories = @execute.validate_document_working_directories(
-        document,
-      )
-      let cwd = @path.Path(file).dirname().to_string()
+      let context = @resolve.validate_document(document, startup_cwd~)
       let edits = []
       let mut document_error = false
       for case in document.cases {
@@ -26,13 +20,7 @@ async fn run_cli(cli : Cli) -> Int32 {
         try {
           let actual = @execute.execute_case(
             case,
-            if case.working_directory is Some(declaration) {
-              working_directories[declaration.line]
-            } else {
-              cwd
-            },
-            module_context~,
-            imports=document.imports,
+            context,
             warning=message => {
               @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
             },

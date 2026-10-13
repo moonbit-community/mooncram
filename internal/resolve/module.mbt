@@ -1,5 +1,5 @@
 ///|
-pub struct ModuleContext {
+priv struct ModuleContext {
   name : String
   root : String
   source_root : String
@@ -31,7 +31,7 @@ fn config_json(
 
 ///|
 /// Check every declaration before executing any case, including configuration-only fences.
-pub async fn validate_document_modules(
+async fn validate_document_modules(
   document : @markdown.Document,
   startup_cwd : String,
 ) -> ModuleContext? {

@@ -4,23 +4,15 @@ package "moonbit-community/mooncram/internal/execute"
 import {
   "moonbit-community/mooncram/internal/markdown",
   "moonbit-community/mooncram/internal/output",
+  "moonbit-community/mooncram/internal/resolve",
 }
 
 // Values
-pub async fn execute_case(@markdown.Case, String, module_context~ : ModuleContext?, imports~ : Map[String, @markdown.ToolImport], warning~ : async (String) -> Unit, target~ : String, timeout_ms~ : Int) -> @output.Captured
-
-pub async fn validate_document_modules(@markdown.Document, String) -> ModuleContext?
-
-pub async fn validate_document_working_directories(@markdown.Document) -> Map[Int, String]
+pub async fn execute_case(@markdown.Case, @resolve.DocumentContext, warning~ : async (String) -> Unit, target~ : String, timeout_ms~ : Int) -> @output.Captured
 
 // Errors
 
 // Types and methods
-pub struct ModuleContext {
-  name : String
-  root : String
-  source_root : String
-}
 
 // Type aliases
 

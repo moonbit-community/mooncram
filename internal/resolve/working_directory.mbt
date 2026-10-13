@@ -1,6 +1,6 @@
 ///|
 /// Resolve every block's directory before any build or case in the document.
-pub async fn validate_document_working_directories(
+async fn validate_document_working_directories(
   document : @markdown.Document,
 ) -> Map[Int32, String] {
   let directories = Map([])
