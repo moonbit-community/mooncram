@@ -10,7 +10,7 @@ pub fn actual_expectation(Captured, Expectation) -> Array[String]
 
 pub fn actual_expectation_layout(Captured, Expectation) -> Array[(String, Int?)]
 
-pub fn actual_stream_expectation(String, StreamConstraint) -> Array[String]
+pub fn actual_stream_expectation(String, Array[ExpectedLine]) -> Array[String]
 
 pub fn normalize_output(String) -> String
 
