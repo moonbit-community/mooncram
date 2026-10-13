@@ -1,7 +1,13 @@
 ///|
+priv enum Subcommand {
+  Test
+  Update(dry_run~ : Bool)
+  Check
+}
+
+///|
 priv struct Cli {
-  update : Bool
-  dry_run : Bool
+  command : Subcommand
   paths : Array[String]
   target : String
   timeout_ms : Int32
@@ -47,14 +53,14 @@ fn cli_command() -> @argparse.Command {
         long="target",
         global=true,
         default_values=["wasm"],
-        about="Package target: wasm or native",
+        about="Package target for test/update: wasm or native",
       ),
       @argparse.OptionArg(
         "timeout-ms",
         long="timeout-ms",
         global=true,
         default_values=["60000"],
-        about="Per-case time limit, including build",
+        about="Per-case time limit for test/update, including build",
       ),
       @argparse.OptionArg(
         "color",
@@ -65,6 +71,11 @@ fn cli_command() -> @argparse.Command {
       ),
     ],
     subcommands=[
+      @argparse.Command(
+        "check",
+        about="Validate examples and local targets without execution",
+        positionals=[paths],
+      ),
       @argparse.Command("test", about="Check command output and exit status", positionals=[
         paths,
       ]),
@@ -88,7 +99,16 @@ fn cli_command() -> @argparse.Command {
 fn parse_cli(args : Array[String]) -> Cli raise {
   let matches = cli_command().parse(argv=args)
   guard matches.subcommand is Some((name, sub)) else {
-    raise @diagnostic.Failure("expected test or update")
+    raise @diagnostic.Failure("expected test, update, or check")
+  }
+  if name == "check" {
+    for option in ["target", "timeout-ms"] {
+      if sub.sources.get(option) is Some(@argparse.Argv) {
+        raise @diagnostic.Failure(
+          "--" + option + " is only supported by test/update",
+        )
+      }
+    }
   }
   let target = sub.values["target"][0]
   validate_target(target)
@@ -99,8 +119,11 @@ fn parse_cli(args : Array[String]) -> Cli raise {
   }
   let paths = sub.values.get("paths").unwrap_or([])
   {
-    update: name == "update",
-    dry_run: sub.flags.get("dry-run").unwrap_or(false),
+    command: match name {
+      "check" => Check
+      "update" => Update(dry_run=sub.flags.get("dry-run").unwrap_or(false))
+      _ => Test
+    },
     paths: if paths.is_empty() {
       ["."]
     } else {

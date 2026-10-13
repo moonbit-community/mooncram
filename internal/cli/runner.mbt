@@ -18,12 +18,19 @@ async fn run_cli(cli : Cli) -> Int32 {
       for case in document.cases {
         total += 1
         try {
+          let warning : async (String) -> Unit = message => {
+            @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
+          }
+          if cli.command is Check {
+            for segment in case.pipeline {
+              ignore(context.resolve_target(case, segment.argv[0], warning~))
+            }
+            continue
+          }
           let actual = @execute.execute_case(
             case,
             context,
-            warning=message => {
-              @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
-            },
+            warning~,
             target=cli.target,
             timeout_ms=cli.timeout_ms,
           )
@@ -32,7 +39,7 @@ async fn run_cli(cli : Cli) -> Int32 {
             @stdio.stdout.write(
               @report.failure_report(file, case, actual, color),
             )
-            if cli.update {
+            if cli.command is Update(_) {
               edits.push(@update.case_edit(case, actual))
             }
           }
@@ -48,7 +55,7 @@ async fn run_cli(cli : Cli) -> Int32 {
       }
       if !edits.is_empty() && !document_error {
         let updated = @update.apply_edits(source, edits)
-        if cli.dry_run {
+        if cli.command is Update(dry_run=true) {
           @stdio.stdout.write("--- \{file}\n+++ \{file} (updated)\n")
           @stdio.stdout.write(
             @report.diff_lines(
@@ -78,16 +85,18 @@ async fn run_cli(cli : Cli) -> Int32 {
     @stdio.stderr.write("ERROR no mooncram cases found\n")
     return 2
   }
-  let summary = if cli.update {
-    let verb = if cli.dry_run { "would update" } else { "updated" }
-    "\{total} cases, \{verb} \{updated_cases}, \{errors} errors\n"
-  } else {
-    "\{total} cases, \{failed} failed, \{errors} errors\n"
+  let summary = match cli.command {
+    Check => "\{total} cases, \{errors} errors\n"
+    Update(dry_run~) => {
+      let verb = if dry_run { "would update" } else { "updated" }
+      "\{total} cases, \{verb} \{updated_cases}, \{errors} errors\n"
+    }
+    Test => "\{total} cases, \{failed} failed, \{errors} errors\n"
   }
   @stdio.stdout.write(summary)
   if errors > 0 {
     2
-  } else if failed > 0 && !cli.update {
+  } else if failed > 0 && cli.command is Test {
     1
   } else {
     0

@@ -12,6 +12,38 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 }
 
 ///|
+test "check supports color and paths but rejects explicit execution options" {
+  let cli = parse_cli(["check"])
+  assert_true(cli.command is Check)
+  assert_eq(cli.paths, ["."])
+  for
+    args in [
+      ["--color", "always", "check", "one.md", "two.md"],
+      ["check", "one.md", "--color", "always", "two.md"],
+    ] {
+    let cli = parse_cli(args)
+    assert_true(cli.command is Check)
+    assert_eq(cli.paths, ["one.md", "two.md"])
+    assert_eq(cli.color, "always")
+  }
+  for (option, value) in [("target", "wasm"), ("timeout-ms", "60000")] {
+    for
+      args in [
+        ["--" + option, value, "check"],
+        ["check", "one.md", "--" + option + "=" + value],
+      ] {
+      assert_error_contains(
+        () => ignore(parse_cli(args)),
+        "only supported by test/update",
+      )
+    }
+  }
+  for args in [["check", "--dry-run"], ["--dry-run", "check"]] {
+    assert_error_contains(() => ignore(parse_cli(args)), "dry-run")
+  }
+}
+
+///|
 test "CLI defaults and options before or after paths" {
   let cli = parse_cli(["test"])
   assert_eq(cli.paths, ["."])
@@ -21,7 +53,7 @@ test "CLI defaults and options before or after paths" {
     "--target", "native", "update", "one.md", "--dry-run", "two", "--timeout-ms",
     "42", "--color", "never",
   ])
-  assert_true(cli.update && cli.dry_run)
+  assert_true(cli.command is Update(dry_run=true))
   assert_eq(cli.paths, ["one.md", "two"])
   assert_eq(cli.target, "native")
   assert_eq(cli.timeout_ms, 42)
