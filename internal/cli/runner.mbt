@@ -26,9 +26,10 @@ async fn run_cli(cli : Cli) -> Int32 {
         try {
           let actual = @execute.execute_case(
             case,
-            match case.working_directory {
-              Some(declaration) => working_directories[declaration.line]
-              None => cwd
+            if case.working_directory is Some(declaration) {
+              working_directories[declaration.line]
+            } else {
+              cwd
             },
             module_context~,
             imports=document.imports,

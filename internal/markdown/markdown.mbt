@@ -133,9 +133,10 @@ fn parse_document_with_env(
       }
       let command = @command.parse(node.v[1:].to_owned(), case_insensitive~, lookup=name => {
         let key = env_key(name)
-        match extra_env.get(key) {
-          Some(value) => Some(value)
-          None => parent_lookup(key)
+        if extra_env.get(key) is Some(value) {
+          Some(value)
+        } else {
+          parent_lookup(key)
         }
       }) catch {
         e => raise @diagnostic.located(path, line, @diagnostic.error_text(e))
