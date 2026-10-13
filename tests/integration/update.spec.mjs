@@ -62,6 +62,8 @@ function testUpdateRoundTrips({ cli, docs, target }) {
     `$ ${LOCAL_PACKAGE} read-file update-blank.txt\n\nlast\n`,
   )).replace(">   \n", ">\n") + "\n";
   const status = block(`$ ${LOCAL_PACKAGE} read-file update-status.txt\n[2] (no-eol)\n`);
+  const mixed = block(`$ ${LOCAL_PACKAGE} read-file update-mixed.txt\nold\nlast\n`)
+    .replace("update-mixed.txt\n", "update-mixed.txt\r");
   for (const { name, output, original, wanted } of [
     {
       name: "update-blank",
@@ -74,6 +76,12 @@ function testUpdateRoundTrips({ cli, docs, target }) {
       output: "[2]\n",
       original: status,
       wanted: status.replace("[2] (no-eol)", '"[2]" (escaped)'),
+    },
+    {
+      name: "update-mixed",
+      output: "\nlast\n",
+      original: mixed,
+      wanted: mixed.replace("old\n", '"" (escaped)\n'),
     },
   ]) {
     fs.writeFileSync(join(docs, `${name}.txt`), output);
@@ -103,7 +111,39 @@ export function testUpdates({ cli, docs, target }) {
   cli(["update", update, "--target", target]);
   assert.deepEqual(fs.readFileSync(update), updated);
   testUpdateRoundTrips({ cli, docs, target });
+  testPassingNormalization({ cli, docs, target });
   assert(!fs.readdirSync(docs).some(name => name.startsWith(".mooncram-")));
+}
+
+function testPassingNormalization({ cli, docs, target }) {
+  const lines = ["[INFO] ready", "$HOME", "inline `code`", "  leading", "", "```", "last"];
+  fs.writeFileSync(join(docs, "normalize.txt"), lines.join("\n") + "\n");
+  const commands = [
+    `$ ${LOCAL_PACKAGE} read-file normalize.txt`,
+    `$ ${LOCAL_PACKAGE} hello`,
+  ];
+  const original = "````````mooncram mooncram/integration\r\n" +
+    commands[0] + "\r\n" +
+    lines.map(line => JSON.stringify(line) + " (escaped)\r\n").join("") +
+    "[000]\r\n\r\n" + commands[1] + "\r\nHello,* (glob)\r\n`````````";
+  const wanted = "````mooncram mooncram/integration\r\n" + commands[0] + "\r\n" +
+    lines.join("\r\n") + "\r\n\r\n" + commands[1] + "\r\nHello,* (glob)\r\n````";
+  const document = writeDocument(docs, "normalize.md", original);
+  cli(["test", document, "--target", target]);
+  const dry = cli(["update", document, "--dry-run", "--target", target]);
+  assert(dry.stdout.includes("2 cases, would update 2, 0 errors"), dry.stdout);
+  assert(dry.stdout.includes("(updated)"));
+  assert(!dry.stdout.includes("FAIL"));
+  assert.equal(fs.readFileSync(document, "utf8"), original);
+  const update = cli(["update", document, "--target", target]);
+  assert(update.stdout.includes("2 cases, updated 2, 0 errors"), update.stdout);
+  assert.equal(fs.readFileSync(document, "utf8"), wanted);
+  cli(["test", document, "--target", target]);
+  const modified = fs.statSync(document, { bigint: true }).mtimeNs;
+  const again = cli(["update", document, "--target", target]);
+  assert(again.stdout.includes("updated 0"), again.stdout);
+  assert.equal(fs.readFileSync(document, "utf8"), wanted);
+  assert.equal(fs.statSync(document, { bigint: true }).mtimeNs, modified);
 }
 
 export function testUpdateErrors({ cli, docs, project, target }) {
@@ -116,6 +156,17 @@ export function testUpdateErrors({ cli, docs, project, target }) {
     assert(result.stderr.includes("Not updating"));
     if (diagnostic) {
       assert(result.stderr.includes(diagnostic));
+    }
+  }
+  for (const dry of [[], ["--dry-run"]]) {
+    for (const badCase of ["$ ./missing.mbtx\n", "@STDOUT\n"]) {
+      const original = block(`$ ${LOCAL_PACKAGE} hello\n"Hello, Moon Bit!" (escaped)\n[0]\n\n${badCase}`);
+      const document = writeDocument(docs, "normalize-error.md", original);
+      const result = cli(["update", document, "--target", target, ...dry], { expected: EXIT_CODE.ERROR });
+      assert.equal(fs.readFileSync(document, "utf8"), original);
+      assert(result.stdout.includes(dry.length ? "would update 0" : "updated 0"), result.stdout);
+      assert(!result.stdout.includes("(updated)"));
+      assert(!result.stdout.includes("FAIL"));
     }
   }
 }
