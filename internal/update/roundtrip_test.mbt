@@ -62,11 +62,14 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
       for output in ["new", ""] {
         assert_update(
           source,
-          {
-            output: output + "\nkeep me\nextra\n",
-            diagnostic: "err 42\n",
-            exit_code: 0,
-          },
+          [
+            {
+              output: output + "\nkeep me\nextra\n",
+              diagnostic: "err 42\n",
+              exit_code: 0,
+            },
+            { output: "untouched\n", diagnostic: "", exit_code: 0, },
+          ],
           before +
           (if output == "" {
             if blank == " " || blank == "  " {
@@ -104,7 +107,7 @@ test "unchanged stream whitespace keeps its original container layout" {
   let source = "- ```mooncram\n  $ ./a.mbtx\n  @STDOUT\n  old\n\n  @STDERR\n \n  keep\n  ```\n"
   assert_update(
     source,
-    { output: "new\n", diagnostic: " \nkeep\n", exit_code: 0, },
+    [{ output: "new\n", diagnostic: " \nkeep\n", exit_code: 0, }],
     source.replace(old="old", new="new"),
   )
 }
@@ -120,7 +123,7 @@ test "retained status-looking output gains a newline without becoming exit statu
         let status = if exit_code == 0 { "" } else { "[\{exit_code}]\n" }
         assert_update(
           source,
-          { output: line + "\n", diagnostic: "", exit_code, },
+          [{ output: line + "\n", diagnostic: "", exit_code, }],
           before +
           (if exit_code == 0 && line != "[literal]" {
             "\"" + line + "\" (escaped)"
@@ -152,11 +155,13 @@ test "matching annotations survive changes to the final output newline" {
         let new_suffix = if no_eol { " (no-eol)" } else { "" }
         assert_update(
           before + raw + old_suffix + "\n```\n",
-          {
-            output: output + (if no_eol { "" } else { "\n" }),
-            diagnostic: "",
-            exit_code: 0,
-          },
+          [
+            {
+              output: output + (if no_eol { "" } else { "\n" }),
+              diagnostic: "",
+              exit_code: 0,
+            },
+          ],
           before +
           (if output == "[2]" && no_eol { output } else { raw }) +
           new_suffix +

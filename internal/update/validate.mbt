@@ -2,7 +2,7 @@
 fn validate_generated(
   before : @markdown.Document,
   source : String,
-  actuals : Map[Int32, @output.Captured],
+  captures : Array[@output.Captured],
 ) -> Unit raise {
   let after = @markdown.parse_document(before.path, source) catch {
     e =>
@@ -40,11 +40,7 @@ fn validate_generated(
         "generated document changed command or configuration for case \{i + 1}",
       )
     }
-    let valid = match actuals.get(i) {
-      Some(actual) => new.expected.matches(actual)
-      None => old.expected.source_lines == new.expected.source_lines
-    }
-    guard valid else {
+    guard new.expected.matches(captures[i]) else {
       raise @diagnostic.Failure(
         "generated expectation does not match captured output for case \{i + 1}",
       )

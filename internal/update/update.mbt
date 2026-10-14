@@ -113,40 +113,34 @@ fn apply_edits(source : String, edits : Array[Edit]) -> String {
 }
 
 ///|
-/// Render captured cases together so shared fences have one safe length.
-/// Unselected cases stay unchanged, except for their shared fence markers.
+/// Render every captured case together so shared fences have one safe length.
 ///
-/// `captures` contains zero-based indices into `document.cases` and normalized
-/// output/status for each selected case; order is arbitrary. Invalid or duplicate
-/// indices raise `@diagnostic.Failure`. The document must be an unmodified result
+/// `captures` must contain normalized output/status for every case, in document
+/// order, with exactly `document.cases.length()` entries. These calling
+/// preconditions are not checked. The document must be an unmodified result
 /// of `@markdown.parse_document`, keeping offsets/layout consistent with source.
 ///
 /// Retains matching patterns, commands, surrounding prose, containers, separator
-/// lines and line endings. Each selected fence uses the shortest safe backtick
-/// length of at least three, considering every case sharing it. Changed-case
-/// counts include all cases affected by marker changes, even unselected cases.
+/// lines and line endings. Each fence containing cases uses the shortest safe
+/// backtick length of at least three, considering every case sharing it. Changed-case
+/// counts include all cases affected by marker changes, counted at most once.
 ///
 /// Re-parses the generated text and checks that commands/configuration remain
-/// unchanged, selected expectations match captures and unselected expectations
-/// stay intact. Validation failures raise errors instead of returning an update.
+/// unchanged and every expectation matches its capture. Validation failures
+/// raise errors instead of returning an update.
 /// Re-parsing uses the current environment for expansion. No commands execute
 /// and no files are written; commit with `@files.write_document` if desired.
-/// Empty captures still validate the document and return unchanged source with
-/// zero changed cases.
+/// Documents without cases still validate and return unchanged source with zero
+/// changed cases.
 pub fn generate(
   document : @markdown.Document,
-  captures : Array[(Int32, @output.Captured)],
+  captures : Array[@output.Captured],
 ) -> Generated raise {
   let edits = []
   let changed = Array::make(document.cases.length(), false)
   let lengths : Map[Int32, Int32] = Map([])
-  let actuals : Map[Int32, @output.Captured] = Map([])
-  for (i, actual) in captures {
-    guard i >= 0 && i < document.cases.length() && !actuals.contains(i) else {
-      raise @diagnostic.Failure("invalid or duplicate captured case index")
-    }
-    actuals[i] = actual
-    let case = document.cases[i]
+  for i, case in document.cases {
+    let actual = captures[i]
     let (edit, length) = render_case(case, actual, document.fences[case.fence])
     lengths[case.fence] = @cmp.maximum(
       lengths.get(case.fence).unwrap_or(3),
@@ -155,16 +149,6 @@ pub fn generate(
     if document.source[edit.start:edit.end] != edit.text {
       changed[i] = true
       edits.push(edit)
-    }
-  }
-  for i, case in document.cases {
-    if !actuals.contains(i) && lengths.contains(case.fence) {
-      for layout in case.output_layout {
-        lengths[case.fence] = @cmp.maximum(
-          lengths[case.fence],
-          required_fence_length(layout.original[layout.original_fence_start:]),
-        )
-      }
     }
   }
   for index, length in lengths {
@@ -191,6 +175,6 @@ pub fn generate(
   }
   edits.sort_by((a, b) => a.start.compare(b.start))
   let source = apply_edits(document.source, edits)
-  validate_generated(document, source, actuals)
+  validate_generated(document, source, captures)
   { source, changed_cases: changed.iter().filter(b => b).count(), }
 }

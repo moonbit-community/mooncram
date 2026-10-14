@@ -15,7 +15,7 @@ async fn run_cli(cli : Cli) -> Int32 {
       let context = @resolve.validate_document(document, startup_cwd~)
       let captures = []
       let mut document_error = false
-      for i, case in document.cases {
+      for case in document.cases {
         total += 1
         try {
           let warning : async (String) -> Unit = message => {
@@ -41,7 +41,7 @@ async fn run_cli(cli : Cli) -> Int32 {
             )
           }
           if cli.command is Update(_) {
-            captures.push((i, actual))
+            captures.push(actual)
           }
         } catch {
           e => {

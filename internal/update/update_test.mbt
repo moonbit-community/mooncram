@@ -9,10 +9,10 @@ test "quoted list Unicode CRLF source positions and local replacement" {
   let doc = @markdown.parse_document("unicode.md", source)
   let case = doc.cases[0]
   assert_eq(case.line, 4)
-  assert_eq(case.prefix, ">   ")
+  assert_eq(case.command_layout.prefix, ">   ")
   assert_eq(case.newline, "\r\n")
   let updated = @update.generate(doc, [
-      (0, { output: "新值😀\n", diagnostic: "", exit_code: 0, }),
+      { output: "新值😀\n", diagnostic: "", exit_code: 0, },
     ]).source
   assert_eq(updated, source.replace(old="旧值", new="新值😀"))
   assert_eq(
@@ -25,17 +25,23 @@ test "quoted list Unicode CRLF source positions and local replacement" {
 test "update special output round trips and is idempotent" {
   let source = "Intro\n\n```mooncram\n$ ./a.mbtx\nold\n\n$ ./b.mbtx\nkeep * (glob)\n```\nTail"
   let doc = @markdown.parse_document("test.md", source)
+  let other : @output.Captured = {
+    output: "keep me\n",
+    diagnostic: "",
+    exit_code: 0,
+  }
   for
     output in [
       "", "\n", "\n\n", "😀  \n", "$ ./other.mbtx\n[2]\n```\n", "x (regex)\n",
       "\u0000\u001b\t\r\\\"", "final", "\nlast",
     ] {
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 4, }
-    let updated = @update.generate(doc, [(0, actual)]).source
+    let updated = @update.generate(doc, [actual, other]).source
     let parsed = @markdown.parse_document("test.md", updated)
     assert_eq(parsed.cases.length(), 2)
     assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-    assert_eq(@update.generate(parsed, [(0, actual)]).source, updated)
+    assert_true(parsed.cases[1].expected.matches(other), msg=updated)
+    assert_eq(@update.generate(parsed, [actual, other]).source, updated)
     assert_true(updated.contains("\n\n$ ./b.mbtx\nkeep * (glob)\n"))
     assert_true(updated.has_suffix("\nTail"))
   }
@@ -70,14 +76,14 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
       } else {
         rendered
       }
-      let updated = @update.generate(doc, [(0, actual)]).source
+      let updated = @update.generate(doc, [actual]).source
       assert_eq(
         updated,
         doc.source.replace(old="old\n", new=expected_line + "\n"),
       )
       let parsed = @markdown.parse_document("example.md", updated)
       assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-      assert_eq(@update.generate(parsed, [(0, actual)]).source, updated)
+      assert_eq(@update.generate(parsed, [actual]).source, updated)
     }
   }
 }
@@ -92,7 +98,7 @@ test "matching patterns survive while exact spellings normalize" {
     diagnostic: "",
     exit_code: 2,
   }
-  let updated = @update.generate(doc, [(0, actual)]).source
+  let updated = @update.generate(doc, [actual]).source
   assert_true(
     updated.contains(
       "version * (glob)\n[0-9]+ (regex)\nnew\n\nhello (equal)\nhello (foo)\nhello (foo)\n[2]",
@@ -110,7 +116,7 @@ test "exit-only updates and multiple replacements preserve source text" {
   let doc = parse_example("$ ./a.mbtx\n\n$ ./b.mbtx\n[2]\n")
   let one : @output.Captured = { output: "", diagnostic: "", exit_code: 3, }
   let two : @output.Captured = { output: "", diagnostic: "", exit_code: 0, }
-  let updated = @update.generate(doc, [(0, one), (1, two)]).source
+  let updated = @update.generate(doc, [one, two]).source
   assert_eq(updated, "```mooncram\n$ ./a.mbtx\n[3]\n\n$ ./b.mbtx\n```\n")
 }
 
@@ -119,7 +125,7 @@ test "retained blank and status-looking output is safe when it becomes final" {
   for (body, output) in [("a\n\nb\n", "a\n\n"), ("[2]\nb\n", "[2]\n")] {
     let doc = parse_example("$ ./a.mbtx\n" + body)
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 0, }
-    let updated = @update.generate(doc, [(0, actual)]).source
+    let updated = @update.generate(doc, [actual]).source
     assert_true(
       @markdown.parse_document("example.md", updated).cases[0].expected.matches(
         actual,
@@ -137,7 +143,7 @@ test "existing container spelling and mixed line endings survive an update" {
     diagnostic: "",
     exit_code: 0,
   }
-  let updated = @update.generate(doc, [(0, actual)]).source
+  let updated = @update.generate(doc, [actual]).source
   assert_eq(updated, source.replace(old="> old", new="> new"))
   assert_true(
     @markdown.parse_document("mixed.md", updated).cases[0].expected.matches(
@@ -159,7 +165,7 @@ test "leading output spaces survive optional Markdown fence indentation" {
       diagnostic: "",
       exit_code: 0,
     }
-    let updated = @update.generate(doc, [(0, actual)]).source
+    let updated = @update.generate(doc, [actual]).source
     assert_true(
       @markdown.parse_document("indent.md", updated).cases[0].expected.matches(
         actual,
@@ -172,17 +178,19 @@ test "leading output spaces survive optional Markdown fence indentation" {
 ///|
 fn assert_update(
   source : String,
-  actual : @output.Captured,
+  captures : Array[@output.Captured],
   wanted : String,
 ) -> Unit raise {
   let doc = @markdown.parse_document("update.md", source)
-  let updated = @update.generate(doc, [(0, actual)]).source
+  let updated = @update.generate(doc, captures).source
   assert_eq(updated, wanted)
   let parsed = @markdown.parse_document("update.md", updated)
   assert_eq(parsed.cases.length(), doc.cases.length())
-  assert_eq(parsed.cases[0].expected.exit_code, actual.exit_code)
-  assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
-  let again = @update.generate(parsed, [(0, actual)])
+  for i, case in parsed.cases {
+    assert_eq(case.expected.exit_code, captures[i].exit_code)
+    assert_true(case.expected.matches(captures[i]), msg=updated)
+  }
+  let again = @update.generate(parsed, captures)
   assert_eq(again.source, updated)
   assert_eq(again.changed_cases, 0)
 }
@@ -197,18 +205,18 @@ test "stream updates preserve order separators patterns and ignored sections" {
   }
   assert_update(
     source,
-    actual,
+    [actual],
     source.replace(old="old\n", new="new (no-eol)\n"),
   )
   let patterns = "```mooncram\n$ ./a.mbtx\n@STDOUT\nv* (glob) (no-eol)\n@STDERR\nerror [0-9]+ (regex)\n[0]\n```\n"
   assert_update(
     patterns,
-    { output: "version", diagnostic: "error 12\n", exit_code: 3, },
+    [{ output: "version", diagnostic: "error 12\n", exit_code: 3, }],
     patterns.replace(old="[0]", new="[3]"),
   )
   assert_update(
     patterns,
-    { output: "version", diagnostic: "error 12\n", exit_code: 0, },
+    [{ output: "version", diagnostic: "error 12\n", exit_code: 0, }],
     patterns.replace(old="[0]\n", new=""),
   )
 }
@@ -227,14 +235,14 @@ test "empty stream constraints convert only when nonempty and literal markers es
       exit_code: 0,
     }
     let doc = @markdown.parse_document("streams.md", source)
-    let updated = @update.generate(doc, [(0, actual)]).source
+    let updated = @update.generate(doc, [actual]).source
     assert_true(updated.contains("@STDOUT\n"))
     assert_true(updated.contains("@STDERR (empty)\n"))
-    assert_update(source, actual, updated)
+    assert_update(source, [actual], updated)
   }
   assert_update(
     source,
-    { output: "", diagnostic: "error\n", exit_code: 1, },
+    [{ output: "", diagnostic: "error\n", exit_code: 1, }],
     source.replace(old="@STDERR (empty)\n", new="@STDERR\nerror\n[1]\n"),
   )
 }
@@ -244,13 +252,13 @@ test "growing sections preserve other section prefixes and mixed newlines" {
   let source = "> ```mooncram\r\n>$ ./a.mbtx\n> @STDOUT\r\n> old\n>\r\n>@STDERR\n> keep * (glob)\r\n> ```\r\n"
   assert_update(
     source,
-    { output: "first\nsecond\n", diagnostic: "keep me\n", exit_code: 0, },
+    [{ output: "first\nsecond\n", diagnostic: "keep me\n", exit_code: 0, }],
     source.replace(old="> old\n", new="> first\n>second\n"),
   )
   let source = "> - ```mooncram\r\n>   $ ./a.mbtx\r\n>   @STDERR (ignore)\r\n>\r\n>   @STDOUT (empty)\r\n>   ```\r\n"
   assert_update(
     source,
-    { output: "new\n", diagnostic: "ignored", exit_code: 2, },
+    [{ output: "new\n", diagnostic: "ignored", exit_code: 2, }],
     source.replace(
       old="@STDOUT (empty)\r\n",
       new="@STDOUT\r\n>   new\r\n>   [2]\r\n",
@@ -263,7 +271,7 @@ test "legacy updates escape marker-looking output before it can select dual mode
   let source = "```mooncram\n$ ./a.mbtx\nold\n```\n"
   assert_update(
     source,
-    { output: "@STDOUT\n@STDERR (ignore)\n", diagnostic: "", exit_code: 0, },
+    [{ output: "@STDOUT\n@STDERR (ignore)\n", diagnostic: "", exit_code: 0, }],
     source.replace(
       old="old\n",
       new="\"@STDOUT\" (escaped)\n\"@STDERR (ignore)\" (escaped)\n",
