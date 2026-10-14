@@ -54,12 +54,6 @@ fn collect_blocks(
           ],
         )
       }
-    ExtFootnoteDefinition(node) =>
-      collect_blocks(
-        node.v.block,
-        output,
-        containers + [Indent(node.v.indent + 1)],
-      )
     _ => ()
   }
 }
@@ -123,6 +117,7 @@ fn parse_document_with_env(
     file=path,
     locs=true,
     layout=true,
+    strict=true,
   )
   let blocks = []
   collect_blocks(markdown.block, blocks, [])
@@ -272,7 +267,6 @@ fn parse_document_with_env(
         fence,
         replace_start: command_line.end,
         replace_end,
-        prefix: source[command_line.start:node.meta.loc.first_ccode].to_owned(),
         newline: command_line.newline,
         command_layout: line_layout(source, command_line, node, containers),
         output_layout,

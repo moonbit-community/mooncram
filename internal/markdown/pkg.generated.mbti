@@ -24,7 +24,6 @@ pub struct Case {
   fence : Int
   replace_start : Int
   replace_end : Int
-  prefix : String
   newline : String
   command_layout : LineLayout
   output_layout : Array[LineLayout]
