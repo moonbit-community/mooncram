@@ -14,4 +14,11 @@ import {
   "moonbitlang/x/path",
 }
 
+rule(
+  name: "gen_version",
+  command: "moonx ./scripts/gen_version.mbtx -o $output",
+)
+
+dev_build(rule: "gen_version", input: "../../moon.mod", output: "version.mbt")
+
 supported_targets = "wasm+native"
