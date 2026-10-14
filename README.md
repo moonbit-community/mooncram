@@ -1,26 +1,323 @@
 # mooncram
 
-A simple and powerful testing toolkit for MoonBit CLI applications and Script
+[中文](README_CN.md)
 
-## Quick start
+Test MoonBit command-line applications and scripts with examples written in
+Markdown. Put a command next to its expected output, explain the behavior, and
+let mooncram check that the example still works.
 
-From this checkout:
+mooncram is **inspired by [scrut](https://facebookincubator.github.io/scrut/docs/)**.
+It brings readable CLI tests to MoonBit, with support for local executable
+packages, standalone `.mbtx` scripts, and tools from Mooncakes.
 
-```text
-moon run . -- check README.md
+## Why mooncram?
+
+Unit tests check your functions. CLI tests check what someone using your program
+actually sees: arguments, output, error messages, and exit codes.
+
+Use mooncram to test a greeting script, a command's `--version` output, an invalid
+argument, or a pipeline of MoonBit tools. Your tests are ordinary Markdown
+files, so you can explain the intent alongside each example. When the behavior
+changes intentionally, mooncram can refresh the expected output for you.
+
+## Getting started
+
+Install the [MoonBit toolchain](https://www.moonbitlang.com/download/) first.
+You need `moon`, `moonx`, and `moonrun` on your `PATH`.
+
+To try the current source:
+
+```sh
+git clone https://github.com/moonbit-community/mooncram.git
+cd mooncram
+moon update
 moon run . -- test README.md
-moon run . -- test examples
-moon run . -- update examples --dry-run
 ```
 
-This is an executable example using [examples/hello.mbtx](examples/hello.mbtx):
+That last command runs this example using [examples/hello.mbtx](examples/hello.mbtx):
 
 ```mooncram
 $ ./examples/hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 
-## Commands
+A successful run ends with:
+
+```text
+1 cases, 0 failed, 0 errors
+```
+
+From this checkout, `moon run . -- <arguments>` launches mooncram. To install it
+as a command for use in other projects, run:
+
+```sh
+moon install ./
+mooncram --help
+```
+
+Keep the MoonBit binary directory on your `PATH`. The rest of this guide uses
+the installed `mooncram` command.
+
+## Write your first test
+
+Create two files beside each other:
+
+```text
+tests/
+├── hello.mbtx
+└── hello.md
+```
+
+In `tests/hello.mbtx`, write a small program:
+
+```mbt
+fn main {
+  println("Hello, MoonBit!")
+}
+```
+
+In `tests/hello.md`, describe what you want to test:
+
+````markdown
+# Greeting
+
+The script greets the user.
+
+```mooncram
+$ ./hello.mbtx
+Hello, MoonBit!
+```
+````
+
+Then run:
+
+```sh
+mooncram test tests/hello.md
+```
+
+The `$ ` line is the command. The lines below it are the expected stdout.
+The expected exit code is `0` unless you say otherwise. Programs run from the
+directory containing the test document, so `./hello.mbtx` is the file beside it.
+
+Each command starts a new case. A document can contain several blocks, with
+headings and explanations between them. Only backtick fences labeled `mooncram`
+are tests. Illustrative documents below appear inside larger `markdown` fences,
+so they are not executed as part of the README.
+
+## Choose what to run
+
+### Local scripts
+
+Use a relative or absolute path to a `.mbtx` file. Arguments support single
+quotes, double quotes, and backslash escapes. For a script accepting a name,
+such as this repository's `examples/hello.mbtx`:
+
+````markdown
+```mooncram
+$ ./hello.mbtx "Moon Bit"
+Hello, Moon Bit!
+```
+````
+
+### Packages in your project
+
+Add your module's full name after `mooncram`. Suppose `moon.mod` declares
+`name = "user/acme"` and your executable lives in `cmd/acme`:
+
+````markdown
+```mooncram user/acme
+$ cmd/acme --version
+acme 1.0.0
+```
+````
+
+Launch mooncram from the directory containing that `moon.mod`. The declaration
+must match its name exactly and applies only to that block. The package must be
+executable, for example with `pkgtype(kind: "executable")` in `moon.pkg`.
+For an executable root package, use the module's short name (`acme` here).
+
+mooncram builds local packages before running them. Build diagnostics stay
+separate from the program output being tested. Packages use Wasm by default;
+`mooncram test tests --target native` selects native and requires a C toolchain.
+Standalone scripts always use Wasm.
+
+### Tools from Mooncakes
+
+Declare an alias and an exact version in a `mooncram-import` block:
+
+````markdown
+```mooncram-import
+mbtcram : moonbit-community/mooncram@0.0.3
+```
+
+```mooncram
+$ mbtcram --version
+0.0.3
+```
+````
+
+One import block can declare several tools. Aliases are available throughout the
+document, even before the import block. Pin each coordinate as
+`user/module[/package]@version`; ranges and `latest` are not accepted. Choose
+aliases that do not conflict with local executable packages.
+
+`moonx` downloads and caches imported tools. They always use Wasm, including
+when local packages use `--target native`.
+
+## Describe the expected result
+
+### Output and exit codes
+
+Output lines match exactly by default, including spaces. To test a failure,
+place the expected exit code on the last line:
+
+````markdown
+```mooncram user/acme
+$ cmd/acme --unknown
+@STDOUT (empty)
+@STDERR
+error: unknown option --unknown
+[2]
+```
+````
+
+`@STDOUT` and `@STDERR` let you check both streams in one run. Include each
+marker exactly once. Add `(empty)` to require no output at all, or `(ignore)` to
+skip checking that stream. Without markers, only stdout is matched; stderr is
+available in failure diagnostics.
+
+A command with no expected output lines must produce empty stdout. If you only
+care whether it succeeds, use `@STDOUT (ignore)` and `@STDERR (ignore)` together.
+
+### Flexible output expectations
+
+For output that varies, match the stable parts with a glob or regex:
+
+````markdown
+```mooncram user/acme
+$ cmd/acme --version
+acme * (glob)
+
+$ cmd/acme --version
+acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
+```
+````
+
+| Suffix | What it checks |
+| --- | --- |
+| None | The exact output line |
+| ` (glob)` | A whole-line pattern with `*`, `?`, or character sets such as `[a-z]` |
+| ` (regex)` | A regular expression matching the whole line |
+| ` (escaped)` | An exact line written as a JSON string, such as `"a\tb"` |
+| ` (no-eol)` | The last output line has no terminating newline; may follow another suffix |
+
+Each expectation matches one output line. Use JSON escaping for lines that look
+like test syntax: `"[2]" (escaped)` or `"$ this is output" (escaped)`.
+Use `"" (escaped)` to assert an empty output line, especially at the end.
+CRLF is normalized to LF; captured output must be valid UTF-8.
+
+Prefer fixed input files when you can: a fixture makes a test reproducible while
+keeping its expectations precise. Use patterns for parts that need to vary,
+such as generated IDs or version numbers.
+
+## Set up the test environment
+
+### Environment variables
+
+Commands inherit your environment. Use `export` for values shared by later cases
+in the same document, or a prefix assignment for one command:
+
+````markdown
+```mooncram
+$ export NAME='Moon Bit'
+$ ./hello.mbtx "${NAME}"
+Hello, Moon Bit!
+
+$ NAME=World ./hello.mbtx "${NAME}"
+Hello, World!
+```
+````
+
+Exports carry over to later blocks and reset for the next document. Temporary
+assignments apply to that pipeline segment and its build. `${NAME}` expands in
+unquoted or double-quoted arguments; single quotes keep it literal. Undefined
+variables are errors. `$NAME` is literal, and expected output does not expand
+variables.
+
+### Working directory and fixtures
+
+Programs run in the directory containing the test document by default. Keep
+fixtures beside the document and pass their relative paths as arguments.
+To use another directory, set it before the first test command in a block:
+
+````markdown
+```mooncram
+$ set-current-working-directory ../examples
+$ ./hello.mbtx "Moon Bit"
+Hello, Moon Bit!
+```
+````
+
+The directory is relative to the document, must already exist, and applies only
+to that block. Local module lookup still uses the directory where you launched
+mooncram. Cases run in document order; files created by one remain visible to
+later cases. Programs use your current permissions and existing filesystem;
+mooncram does not create an isolated temporary workspace.
+
+### Pipelines
+
+Connect scripts, local packages, and imported tools with `|`:
+
+````markdown
+```mooncram user/acme
+$ ./input.mbtx | cmd/acme --uppercase
+HELLO, MOONBIT!
+```
+````
+
+Segments run concurrently. The last segment's stdout is matched. The expected
+exit code uses **pipefail**: the rightmost nonzero code, or `0` if all succeed.
+The first segment receives EOF on stdin.
+
+On a nonfinal segment, `2>&1` sends stderr into the pipe and `1>/dev/null`
+discards stdout. The final segment does not support these markers; use
+`@STDOUT` and `@STDERR` there.
+
+Commands use mooncram's own parser, rather than a shell. Shell commands such as
+`echo` and `cat`, operators such as `&&` and `;`, command substitution, general
+redirection, and multiline shell expressions are unsupported. Put setup logic
+in a MoonBit script when needed.
+
+## Keep tests up to date
+
+If a program now prints a different greeting, `test` reports a diff between the
+expected and actual output. After reviewing the new behavior, preview and apply
+updated expectations:
+
+```sh
+mooncram update tests --dry-run
+mooncram update tests
+mooncram test tests
+```
+
+`update` writes directly into the original documents without a confirmation
+prompt. It also normalizes passing cases and keeps glob/regex patterns that
+still match. Commands and surrounding prose are preserved. A document with
+parsing, build, or execution errors is not updated.
+
+`--dry-run` displays edits without writing Markdown, but still runs programs,
+which can change files themselves. For validation without execution, use:
+
+```sh
+mooncram check tests
+```
+
+`check` validates syntax, expectations, and local target resolution without
+building, fetching tools, or running programs. Use `test` afterward to verify
+compilation and behavior. A script generated by an earlier case may be reported
+missing by `check`, since no cases execute during that check.
+
+## Command reference and CI
 
 ```text
 mooncram check [paths...] [--color auto|always|never]
@@ -30,407 +327,54 @@ mooncram --help
 mooncram --version
 ```
 
-All three commands support `--color auto|always|never` (default `auto`). `NO_COLOR`
-disables automatic color. Global options can appear before the subcommand or
-after paths. Use `--` before a path that starts with `-`.
+Pass files, directories, or both. Directories are searched recursively for `.md`
+files; no paths means the current directory. Hidden entries, `_build`, and
+`target` are skipped during traversal; directory symlinks are not followed.
+Files are deduplicated and sorted before their cases run.
 
-With no paths, scan the current directory. Directories are searched recursively
-for `.md` files. Directory traversal skips names starting with `.` on every
-platform, entries with the Windows hidden attribute, `_build`, and `target`.
-Directory symlinks are never traversed. File symlinks are resolved and duplicate
-files are run once. Files run in sorted canonical path order, and cases run
-serially in document order. Segments of the same pipeline run concurrently.
-Filesystem side effects remain visible to later cases.
+The default target is `wasm`. The default timeout is `60000` milliseconds per
+case, including builds, downloads, and execution. `check` does not accept
+`--target` or `--timeout-ms`. All commands support `--color` (default `auto`);
+`NO_COLOR` disables automatic color. Put `--` before paths starting with `-`.
 
-Exit status:
+In CI, install the toolchain and mooncram, then run
+`mooncram test tests --color never`. Use the exit status to decide whether it passed:
 
 | Status | Meaning |
 | --- | --- |
-| `0` | Check finds cases with no errors, all test assertions pass, or update/dry-run completes successfully |
-| `1` | One or more assertions fail in `test` |
-| `2` | Invalid arguments, parsing/validation/build/execution errors, or no cases found |
+| `0` | Check, test, or update completed successfully |
+| `1` | An output or exit-code assertion failed in `test` |
+| `2` | Invalid arguments, a parsing/build/execution error, or no cases found |
 
-## Check without execution
+`update --dry-run` returns `0` when it completes, even if edits are proposed.
+Use `test` for the CI pass/fail decision.
 
-`check` shares file discovery, Markdown parsing, command and expectation validation,
-and document-level module/directory checks with `test` and `update`. It then resolves
-each pipeline segment: local script existence, executable package selection, module
-boundaries, and import alias conflicts. Configuration-only fences are validated too.
-It only reads the parent environment, local files and configuration; it does not
-build, download dependencies, start subprocesses, or modify Markdown.
+## Further reading
 
-The summary is `N cases, E errors`. A document parse or declaration validation
-failure counts as one error. A target resolution failure counts as one error for
-that case, skips its remaining segments, and continues with later cases and files.
-Warnings do not count as errors. No cases found remains an error with exit status `2`.
-`check` rejects explicit `--target`, `--timeout-ms`, and `--dry-run`; these options
-apply to execution (`test`/`update`, with `--dry-run` only for `update`).
+- [Example test document](examples/README.md)
+- [Detailed CLI and format reference](internal/CLI_SPEC.md)
+- [scrut documentation](https://facebookincubator.github.io/scrut/docs/), which inspired the Markdown testing workflow and this guide's tutorial structure
 
-Variable expansion uses the current parent environment and platform variable-name
-rules, together with document exports and temporary assignments. Thus results depend
-on the environment and the current filesystem. A target generated by an earlier
-case may be reported missing by `check`; `test` and `update` still resolve targets
-at execution time and support this pattern. Check does not verify that MoonBit
-source compiles, that a backend can build the target, that a remote coordinate
-exists, or that program assertions pass.
+mooncram has its own format and execution rules. scrut's `.t` files, shell
+execution, inline JSON settings, `(equal)` suffix, and expectation quantifiers
+such as `(glob+)` are not supported.
 
-## Test blocks
+## Development
 
-Only backtick fences with the case-sensitive language `mooncram` are tests.
-The language can be followed by whitespace and one module name, such as
-`mooncram user/foo`. A declaration applies only to its own fence. Multiple words,
-JSON settings, and invalid module names are parsing errors at the opening line.
-Other languages, tilde fences, and fences inside larger example fences are
-ignored. Tests inside block quotes and lists are supported. Empty or unclosed
-test fences are errors.
+From the repository root:
 
-Each `$ ` line starts a command. Except for `export` and
-`set-current-working-directory`, each command starts a case.
-Plain `mooncram` fences support local `.mbtx` scripts and file import aliases.
-Declared fences also support
-executable packages in the module whose `moon.mod` is in mooncram's startup cwd.
-Every declaration must exactly match that module's `name`; all declarations,
-including configuration-only fences, are checked before any case in the
-document runs.
-Local module declarations do not search parent directories or load registry modules.
-
-Packages are resolved below the module's `source` directory (the module root if
-`source` is omitted or empty). For `user/foo`, `foo` selects the executable root
-package; `cmd/boo` selects `user/foo/cmd/boo`. If the root is not executable,
-`foo` can select the executable subpackage `user/foo/foo`. Executability means
-`pkgtype(kind: "executable")` or `options("is-main": true)`. If both candidates are
-executable, the root wins and each ambiguous pipeline segment emits one
-`WARNING` to mooncram's stderr, with the document position, both full package
-names, and the selection. Warnings do not affect matching, updates, or error
-counts. A selected package's build/target failure is an error without fallback.
-Package names cannot be absolute paths, start with `./` or `../`, contain path
-traversal, or enter nested modules. Package configurations use `moon.pkg`;
-invalid configurations are errors.
-
-Local packages are built with `moon -C <module-root> run --build-only` and their
-artifact runs with `moonrun` for Wasm or directly for native. Build diagnostics
-are kept out of program output. Scripts are checked with a build-only invocation,
-then launched with `moonx`. `.mbtx` always uses Wasm regardless of `--target`.
-Script paths are relative to the block's working directory and may also be absolute.
-By default, every program runs in the canonical Markdown file's directory,
-even when the module is elsewhere.
-Arguments use single/double quotes and backslash escaping. Single quotes are
-literal; outside them a backslash quotes the next character. Quoted empty
-arguments are preserved. `${NAME}` expands in unquoted or double-quoted
-arguments; single quotes and escaped dollar signs preserve it literally. `$NAME`
-is literal. There is no glob or tilde expansion or command substitution.
-The underlying command parser rejects NUL, CR and LF. Raw NUL characters in
-Markdown are first replaced by cmark with `U+FFFD` (`�`), so they do not trigger
-the NUL check.
-Unquoted, unescaped `|` separates pipeline segments, with or
-without surrounding spaces. Empty segments (including `||`) are errors.
-Unquoted `&`, `;`, `<`, `>`, backticks, and parentheses are errors, except for
-the exact trailing redirection markers below. Quote or escape these characters
-to pass them as ordinary arguments.
-
-Any nonfinal segment can end with `2>&1` to merge stderr into its output pipe,
-or `1>/dev/null` to discard its original stdout.
-Combining both markers in either order discards original stdout and sends only
-stderr to the next segment. The final segment, including a single command,
-cannot use either marker or their combination: its stdout and stderr are captured
-separately. Each marker must be separated from the preceding command, argument
-or marker by a space or tab; it contains no
-internal whitespace and may touch the following `|`. Each kind may occur once,
-and ordinary arguments cannot follow a marker. Fully quoted markers, correctly
-escaped markers, and marker text produced by variable expansion remain ordinary
-arguments. To pass literal `2>&1`, quote it or use `2\>\&1` to escape both special
-characters; literal `1>/dev/null` can use `1\>/dev/null`. The old `>/dev/null`,
-`stdout>/null` and `stderr>/stdout` syntax, other redirection forms, and redirection on `export` are
-parsing errors with file and line numbers.
-
-`$ set-current-working-directory <dir>` configures the current block. It accepts
-exactly one nonempty argument, using the same quotes, escapes and `${NAME}`
-expansion as command arguments. It may appear once per block, before the first
-actual test command; earlier exports are allowed. It accepts no pipeline,
-redirection, expected output or exit code, and does not count as a case.
-
-Relative directories always resolve against the canonical Markdown file's
-parent; absolute paths and directory symlinks are supported. The directory is
-expanded when declared, using earlier document exports and the parent environment;
-later exports do not change it. Exports persist across blocks, while the working
-directory resets to the document directory at each new block. Scripts, build
-processes, imported tools, all pipeline segments and relative file arguments use
-the configured directory. Local modules still resolve from mooncram's startup cwd.
-
-Every declared directory must exist before any case or build in the document
-runs, including declarations in configuration-only blocks. Earlier cases cannot
-create it. An invalid directory prevents all cases and updates in that document;
-other documents continue. Configuration-only blocks are legal, but a run with no
-actual cases still reports the existing no-cases error.
-
-For `docs/example.md`, this selects `fixtures/tool.mbtx` and runs in `fixtures/`:
-
-```text
-$ export WORKSPACE=../fixtures
-$ set-current-working-directory "${WORKSPACE}"
-$ ./tool.mbtx input.txt
+```sh
+moon test
+moon test --target native
+moon run . -- test README.md README_CN.md
+node tests/integration.mjs
+moon info && moon fmt
 ```
 
-`$ export NAME=value` sets one variable for subsequent commands in the same
-Markdown document, including later test blocks. Names must match
-`[A-Za-z_][A-Za-z0-9_]*`; values may be empty or contain additional `=` characters.
-Assignments can use `${NAME}` with the same quoting rules as arguments. Lookup
-uses earlier exports first, then the parent environment; self-reference reads the
-previous value, and an exported empty string overrides the parent value.
-On Windows, variable names are case-insensitive: exports and lookup keys use
-ASCII uppercase, so assigning `Name` and then `NAME` replaces one variable.
-On Linux and macOS, variable names remain case-sensitive.
-Expansion happens once, without splitting: spaces, quotes and `|` in a value stay
-inside the original argument, and an empty result remains an argument.
+The integration suite requires Node.js and a native C toolchain and exercises
+both Wasm and native. See [the CI workflow](.github/workflows/check.yml) for the
+full checks.
 
-`$ NAME=value OTHER="${NAME}" command` sets temporary variables for one
-pipeline segment and its build. Only consecutive assignments before the executable
-are recognized, with an unquoted, unescaped name and `=`; names use the same
-`[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting,
-escaping and expansion rules, including empty values and additional `=`.
-Assignments after the executable are ordinary arguments.
-Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
-as temporary assignments. They are ordinary words and can select the executable
-when they are the first word after any temporary assignments.
+## License
 
-Temporary values override document exports and the parent environment. Assignments
-expand from left to right, then arguments expand using the resulting environment:
-`A=new B="${A}" command "${B}"` passes `new`. Self-reference reads the value before
-that assignment; repeated names keep the last value. Each pipeline segment has
-its own temporary environment, and later commands retain the document environment.
-Windows names remain case-insensitive; Linux and macOS names remain case-sensitive.
-Assignments without a command, or temporary prefixes on `export` or
-`set-current-working-directory`, are parsing errors.
-
-After any temporary assignments, the first word selects the segment's executable
-and cannot contain an expandable `${NAME}`. File paths passed as ordinary arguments can expand.
-Undefined variables, invalid or unclosed references, invalid `export` assignments, and
-`export` in a pipeline are parsing errors with file and line numbers. Exports
-have no expected output or exit code and do not count as cases. Export-only
-blocks are valid; a run with no actual cases still reports an error. Exports
-reset for each document. The entire document is parsed before any case runs.
-
-````markdown
-```mooncram user/foo
-$ export NAME='Moon Bit'
-$ ./hello.mbtx "${NAME}"
-Hello, Moon Bit!
-
-$ cmd/main --version
-my-cli * (glob)
-
-$ ./producer.mbtx|cmd/filter|./consumer.mbtx
-filtered output
-```
-````
-
-Lines after a command describe its output. By default each line must match
-exactly, including trailing spaces. A final `[N]` sets the expected exit code;
-otherwise it is `0`. Pipelines match the final segment's stdout and use
-pipefail by default: after every segment finishes, the exit code is `0` if all
-succeeded, or the rightmost nonzero status in pipeline order otherwise,
-regardless of completion order. Ordinary nonzero statuses can be asserted with
-`[N]` and do not stop later cases.
-Imported commands returning `255` or `-1` are execution errors in any segment. Negative statuses
-denote termination by a signal as reported by the process library. No expected
-output lines means the routed output must be empty.
-
-Bare empty lines at the beginning/end of a block or immediately before the next
-command are separators. Empty lines between nonempty expectations are output.
-Use `"" (escaped)` for an explicit empty output line, especially at the end of
-output. Thus empty output and a single newline remain distinct.
-
-## Paired stdout and stderr assertions
-
-Use `@STDOUT` and `@STDERR` to assert both streams in one execution:
-
-````markdown
-```mooncram
-$ ./cli.mbtx
-@STDOUT
-result
-@STDERR (empty)
-
-$ ./cli.mbtx --invalid
-@STDOUT (ignore)
-@STDERR
-error: invalid argument
-[2]
-```
-````
-
-Both case-sensitive markers must appear exactly once, in either order. A missing
-partner, duplicate marker, nonempty expectation before the first marker, or
-unknown marker annotation is a parse error with a file and line number.
-Marker forms are exactly `@STDOUT` / `@STDERR`, optionally followed by
-` (ignore)` or ` (empty)`. To match a marker-looking output line literally, use
-JSON escaping, for example `"@STDOUT" (escaped)`.
-
-A plain section uses the usual exact, glob, regex and escaped line matchers;
-`(no-eol)` applies independently to the last line of each stream. A plain section
-with no output lines requires empty output. `(ignore)` skips content assertions;
-`(empty)` requires exactly zero characters, so even one newline fails. Neither
-annotated form accepts output lines. Trailing bare empty lines in each section
-are separators; use `"" (escaped)` to assert an empty output line. The final
-`[N]` belongs to the whole case, with default exit code `0`.
-
-`@STDOUT` selects the final segment's stdout. `@STDERR` selects all
-unmerged stderr, concatenated in pipeline order without added separators.
-Redirection still applies: merged or discarded bytes are not recovered.
-There is no comparison of timing between streams. Ignored streams are still
-captured and checked for UTF-8, with the same deadlines and process cleanup.
-Cases without stream markers keep the existing single-output behavior.
-
-## File tool imports
-
-Declare fixed-version Mooncakes executable packages once per Markdown file:
-
-````markdown
-```mooncram-import
-moongrep : moonbit-community/moongrep@0.3.5
-```
-
-```mooncram
-$ moongrep --version
-* (glob)
-```
-````
-
-A file accepts zero or one `mooncram-import` block. Bindings apply to every test
-block in that file, even before the import block, and reset for the next file.
-Imports do not count as cases. Each nonblank line is `alias : coordinate`; empty
-blocks, duplicate aliases, a second import block, and invalid declarations are
-parsing errors with source positions. A second block reports both locations.
-Import fences follow the same Markdown rules as test fences, including quotes,
-lists and longer backtick fences, and accept no settings after the language.
-
-Aliases are case-sensitive `[A-Za-z_][A-Za-z0-9_-]*`; `export` and
-`set-current-working-directory` are reserved.
-Coordinates are `user/module[/package]@version`, using the same path-component
-rules as local package names. The version must be exact SemVer; prerelease and
-build identifiers are supported. Omitted versions, `latest`, ranges, wildcards,
-default arguments and variable expansion in declarations are rejected.
-
-Each pipeline segment resolves its alias independently and runs
-`moonx --target wasm <coordinate> -- <args...>`, preserving the parsed arguments,
-cwd, document exports, temporary assignments and redirection. Imported tools
-always use Wasm, including under
-`--target native`. In a module-declared fence, an alias matching an executable
-local candidate is an execution error: choose a different import alias. Invalid
-local configuration is also an error. Non-alias commands follow the local rules.
-Remote packages can only be called through declared aliases.
-
-Only imported commands reserve statuses `255` and `-1` as execution errors,
-including when the imported program itself returns them. Every segment is
-monitored concurrently; either status cancels and reaps the remaining processes
-and prevents all expectation updates in the document, including dry-run diffs.
-Other nonzero statuses remain assertable and follow the pipefail rule above.
-Other documents continue processing after errors.
-
-moonx handles remote downloading and caching. Remote fetching begins after
-moonx starts, so other segments may run and produce effects before a fetch
-failure is known. Fetching and execution share the case timeout. `test`,
-`update` and `update --dry-run` use the same execution flow.
-
-## Matching and escaping
-
-| Suffix | Meaning |
-| --- | --- |
-| none | Exact line match |
-| ` (glob)` | Whole-line glob: `*`, `?`, `[abc]`, `[a-z]`, `[!a-z]`, `[^a-z]`; backslash quotes a character |
-| ` (regex)` | Whole-line standard-library `Regex` match |
-| ` (escaped)` | Exact match of a JSON string, including control characters |
-| ` (no-eol)` | The final output line has no terminating newline; follows any other suffix |
-
-Glob `?` and sets match one Unicode character. Matching never repeats or skips
-output lines. Unknown parenthesized suffixes such as `(equal)`, `(foo)`, or `(re)`
-are literal text and match exactly. Malformed globs/regexes and non-final `(no-eol)`
-are errors with file and line locations. To match output ending in a recognized
-annotation literally, use a JSON string with `(escaped)`.
-
-`(escaped)` expects a complete JSON string. It can represent tabs, carriage
-returns, NUL, ANSI escapes, and output that looks like a command, fence, status,
-or matching suffix. It cannot contain LF: use separate expected output lines.
-
-````markdown
-```mooncram
-$ ./special.mbtx
-"$ this is output" (escaped)
-"[2]" (escaped)
-"```" (escaped)
-"\u001b[31mred\u001b[0m" (escaped)
-"" (escaped)
-final text (no-eol)
-[3]
-```
-````
-
-Output must be valid UTF-8. CRLF is normalized to LF for comparisons; standalone
-CR, empty lines, trailing spaces, and the final newline are preserved.
-
-## Execution behavior
-
-The fence suffix declares only the module; backend and timeout remain CLI
-options. `--target` selects the backend for all local package cases, and `--timeout-ms` supplies every case deadline;
-`.mbtx` scripts still use Wasm. Build processes and every pipeline segment
-inherit mooncram's environment with the case's document exports applied, then
-overridden by that segment's temporary assignments. Builds and runs receive the
-same environment, including for scripts and imported tools.
-The first segment receives immediate EOF on stdin; later segments
-receive the preceding segment's routed output as raw bytes.
-
-Unmarked cases compare the final command's stdout. Paired cases also compare
-unmerged stderr with `@STDERR`. Unredirected stderr is drained concurrently and
-concatenated in segment order without added separators; it is available as
-`diagnostic stderr` when an assertion fails, unless already shown in a stderr diff. Merged stderr uses the same OS pipe
-as routed stdout and is included in matching, without a second diagnostic copy.
-Captured streams must be valid UTF-8 and have no configured size limit.
-Intermediate pipe data is neither decoded nor normalized. Discarded stdout is
-drained concurrently with a fixed 8 KiB byte buffer, without accumulation or
-UTF-8 decoding; invalid bytes in discarded output are allowed. Build processes
-always use the default routes.
-
-All local segments finish their build preflight before any tested program starts.
-Segments then run concurrently, and mooncram waits for all of them to exit.
-One deadline includes builds, remote fetching and execution. On timeout, a
-startup/capture error, or an imported segment returning `255` or `-1`, all directly managed processes are cancelled and pipes are closed; the
-case is an execution error. Programs must manage their own detached child
-processes. Tests execute code with the current user's permissions and are
-not sandboxed or isolated in a temporary workspace.
-
-## Updating expectations
-
-`update` refreshes expectations and simplifies their spelling, including passing
-cases. Ordinary text such as `[INFO] ready`, `$HOME`, indentation, and inline
-backticks stays readable. Only ambiguous syntax and control characters use JSON
-with `(escaped)`. Internal blank lines remain bare; the final trailing blank is
-protected with `"" (escaped)` when the parser would otherwise treat it as a
-separator. Zero exit statuses are omitted; nonzero statuses use `[N]`, and
-`(no-eol)` follows the actual output.
-
-Still-matching glob/regex patterns retain their original spelling, even after
-insertions or deletions, using ordered lookahead independently per stream.
-Paired updates keep marker order, `(ignore)`, and satisfied `(empty)` constraints.
-A nonempty stream replaces `(empty)` with a plain marker and concrete expectations.
-Failure reports label each failing stream `@STDOUT` or `@STDERR` and show stderr once.
-
-Each test fence uses the shortest safe backtick length, at least three, based
-on all cases inside it. Inline backticks do not lengthen fences. Commands,
-surrounding prose, separator lines, and original line endings are preserved;
-output indentation is adjusted as needed for Markdown containers and fences.
-`updated` counts each changed case once, including passing cases and every case
-in a fence whose markers change. Repeating an update produces `updated 0`.
-
-`--dry-run` runs the same commands and displays document diffs without writing
-Markdown. Commands can still produce their normal filesystem side effects.
-Both actual updates and dry runs return `0` when completed successfully, even
-when changes are needed.
-
-A document with parsing, build, or execution errors is never updated. Other
-documents can still run and update. Before producing a diff or writing, mooncram
-re-parses the generated document and validates commands, configuration, and
-output matches. A validation failure cancels the entire document update. Before
-committing an update, mooncram checks that the source content has not changed,
-then replaces it atomically using a temporary file in the same directory. The replacement uses new-file permissions
-(`0644`, subject to umask); original permissions, inode identity, and extended
-filesystem metadata are not retained in this version.
+[Apache-2.0](LICENSE).
