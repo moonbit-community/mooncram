@@ -8,6 +8,12 @@ fn colorize(text : String, color : @chalk.Colors, enabled : Bool) -> String {
 }
 
 ///|
+/// Render grouped line differences with three context lines around changes.
+///
+/// `old` and `new` contain lines without terminators. Removed lines start with
+/// `-`, additions with `+`; `color` enables red/green ANSI escapes. The result
+/// contains hunk headers and newline-terminated lines, but no file headers.
+/// Identical inputs produce an empty string.
 pub fn diff_lines(
   old : Array[String],
   new : Array[String],
@@ -34,6 +40,14 @@ pub fn diff_lines(
 }
 
 ///|
+/// Format an assertion-failure report without writing it to a stream.
+///
+/// Includes `path`, the case's one-based line, command and expected/actual exit
+/// codes. Legacy expectations get a combined diff; paired expectations get
+/// separately labelled diffs for failing stdout/stderr constraints. Nonempty
+/// diagnostic stderr is appended once unless already shown in a stderr diff.
+/// `color` enables ANSI styling. `actual` should contain normalized output as
+/// returned by `@execute.execute_case`.
 pub fn failure_report(
   path : String,
   case : @markdown.Case,
@@ -88,6 +102,12 @@ pub fn failure_report(
 }
 
 ///|
+/// Decide whether reports should contain ANSI colors.
+///
+/// `"always"` returns true and `"never"` returns false, overriding environment
+/// settings. All other modes (normally `"auto"`) disable color when `NO_COLOR`
+/// exists or `TERM` is `"dumb"`, and otherwise enable it only when `/dev/stdout`
+/// is a character device. Filesystem probe errors return false.
 pub async fn use_color(mode : String) -> Bool {
   match mode {
     "always" => true

@@ -1,29 +1,47 @@
 ///|
 /// One command's expanded arguments, temporary environment and output routes.
+///
+/// Produced by `parse` inside a `Command::Pipeline`. Each segment has at least
+/// one argument. Redirection flags may be set only on non-final segments.
 pub(all) struct PipelineSegment {
+  /// Executable followed by arguments, with quoting removed and references expanded.
   argv : Array[String]
+  /// Segment-only assignments; values override document/inherited variables.
   extra_env : Map[String, String]
+  /// Route this segment's stderr into the pipe feeding the next segment.
   stderr_to_stdout : Bool
+  /// Discard stdout while draining it; independently merged stderr still flows on.
   stdout_to_null : Bool
 } derive(Debug, Eq)
 
 ///|
+/// Expose the derived debug representation of all segment fields.
 pub extend PipelineSegment with @debug.Debug::{to_repr}
 
 ///|
+/// Expose structural equality over arguments, assignments and redirection flags.
 pub extend PipelineSegment with Eq::{equal, not_equal}
 
 ///|
+/// Result of parsing one command line without its Markdown `$` prompt.
+///
+/// Configuration variants change later parsing/resolution state and are not
+/// executable test cases.
 pub(all) enum Command {
+  /// Nonempty list of executable segments in pipeline order.
   Pipeline(Array[PipelineSegment])
+  /// One document-scoped environment assignment with an expanded value.
   Export(name~ : String, value~ : String)
+  /// Nonempty expanded block-local directory path, not yet filesystem-validated.
   SetCurrentWorkingDirectory(directory~ : String)
 } derive(Debug, Eq)
 
 ///|
+/// Expose the derived debug representation of the variant and its payload.
 pub extend Command with @debug.Debug::{to_repr}
 
 ///|
+/// Expose structural equality; variants and all payload fields must match.
 pub extend Command with Eq::{equal, not_equal}
 
 ///|
@@ -89,6 +107,28 @@ fn expand(
 /// segment, including its arguments. case_insensitive normalizes temporary names
 /// and lookup keys to uppercase; enable it on Windows.
 /// Output redirection is allowed only before the final pipeline segment.
+///
+/// `command` omits the Markdown `$` prompt. Spaces/tabs split arguments, quotes
+/// preserve spaces, and backslashes escape the following character except in
+/// single quotes. Unquoted `|` separates segments. The only supported routes
+/// are raw trailing tokens `2>&1` and `1>/dev/null`. Parsing does not invoke a
+/// shell, resolve targets or mutate the environment.
+///
+/// Raises `@diagnostic.Failure` for malformed quotes/references, undefined
+/// variables, empty segments, unsupported shell operators, invalid assignments
+/// or redirection/configuration placement. Variable references are forbidden
+/// in executable names.
+///
+/// ```mbt check
+/// test {
+///   let parsed = @command.parse("NAME='Moon Bit' ./hello.mbtx \"${NAME}\"")
+///   guard parsed is @command.Pipeline(segments) else {
+///     fail("expected a pipeline")
+///   }
+///   assert_eq(segments[0].argv, ["./hello.mbtx", "Moon Bit"])
+///   assert_eq(segments[0].extra_env.get("NAME"), Some("Moon Bit"))
+/// }
+/// ```
 pub fn parse(
   command : String,
   lookup~ : (String) -> String? = _ => None,

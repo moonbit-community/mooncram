@@ -1,4 +1,15 @@
 ///|
+/// Discover Markdown files under the supplied files and directories.
+///
+/// Relative paths are resolved against the process working directory. Only
+/// names ending in the case-sensitive suffix `.md` are selected. Results are
+/// sorted, unique, canonical absolute paths, so aliases through symlinks occur
+/// only once. Traversal skips hidden entries, dot-prefixed entries, `_build`
+/// and `target`, and never recurses into directory symlinks. Symlinks to regular
+/// `.md` files are followed. These traversal exclusions do not filter explicit
+/// input paths. An empty input array returns an empty result.
+///
+/// Raises `@diagnostic.Failure` with the input path when traversal fails.
 pub async fn discover(paths : Array[String]) -> Array[String] {
   let found : Map[String, Bool] = Map([])
   async fn visit(path : String) -> Unit {
@@ -31,6 +42,16 @@ pub async fn discover(paths : Array[String]) -> Array[String] {
 }
 
 ///|
+/// Replace a Markdown file with `updated` after checking its original `source`.
+///
+/// Writes and syncs a temporary sibling file, compares the current file content
+/// with `source`, then atomically renames the sibling over `path`. Raises
+/// `@diagnostic.Failure` on a content mismatch and propagates filesystem errors.
+/// Temporary-file cleanup is attempted on both success and failure.
+///
+/// The comparison detects edits before the final rename; it is not a file lock.
+/// Replacement uses new-file permissions (0644 subject to umask), rather than
+/// preserving the original inode, permissions or extended metadata.
 pub async fn write_document(
   path : String,
   source : String,

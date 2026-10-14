@@ -65,6 +65,34 @@ fn collect_blocks(
 }
 
 ///|
+/// Parse all `mooncram` test fences and the optional `mooncram-import` fence.
+///
+/// `source` is the complete Markdown text; `path` supplies diagnostic locations
+/// and later filesystem resolution (use an absolute path for execution).
+/// Recognizes backtick fences, including those in lists and blockquotes, and
+/// ignores unrelated Markdown. Imports apply file-wide, even before their
+/// declaration. Exports apply to later commands across fences; block-local
+/// directory settings must precede that block's first executable command.
+///
+/// Variable expansion reads document exports before the current process
+/// environment, using case-insensitive names on Windows. Each case stores its
+/// own export snapshot. Configuration commands are not cases. A document with
+/// no test fences returns an empty case list.
+///
+/// Parses the entire document before returning. Invalid fence configuration,
+/// commands, imports or expectations raise `@diagnostic.Failure` with file and
+/// one-based line locations. Does not validate paths, build or execute commands.
+///
+/// ```mbt check
+/// test {
+///   let doc = @markdown.parse_document(
+///     "README.md", "```mooncram\n$ ./hello.mbtx\nhello\n```\n",
+///   )
+///   assert_eq(doc.cases.length(), 1)
+///   assert_eq(doc.cases[0].line, 2)
+///   assert_eq(doc.cases[0].expected.exit_code, 0)
+/// }
+/// ```
 pub fn parse_document(path : String, source : String) -> Document raise {
   parse_document_with_env(
     path,
