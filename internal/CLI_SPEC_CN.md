@@ -757,12 +757,12 @@ Not updating <canonical-file>: execution errors in this document
 | 行为 | 实现 | 现有验证 |
 | --- | --- | --- |
 | 入口与参数 | [main.mbt](../main.mbt)、[cli/cli.mbt](cli/cli.mbt)、[cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
-| 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
+| 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
-| 文档校验与目标解析 | [resolve/document.mbt](resolve/document.mbt)、[resolve/module.mbt](resolve/module.mbt)、[resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt)、[resolve/module_wbtest.mbt](resolve/module_wbtest.mbt)、[resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt)、[tests/integration/check.spec.mjs](../tests/integration/check.spec.mjs) |
-| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
+| 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[e2etests/integration.mjs](../e2etests/integration.mjs) |
+| 文档校验与目标解析 | [resolve/document.mbt](resolve/document.mbt)、[resolve/module.mbt](resolve/module.mbt)、[resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt)、[resolve/module_wbtest.mbt](resolve/module_wbtest.mbt)、[resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt)、[e2etests/integration/check.spec.mjs](../e2etests/integration/check.spec.mjs) |
+| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[e2etests/integration.mjs](../e2etests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 | 报告与局部编辑 | [report/report.mbt](report/report.mbt)、[update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 
@@ -774,7 +774,7 @@ CLI 的帮助、选项解析和正则细节还依赖已安装的 MoonBit 标准�
 
 ```text
 moon test
-node tests/integration.mjs
+node e2etests/integration.mjs
 moon info && moon fmt
 ```
 

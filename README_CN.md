@@ -342,7 +342,7 @@ CI 应使用 `test` 判断测试是否通过。
 moon test
 moon test --target native
 moon run . -- test README.md README_CN.md
-node tests/integration.mjs
+node e2etests/integration.mjs
 moon info && moon fmt
 ```
 

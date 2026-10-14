@@ -2,7 +2,7 @@
 /**
  * Exercise both CLI backends with real MoonBit scripts and packages.
  *
- * Run from any directory: node tests/integration.mjs [--target wasm|native]
+ * Run from any directory: node e2etests/integration.mjs [--target wasm|native]
  * Requires Node.js, moon, moonx, moonrun, and the native C toolchain.
  */
 
@@ -46,7 +46,7 @@ const ARGUMENT_OPTIONS = {
   help: { type: "boolean", short: "h" },
   target: { type: "string", multiple: true },
 };
-const HELP_TEXT = `Usage: node tests/integration.mjs [--target wasm|native]
+const HELP_TEXT = `Usage: node e2etests/integration.mjs [--target wasm|native]
 
 Exercise both CLI backends with real MoonBit scripts and packages.
 Requires Node.js, moon, moonx, moonrun, and the native C toolchain.
