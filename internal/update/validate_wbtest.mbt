@@ -2,9 +2,9 @@
 test "validation rejects changed commands configuration case counts and output" {
   let source = "```mooncram user/tool\n$ export MODE=one\n$ set-current-working-directory .\n$ ./a.mbtx\nold\n```\n"
   let doc = @markdown.parse_document("validation.md", source)
-  let captures : Map[Int32, @output.Captured] = Map([
-    (0, { output: "old\n", diagnostic: "", exit_code: 0, }),
-  ])
+  let captures : Array[@output.Captured] = [
+    { output: "old\n", diagnostic: "", exit_code: 0, },
+  ]
   validate_generated(doc, source, captures)
   for
     changed in [

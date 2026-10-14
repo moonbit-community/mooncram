@@ -12,7 +12,11 @@ test "passing exact expectations normalize to readable text" {
   assert_true(
     @markdown.parse_document("n.md", source).cases[0].expected.matches(actual),
   )
-  assert_update(source, actual, "```mooncram\n$ ./a.mbtx\n" + output + "```   ")
+  assert_update(
+    source,
+    [actual],
+    "```mooncram\n$ ./a.mbtx\n" + output + "```   ",
+  )
 }
 
 ///|
@@ -34,7 +38,7 @@ test "only ambiguous exact syntax is escaped" {
     ] {
     assert_update(
       "```mooncram\n$ ./a.mbtx\nold\n```\n",
-      { output: line + "\n", diagnostic: "", exit_code: 0, },
+      [{ output: line + "\n", diagnostic: "", exit_code: 0, }],
       "```mooncram\n$ ./a.mbtx\n" + rendered + "\n```\n",
     )
   }
@@ -60,7 +64,7 @@ test "only the last trailing blank needs protection where separators are trimmed
         }
         assert_update(
           prefix + "old\n```\n",
-          { output, diagnostic: "ignored\n", exit_code: code, },
+          [{ output, diagnostic: "ignored\n", exit_code: code, }],
           prefix + content + (if code == 0 { "" } else { "[2]\n" }) + "```\n",
         )
       }
@@ -83,13 +87,13 @@ test "numeric brackets are protected only in final case status position" {
     ] {
     assert_update(
       "```mooncram\n$ ./a.mbtx\n" + body + "```\n",
-      { output, diagnostic, exit_code: 0, },
+      [{ output, diagnostic, exit_code: 0, }],
       "```mooncram\n$ ./a.mbtx\n" + expected + "```\n",
     )
   }
   assert_update(
     "```mooncram\n$ ./a.mbtx\n[0002]\n```\n",
-    { output: "", diagnostic: "", exit_code: 2, },
+    [{ output: "", diagnostic: "", exit_code: 2, }],
     "```mooncram\n$ ./a.mbtx\n[2]\n```\n",
   )
 }
@@ -137,11 +141,13 @@ test "fences use shortest safe length including source indentation and no-eol" {
             let extra = " ".repeat(indent - original_indent)
             assert_update(
               source,
-              {
-                output: line + (if no_eol { "" } else { "\n" }),
-                diagnostic: "",
-                exit_code: 0,
-              },
+              [
+                {
+                  output: line + (if no_eol { "" } else { "\n" }),
+                  diagnostic: "",
+                  exit_code: 0,
+                },
+              ],
               opening +
               marker +
               "mooncram\n" +
@@ -163,18 +169,21 @@ test "fences use shortest safe length including source indentation and no-eol" {
 }
 
 ///|
-test "shared fence changes count each case once and leave other fences alone" {
+test "whole document updates normalize every case fence and count each case once" {
   let source = "``````mooncram\n$ ./a.mbtx\nold\n$ ./b.mbtx\nkeep\n```````\n\n`````mooncram\n$ ./c.mbtx\nkeep\n`````\n"
   let doc = @markdown.parse_document("shared.md", source)
   let a : @output.Captured = { output: "```\n", diagnostic: "", exit_code: 0, }
-  let result = @update.generate(doc, [(0, a)])
-  assert_eq(result.changed_cases, 2)
+  let b : @output.Captured = { output: "keep\n", diagnostic: "", exit_code: 0, }
+  let c : @output.Captured = { output: "keep\n", diagnostic: "", exit_code: 0, }
+  let captures = [a, b, c]
+  let result = @update.generate(doc, captures)
+  assert_eq(result.changed_cases, 3)
   assert_eq(
     result.source,
-    "````mooncram\n$ ./a.mbtx\n```\n$ ./b.mbtx\nkeep\n````\n\n`````mooncram\n$ ./c.mbtx\nkeep\n`````\n",
+    "````mooncram\n$ ./a.mbtx\n```\n$ ./b.mbtx\nkeep\n````\n\n```mooncram\n$ ./c.mbtx\nkeep\n```\n",
   )
   let parsed = @markdown.parse_document("shared.md", result.source)
-  let again = @update.generate(parsed, [(0, a)])
+  let again = @update.generate(parsed, captures)
   assert_eq(again.source, result.source)
   assert_eq(again.changed_cases, 0)
 }
@@ -200,7 +209,7 @@ test "lookahead keeps shifted patterns and their own source layouts" {
     ] {
     assert_update(
       prefix + old + "> ```",
-      { output: actual, diagnostic: "", exit_code: 0, },
+      [{ output: actual, diagnostic: "", exit_code: 0, }],
       prefix + rendered + "> ```",
     )
   }
@@ -211,16 +220,18 @@ test "dual streams normalize independently and retain ignored and empty constrai
   let source = "```mooncram\n$ ./a.mbtx\n\n@STDERR\nold\nerror [0-9]+ (regex)\n\n@STDOUT\nv* (glob)\n\"[INFO] ready\" (escaped)\n[00]\n```\n"
   assert_update(
     source,
-    {
-      output: "insert\nversion\n[INFO] ready\n",
-      diagnostic: "error 2",
-      exit_code: 0,
-    },
+    [
+      {
+        output: "insert\nversion\n[INFO] ready\n",
+        diagnostic: "error 2",
+        exit_code: 0,
+      },
+    ],
     "```mooncram\n$ ./a.mbtx\n\n@STDERR\nerror [0-9]+ (regex) (no-eol)\n\n@STDOUT\ninsert\nv* (glob)\n[INFO] ready\n```\n",
   )
   assert_update(
     "````mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n[0]\n````\n",
-    { output: "", diagnostic: "anything", exit_code: 0, },
+    [{ output: "", diagnostic: "anything", exit_code: 0, }],
     "```mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n```\n",
   )
 }
@@ -254,7 +265,7 @@ test "leading spaces round trip across nested containers and tab prefixes" {
         e => fail("parse \{source}: \{e}")
       }
       let actual : @output.Captured = { output, diagnostic: "", exit_code: 0, }
-      let generated = @update.generate(doc, [(0, actual)]) catch {
+      let generated = @update.generate(doc, [actual]) catch {
         e => fail("generate \{source}, output \{output}: \{e}")
       }
       let parsed = @markdown.parse_document("nested.md", generated.source)
@@ -262,10 +273,7 @@ test "leading spaces round trip across nested containers and tab prefixes" {
         parsed.cases[0].expected.matches(actual),
         msg=generated.source,
       )
-      assert_eq(
-        @update.generate(parsed, [(0, actual)]).source,
-        generated.source,
-      )
+      assert_eq(@update.generate(parsed, [actual]).source, generated.source)
       if output != "   \n\n\n" {
         assert_true(
           !generated.source.contains("(escaped)"),
@@ -288,14 +296,14 @@ test "partially consumed tabs keep unchanged rows and do not duplicate virtual s
     ] {
     assert_update(
       source,
-      { output, diagnostic: "", exit_code: 0, },
+      [{ output, diagnostic: "", exit_code: 0, }],
       "- ```mooncram\n  $ ./a.mbtx\n" + row + "\r\n  ```",
     )
   }
 }
 
 ///|
-test "a shared fence considers all captured cases regardless of capture order" {
+test "a shared fence considers every capture in document order" {
   let source = "````````mooncram\n$ ./a.mbtx\nold\n\n$ ./b.mbtx\nold\n````````\n"
   let a : @output.Captured = { output: "```\n", diagnostic: "", exit_code: 0, }
   let b : @output.Captured = {
@@ -304,14 +312,14 @@ test "a shared fence considers all captured cases regardless of capture order" {
     exit_code: 0,
   }
   let doc = @markdown.parse_document("shared.md", source)
-  let generated = @update.generate(doc, [(1, b), (0, a)])
+  let generated = @update.generate(doc, [a, b])
   assert_eq(generated.changed_cases, 2)
   assert_eq(
     generated.source,
     "``````mooncram\n$ ./a.mbtx\n```\n\n$ ./b.mbtx\n`````\n``````\n",
   )
   let parsed = @markdown.parse_document("shared.md", generated.source)
-  assert_eq(@update.generate(parsed, [(0, a), (1, b)]).changed_cases, 0)
+  assert_eq(@update.generate(parsed, [a, b]).changed_cases, 0)
 }
 
 ///|
@@ -332,7 +340,7 @@ test "a tab before backticks cannot close the fence even when partially consumed
     let output = if opening == "- " { "  ````\n" } else { "````\n" }
     assert_update(
       source,
-      { output, diagnostic: "", exit_code: 0, },
+      [{ output, diagnostic: "", exit_code: 0, }],
       source.replace_all(old="``````", new="```"),
     )
   }
@@ -351,14 +359,14 @@ test "internal bare LF after CR is protected without changing either newline" {
     ] {
     assert_update(
       source,
-      { output: "\nend\n", diagnostic: "", exit_code: 0, },
+      [{ output: "\nend\n", diagnostic: "", exit_code: 0, }],
       wanted,
     )
   }
   // An inserted blank can also follow an aligned row with a different newline.
   assert_update(
     "```mooncram\n$ ./a.mbtx\nhead\rend\n```",
-    { output: "head\n\nend\n", diagnostic: "", exit_code: 0, },
+    [{ output: "head\n\nend\n", diagnostic: "", exit_code: 0, }],
     "```mooncram\n$ ./a.mbtx\nhead\r\"\" (escaped)\nend\n```",
   )
 }
