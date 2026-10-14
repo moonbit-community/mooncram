@@ -81,7 +81,7 @@ fn cli_command() -> @argparse.Command {
       ]),
       @argparse.Command(
         "update",
-        about="Update failing expectations in place",
+        about="Update and normalize expectations, including passing cases",
         positionals=[paths],
         flags=[
           @argparse.FlagArg(

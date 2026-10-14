@@ -111,6 +111,21 @@ fn stream_marker(text : String) -> (Stream, StreamConstraint)? raise {
 }
 
 ///|
+/// Parse the logical expectation rows following a Markdown command.
+///
+/// `nodes` excludes the command and enclosing fence, and retains cmark source
+/// locations for one-based diagnostics using `file`. A final `[N]` sets the
+/// pipeline exit code (default 0). Without stream markers all rows constrain
+/// stdout. With markers, `@STDOUT` and `@STDERR` must each occur exactly once;
+/// optional `(ignore)`/`(empty)` sections accept no output rows. Trailing bare
+/// blanks within paired sections are separators; legacy rows are not trimmed
+/// here, so callers should remove their outer separator blanks first.
+///
+/// Line suffixes support whole-line `(glob)`, `(regex)` and JSON `(escaped)`
+/// matching, with `(no-eol)` only on a nonempty final output line per stream.
+/// Raises located `@diagnostic.Failure` for invalid patterns/escapes, marker
+/// placement, final-newline annotations or out-of-range exit statuses. Original
+/// row spellings are preserved in `Expectation.source_lines`.
 pub fn parse_expectation(
   nodes : ArrayView[@cmark.Node[String]],
   file : String,
@@ -203,11 +218,36 @@ pub fn parse_expectation(
 }
 
 ///|
+/// Replace CRLF pairs with LF without changing any other output characters.
+///
+/// Preserves standalone CR, trailing spaces, blank lines and final-newline state.
+/// Apply before matching or rendering manually captured text.
+///
+/// ```mbt check
+/// test {
+///   assert_eq(@output.normalize_output("a\r\nb\r"), "a\nb\r")
+/// }
+/// ```
 pub fn normalize_output(text : String) -> String {
   text.replace_all(old="\r\n", new="\n")
 }
 
 ///|
+/// Split output on LF and return `(lines, no_eol)`.
+///
+/// A terminating LF is removed as a delimiter, preserving preceding empty
+/// lines. Empty text returns `([], false)`; a single LF returns `([""], false)`.
+/// For nonempty text `no_eol` is true exactly when the final LF is absent.
+/// Does not normalize CRLF; call `normalize_output` first when needed.
+///
+/// ```mbt check
+/// test {
+///   assert_eq(@output.output_lines(""), ([], false))
+///   assert_eq(@output.output_lines("\n"), ([""], false))
+///   assert_eq(@output.output_lines("hello"), (["hello"], true))
+///   assert_eq(@output.output_lines("hello\n\n"), (["hello", ""], false))
+/// }
+/// ```
 pub fn output_lines(text : String) -> (Array[String], Bool) {
   if text == "" {
     return ([], false)
@@ -245,6 +285,11 @@ fn StreamExpectation::matches(self : StreamExpectation, text : String) -> Bool {
 }
 
 ///|
+/// Check normalized stream text against this content policy.
+///
+/// `Match` checks line count, each whole-line matcher and final-newline state;
+/// `Ignore` always succeeds; `Empty` succeeds only for the empty string.
+/// The text is neither decoded nor CRLF-normalized by this function.
 pub fn StreamConstraint::matches(
   self : StreamConstraint,
   text : String,
@@ -257,6 +302,7 @@ pub fn StreamConstraint::matches(
 }
 
 ///|
+/// Return the exact Markdown marker `"@STDOUT"` or `"@STDERR"` for this stream.
 pub fn Stream::label(self : Stream) -> String {
   match self {
     Stdout => "@STDOUT"
@@ -265,6 +311,9 @@ pub fn Stream::label(self : Stream) -> String {
 }
 
 ///|
+/// Select `actual.output` for stdout or `actual.diagnostic` for stderr.
+///
+/// Returns the stored text unchanged, without normalization or newline insertion.
 pub fn Stream::select(self : Stream, actual : Captured) -> String {
   match self {
     Stdout => actual.output
@@ -273,6 +322,11 @@ pub fn Stream::select(self : Stream, actual : Captured) -> String {
 }
 
 ///|
+/// Check both the pipeline exit code and all requested stream constraints.
+///
+/// Legacy expectations compare only stdout; paired expectations compare each
+/// section using its policy. `actual` should contain normalized text as returned
+/// by execution; this method does not normalize it or render diagnostics.
 pub fn Expectation::matches(self : Expectation, actual : Captured) -> Bool {
   self.exit_code == actual.exit_code &&
   (match self.body {

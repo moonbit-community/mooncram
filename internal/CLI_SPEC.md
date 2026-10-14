@@ -15,11 +15,13 @@ Paths such as `./hello.mbtx` in those examples are illustrative.
 ## 1. Invocation and command-line parsing
 
 ```text
+mooncram [global-options] check [paths...] [global-options]
 mooncram [global-options] test [paths...] [global-options]
 mooncram [global-options] update [paths...] [global-options] [--dry-run]
 mooncram (-h | --help)
 mooncram (-V | --version)
-mooncram help [test|update]
+mooncram help [check|test|update]
+mooncram check (-h | --help)
 mooncram test (-h | --help)
 mooncram update (-h | --help)
 ```
@@ -27,32 +29,34 @@ mooncram update (-h | --help)
 From the repository checkout, the executable can be launched with:
 
 ```text
+moon run . -- check README.md
 moon run . -- test README.md
 moon run . -- update examples --dry-run
 ```
 
-The `--` in these two examples separates `moon` arguments from mooncram
+The `--` in these examples separates `moon` arguments from mooncram
 arguments. A later `--` can terminate mooncram's own option parsing.
 
 | Command | Behavior |
 | --- | --- |
+| `check` | Validate documents and resolve local targets without building or executing cases. |
 | `test` | Execute cases and compare routed output and exit status with the expectations. |
-| `update` | Execute the same cases and replace failing expectations with representations of the observed results. |
+| `update` | Execute cases, then update and normalize their expectations from observed results, including passing cases. |
 | `update --dry-run` | Execute cases and print proposed document changes without writing them. |
 | `help`, `-h`, `--help` | Print the relevant help to stdout and exit with `0`, without discovering or executing cases. |
 | `-V`, `--version` | At the top level, print the executable's version string followed by a newline to stdout and exit with `0`. |
 
 A subcommand is required unless a help or version request is handled. An empty
 command line is an argument error, not an implicit `test`. Version flags are
-not available after `test` or `update`; for example, `mooncram test --version`
-is an argument error.
+not available after `check`, `test`, or `update`; for example,
+`mooncram test --version` is an argument error.
 
 ### 1.1 Options and defaults
 
 | Option | Scope | Default | Accepted values and effect |
 | --- | --- | --- | --- |
-| `--target VALUE` | Global | `wasm` | Exactly `wasm` or `native`; default backend for local package cases. |
-| `--timeout-ms N` | Global | `60000` | Positive signed 32-bit integer in milliseconds; one deadline for each case's build and execution. |
+| `--target VALUE` | Global, `test`/`update` only | `wasm` | Exactly `wasm` or `native`; default backend for local package cases. |
+| `--timeout-ms N` | Global, `test`/`update` only | `60000` | Positive signed 32-bit integer in milliseconds; one deadline for each case's build and execution. |
 | `--color VALUE` | Global | `auto` | Exactly `auto`, `always`, or `never`; controls mooncram's report coloring. |
 | `--dry-run` | `update` only | Off | Print proposed document diffs instead of replacing documents. Takes no value. |
 
@@ -64,8 +68,10 @@ both sides of the subcommand; repeated occurrences are errors rather than
 overrides. Repeating `--dry-run` keeps it enabled.
 
 `--dry-run` must occur after `update`. It is invalid at the top level and for
-`test`. Unknown commands/options, missing option values, and invalid values
-produce exit status `2`.
+`check` or `test`. `check` also rejects explicit `--target` and `--timeout-ms`,
+even when they equal the defaults or appear before the subcommand. All three
+commands accept `--color`. Unknown commands/options, missing option values,
+and invalid values produce exit status `2`.
 
 For `--timeout-ms`, only ASCII decimal digits are accepted, with value in
 `1..2147483647`. Leading zeroes are allowed. Signs, spaces, fractions, zero,
@@ -85,6 +91,31 @@ mooncram test -- -example.md
 Mooncram does not expand path globs itself. Expansion by the shell launching
 mooncram happens before the CLI receives its arguments. A fence can declare its
 module; target and timeout are controlled by the CLI options.
+
+### 1.2 Check without execution
+
+`check` shares file discovery, Markdown parsing, command and expectation
+validation, and document-level module/directory validation with `test` and
+`update`. Configuration-only fences are validated too. It then resolves each
+pipeline segment against the current filesystem, checking script existence,
+executable package selection, module boundaries, and import alias conflicts.
+It reads the parent environment, local files and configuration without building,
+downloading dependencies, starting subprocesses, or modifying Markdown.
+
+A document parse or declaration-validation failure counts as one error and
+prevents checking its cases. A target-resolution failure counts as one error for
+that case, skips its remaining segments, and continues with later cases and files.
+Ambiguity warnings follow the usual reporting rules and do not count as errors.
+The summary is `N cases, E errors`; a run with no cases and no other errors uses
+the existing no-cases error instead.
+
+Variable expansion uses the current parent environment and platform variable-name
+rules, document exports, and temporary assignments. Results therefore depend on
+the environment and current filesystem. A target generated by an earlier case
+may be reported missing by `check`; `test` and `update` resolve targets at
+execution time and support this pattern. `check` does not verify source
+compilation, backend build support, remote-coordinate existence, or program
+assertions. It has no per-case execution timeout.
 
 ## 2. File discovery and ordering
 
@@ -121,8 +152,8 @@ environment, overridden by the exports in effect for that case and then by the
 segment's temporary assignments.
 
 A document without cases is allowed when other documents contain cases. If
-there are no attempted cases and no recorded errors, the CLI reports
-`ERROR no mooncram cases found` and exits with `2` without a summary.
+there are no attempted cases (checked or executed) and no recorded errors, the
+CLI reports `ERROR no mooncram cases found` and exits with `2` without a summary.
 
 ## 3. Markdown recognition and case boundaries
 
@@ -704,7 +735,7 @@ Errors are written to **stderr**:
 | --- | --- |
 | Arguments or discovery | `ERROR <message>` |
 | Read, parse, or update of a document | `ERROR <canonical-file>: <message>` |
-| Execution of one case | `ERROR <canonical-file>:<command-line>: <message>`, followed by the indented command. |
+| Target resolution during `check`, or execution of one case | `ERROR <canonical-file>:<command-line>: <message>`, followed by the indented command. |
 
 Argument-parser errors include contextual help. A document parse message
 already contains its file and source line; the outer document error handler
@@ -834,14 +865,17 @@ ignores this permission parameter on Windows.
 After processing all discovered files, normal summaries go to stdout:
 
 ```text
+<total> cases, <errors> errors
 <total> cases, <failed> failed, <errors> errors
 <total> cases, updated <updated>, <errors> errors
 <total> cases, would update <updated>, <errors> errors
 ```
 
-For example:
+These formats correspond to `check`, `test`, `update`, and `update --dry-run`,
+respectively. For example:
 
 ```text
+3 cases, 0 errors
 3 cases, 1 failed, 0 errors
 3 cases, updated 1, 0 errors
 3 cases, would update 1, 0 errors
@@ -849,9 +883,9 @@ For example:
 
 | Counter | Meaning |
 | --- | --- |
-| `total` | Cases whose execution was attempted, incremented before execution. Includes cases with execution errors; excludes exports, imports and cases in documents that failed to parse or validate module declarations. |
+| `total` | Cases whose checking or execution was attempted, incremented before processing each case. Includes cases with target-resolution or execution errors; excludes configuration directives, imports and cases in documents that failed parsing or module/directory declaration validation. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
-| `errors` | Caught per-case errors plus document read/parse/module-validation/update errors. A parse or module-validation failure counts as one document error. |
+| `errors` | Caught per-case target-resolution or execution errors plus document read/parse/declaration-validation/update errors. A parse or declaration-validation failure counts as one document error. |
 | `updated` | Changed cases in documents successfully written, or eligible for a dry-run document diff, including normalization and every case sharing changed fence markers. Each case counts once, not once per changed line. |
 
 Documents whose updates are suppressed or whose write fails do not contribute
@@ -860,13 +894,14 @@ because a later execution error suppressed that document's changes.
 
 | Exit status | Condition |
 | --- | --- |
-| `0` | Help/version succeeded; or at least one case ran with no errors and all `test` expectations passed; or `update`/dry-run finished without errors, regardless of mismatches. |
+| `0` | Help/version succeeded; or `check` checked at least one case with no errors; or at least one case ran with no errors and all `test` expectations passed; or `update`/dry-run finished without errors, regardless of mismatches. |
 | `1` | `test` has at least one mismatch and no errors. |
 | `2` | Argument/discovery failure, any recorded document or case error, or no cases found. |
 
 Errors take precedence over mismatches. A document error with zero attempted
-cases still produces a summary such as `0 cases, 0 failed, 1 errors`; the
-special no-cases message applies only when both total and errors are zero.
+cases still produces a summary such as `0 cases, 1 errors` for `check` or
+`0 cases, 0 failed, 1 errors` for `test`; the special no-cases message applies
+only when both total and errors are zero.
 Argument/discovery failures, help/version, and that no-cases path have no normal
 summary. These statuses belong to mooncram, independently of tested programs'
 expected exit statuses.
@@ -880,7 +915,8 @@ expected exit statuses.
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
-| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt), [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
+| Document validation and target resolution | [resolve/document.mbt](resolve/document.mbt), [resolve/module.mbt](resolve/module.mbt), [resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt), [resolve/module_wbtest.mbt](resolve/module_wbtest.mbt), [resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt), [tests/integration/check.spec.mjs](../tests/integration/check.spec.mjs) |
+| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 | Reports and local edits | [report/report.mbt](report/report.mbt), [update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 

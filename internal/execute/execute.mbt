@@ -1,4 +1,25 @@
 ///|
+/// Build and execute one parsed case using its validated document context.
+///
+/// `target` must be `"wasm"` or `"native"` and applies to local packages;
+/// scripts and imported tools always run as Wasm. `timeout_ms` is the positive
+/// deadline for target resolution, all builds, remote fetching and execution.
+/// `warning` receives nonfatal target-resolution diagnostics.
+///
+/// Every local segment finishes its build preflight before tested programs
+/// start. Segments run concurrently, inheriting the process environment with
+/// document exports and then segment assignments applied. The first segment
+/// receives EOF; subsequent segments receive raw bytes through OS pipes.
+///
+/// Returns final stdout and unmerged stderr (concatenated in segment order),
+/// both decoded as UTF-8 with CRLF normalized. The exit code is the rightmost
+/// nonzero segment status, or zero. Ordinary nonzero statuses are returned for
+/// assertion; imported statuses 255 and -1 raise `@diagnostic.Failure`.
+///
+/// Resolution, build, startup, UTF-8 capture and timeout errors propagate.
+/// Failure cancels and reaps directly managed children. Commands run in the
+/// case's working directory and can modify files; no isolation is provided.
+/// `case` and `context` must come from the same parsed/validated document.
 pub async fn execute_case(
   case : @markdown.Case,
   context : @resolve.DocumentContext,

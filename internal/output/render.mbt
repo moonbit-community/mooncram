@@ -102,6 +102,16 @@ fn stream_layout(
 }
 
 ///|
+/// Render normalized stream text as logical Markdown expectation lines.
+///
+/// Uses ordered alignment with `expected` to retain still-matching glob/regex
+/// spellings, including after insertions/deletions. Exact lines are rendered
+/// directly unless reserved syntax or control characters require JSON escaping.
+/// Preserves missing final LF with `(no-eol)` and protects a trailing empty line
+/// with `(escaped)`. Returns no stream marker, exit marker or line terminators.
+///
+/// This stream-only renderer does not protect a final status-shaped line such
+/// as `[2]`; use `actual_expectation` when rendering a complete case.
 pub fn actual_stream_expectation(
   text : String,
   expected : Array[ExpectedLine],
@@ -119,6 +129,19 @@ fn status_shaped(text : String) -> Bool {
 }
 
 ///|
+/// Render a complete updated expectation with source-row associations.
+///
+/// Each pair contains a logical line without a terminator and an optional
+/// zero-based row index into `expected.source_lines`. `Some(i)` associates a
+/// retained/replaced row with its old formatting; `None` denotes an insertion.
+/// Input streams must already be CRLF-normalized.
+///
+/// Retains matching glob/regex patterns, paired marker order and separator
+/// blanks. Ignored sections and satisfied empty constraints remain unchanged;
+/// a nonempty stream replaces `(empty)` with concrete expectations. Emits `[N]`
+/// only for a nonzero actual status and escapes ambiguous final status-shaped
+/// output when needed. Sections/source rows must be consistent as produced by
+/// `parse_expectation`; malformed manually assembled values may fail indexing.
 pub fn actual_expectation_layout(
   actual : Captured,
   expected : Expectation,
@@ -191,6 +214,24 @@ pub fn actual_expectation_layout(
 }
 
 ///|
+/// Render a complete case expectation from normalized captured output/status.
+///
+/// Returns logical lines without terminators. This is
+/// `actual_expectation_layout` with source-row indices removed, preserving its
+/// pattern retention, paired-stream policies and syntax escaping. Does not add
+/// Markdown containers, command lines or enclosing fences.
+///
+/// ```mbt check
+/// test {
+///   let expected = @output.parse_expectation([], "README.md")
+///   let actual : @output.Captured = {
+///     output: "[2]\n",
+///     diagnostic: "",
+///     exit_code: 0,
+///   }
+///   assert_eq(@output.actual_expectation(actual, expected), ["\"[2]\" (escaped)"])
+/// }
+/// ```
 pub fn actual_expectation(
   actual : Captured,
   expected : Expectation,

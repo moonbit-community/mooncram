@@ -12,11 +12,13 @@
 ## 1. 调用方式与命令行解析
 
 ```text
+mooncram [global-options] check [paths...] [global-options]
 mooncram [global-options] test [paths...] [global-options]
 mooncram [global-options] update [paths...] [global-options] [--dry-run]
 mooncram (-h | --help)
 mooncram (-V | --version)
-mooncram help [test|update]
+mooncram help [check|test|update]
+mooncram check (-h | --help)
 mooncram test (-h | --help)
 mooncram update (-h | --help)
 ```
@@ -24,31 +26,33 @@ mooncram update (-h | --help)
 在仓库目录中，可以这样启动程序：
 
 ```text
+moon run . -- check README.md
 moon run . -- test README.md
 moon run . -- update examples --dry-run
 ```
 
-这两个示例中的 `--` 用来分隔 `moon` 的参数与 mooncram 的参数。
+这些示例中的 `--` 用来分隔 `moon` 的参数与 mooncram 的参数。
 后面还可以再使用一个 `--`，终止 mooncram 自身的选项解析。
 
 | 命令 | 行为 |
 | --- | --- |
+| `check` | 校验文档并解析本地目标，不构建或执行用例。 |
 | `test` | 执行用例，将路由后的输出和退出状态与预期结果比较。 |
-| `update` | 执行相同的用例，将不匹配的预期结果替换为实际结果的表示。 |
+| `update` | 执行相同的用例，依据实际结果更新并规范化预期，包括已经通过的用例。 |
 | `update --dry-run` | 执行用例并打印拟议的文档变更，不写入变更。 |
 | `help`、`-h`、`--help` | 向 stdout 打印对应帮助，以 `0` 退出，不发现文件或执行用例。 |
 | `-V`、`--version` | 在顶层向 stdout 打印程序版本字符串和换行符，以 `0` 退出。 |
 
 除帮助或版本请求外，必须指定子命令。空命令行是参数错误，不会隐式执行 `test`。
-版本选项不能放在 `test` 或 `update` 后面，例如 `mooncram test --version`
+版本选项不能放在 `check`、`test` 或 `update` 后面，例如 `mooncram test --version`
 会产生参数错误。
 
 ### 1.1 选项与默认值
 
 | 选项 | 作用域 | 默认值 | 可接受的值与作用 |
 | --- | --- | --- | --- |
-| `--target VALUE` | 全局 | `wasm` | 仅接受 `wasm` 或 `native`；设置本地包用例的默认后端。 |
-| `--timeout-ms N` | 全局 | `60000` | 正的有符号 32 位整数，单位为毫秒；每个用例的构建和执行共用一个期限。 |
+| `--target VALUE` | 全局，仅 `test/update` | `wasm` | 仅接受 `wasm` 或 `native`；设置本地包用例的默认后端。 |
+| `--timeout-ms N` | 全局，仅 `test/update` | `60000` | 正的有符号 32 位整数，单位为毫秒；每个用例的构建和执行共用一个期限。 |
 | `--color VALUE` | 全局 | `auto` | 仅接受 `auto`、`always` 或 `never`；控制 mooncram 报告的颜色。 |
 | `--dry-run` | 仅 `update` | 关闭 | 打印拟议的文档差异，不替换文档。不接受参数值。 |
 
@@ -58,7 +62,9 @@ moon run . -- update examples --dry-run
 包括分布在子命令前后的情况；重复指定会报错，不会覆盖前一个值。
 重复指定 `--dry-run` 会保持启用状态。
 
-`--dry-run` 必须位于 `update` 之后，在顶层或 `test` 中均无效。
+`--dry-run` 必须位于 `update` 之后，在顶层、`check` 或 `test` 中均无效。
+`check` 也拒绝显式传入 `--target` 和 `--timeout-ms`，即使取值等于默认值，
+或选项出现在子命令之前。三个命令都接受 `--color`。
 未知命令或选项、缺少选项值以及无效的值，都会导致退出状态 `2`。
 
 `--timeout-ms` 只接受 ASCII 十进制数字，数值范围为 `1..2147483647`。
@@ -76,6 +82,25 @@ mooncram test -- -example.md
 
 mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展开，展开发生在 CLI
 收到参数之前。围栏仅允许模块声明，目标后端和超时由 CLI 选项控制。
+
+### 1.2 不执行程序的检查
+
+`check` 与 `test/update` 共享文件发现、Markdown 解析、命令和预期输出校验，
+以及文档级模块、工作目录校验。仅含配置的围栏也会校验。随后逐用例、逐管道段
+根据当前文件系统解析目标，检查脚本存在性、可执行包选择、模块边界和导入别名冲突。
+检查只读取父进程环境、本地文件及配置，不构建、不下载依赖、不启动子进程，
+也不修改 Markdown。
+
+文档解析或声明校验失败计一次错误，并阻止检查该文档中的用例。目标解析失败
+计当前用例一次错误，跳过其剩余管道段，并继续后续用例和文档。歧义警告沿用
+现有报告规则，不计错误。汇总格式为 `N cases, E errors`；整次检查没有用例且
+没有其他错误时，改为报告现有的无用例错误。
+
+变量展开使用当前父进程环境、平台变量名规则、文档 export 和临时赋值，
+因此检查结果依赖环境和当前文件系统。如果后一用例的目标需要由前一用例生成，
+`check` 可能报目标缺失；`test/update` 在执行时解析目标，支持这种场景。
+检查不验证源码是否能编译、后端是否支持构建目标、远程坐标是否存在，
+也不验证程序断言是否通过。检查没有逐用例的执行超时。
 
 ## 2. 文件发现与执行顺序
 
@@ -106,7 +131,7 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 启动（默认为规范文档的父目录），继承 mooncram 的环境，先覆盖该用例生效的 export 变量，
 再覆盖该段的临时变量。
 
-只要其他文档包含用例，允许某个文档不包含用例。如果没有尝试执行任何用例，
+只要其他文档包含用例，允许某个文档不包含用例。如果没有尝试检查或执行任何用例，
 也没有记录任何错误，CLI 会报告 `ERROR no mooncram cases found`，
 以 `2` 退出，且不打印汇总。
 
@@ -583,7 +608,7 @@ stderr 被忽略而其他断言失败时，仍可作为诊断展示。
 | --- | --- |
 | 参数或文件发现 | `ERROR <message>` |
 | 文档读取、解析或更新 | `ERROR <canonical-file>: <message>` |
-| 单个用例执行 | `ERROR <canonical-file>:<command-line>: <message>`，随后打印缩进后的命令。 |
+| `check` 中的目标解析或单个用例执行 | `ERROR <canonical-file>:<command-line>: <message>`，随后打印缩进后的命令。 |
 
 参数解析错误包含对应上下文的帮助文本。文档解析错误消息本身已包含文件和源码行号；
 当前外层文档错误处理还会再添加一次文件前缀。依赖库、操作系统的错误措辞和构建
@@ -689,14 +714,16 @@ Not updating <canonical-file>: execution errors in this document
 处理完所有已发现文件后，正常汇总写入 stdout：
 
 ```text
+<total> cases, <errors> errors
 <total> cases, <failed> failed, <errors> errors
 <total> cases, updated <updated>, <errors> errors
 <total> cases, would update <updated>, <errors> errors
 ```
 
-例如：
+以上格式依次对应 `check`、`test`、`update` 和 `update --dry-run`。例如：
 
 ```text
+3 cases, 0 errors
 3 cases, 1 failed, 0 errors
 3 cases, updated 1, 0 errors
 3 cases, would update 1, 0 errors
@@ -704,9 +731,9 @@ Not updating <canonical-file>: execution errors in this document
 
 | 计数 | 含义 |
 | --- | --- |
-| `total` | 尝试执行的用例数，在执行之前递增。包含执行错误用例；不包含 export、import 和解析或模块声明校验失败文档中的用例。 |
+| `total` | 尝试检查或执行的用例数，在处理每个用例之前递增。包含目标解析或执行错误用例；不包含配置指令、import 和解析或模块／目录声明校验失败文档中的用例。 |
 | `failed` | 执行完成但输出或退出状态不匹配的用例数。执行错误单独计数。仅在 `test` 汇总中打印。 |
-| `errors` | 捕获到的用例错误与文档读取、解析、模块声明校验、更新错误之和。一次解析或声明校验失败计为一个文档错误。 |
+| `errors` | 捕获到的用例目标解析或执行错误与文档读取、解析、声明校验、更新错误之和。一次解析或声明校验失败计为一个文档错误。 |
 | `updated` | 已成功写入文档或可生成试运行差异的变化用例数，包括纯规范化及共享围栏变化涉及的所有用例。每个用例只计一次，不按文件或变更行计数。 |
 
 被取消更新或写入失败的文档不计入 `updated`。
@@ -715,13 +742,14 @@ Not updating <canonical-file>: execution errors in this document
 
 | 退出状态 | 条件 |
 | --- | --- |
-| `0` | 帮助／版本请求成功；或至少执行了一个用例、没有错误且 `test` 的预期全部通过；或 `update`／试运行完成且没有错误，无论此前是否不匹配。 |
+| `0` | 帮助／版本请求成功；或 `check` 至少检查了一个用例且没有错误；或至少执行了一个用例、没有错误且 `test` 的预期全部通过；或 `update`／试运行完成且没有错误，无论此前是否不匹配。 |
 | `1` | `test` 至少有一个不匹配用例，且没有错误。 |
 | `2` | 参数或文件发现失败、记录了任何文档或用例错误，或者没有找到用例。 |
 
-错误优先于不匹配。即使没有尝试执行用例，只要存在文档错误，也会打印类似
-`0 cases, 0 failed, 1 errors` 的汇总；特殊的无用例消息只在 total 和 errors
-均为零时使用。参数或文件发现失败、帮助／版本请求，以及这个无用例分支都不会
+错误优先于不匹配。即使没有尝试检查或执行用例，只要存在文档错误，也会打印汇总，
+例如 `check` 的 `0 cases, 1 errors` 或 `test` 的 `0 cases, 0 failed, 1 errors`；
+特殊的无用例消息只在 total 和 errors 均为零时使用。
+参数或文件发现失败、帮助／版本请求，以及这个无用例分支都不会
 打印正常汇总。以上状态属于 mooncram 自身，与被测程序的预期退出状态相互独立。
 
 ## 11. 实现与验证索引
@@ -733,7 +761,8 @@ Not updating <canonical-file>: execution errors in this document
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
 | 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
-| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/module.mbt](execute/module.mbt) | [execute/module_wbtest.mbt](execute/module_wbtest.mbt)、[execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
+| 文档校验与目标解析 | [resolve/document.mbt](resolve/document.mbt)、[resolve/module.mbt](resolve/module.mbt)、[resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt)、[resolve/module_wbtest.mbt](resolve/module_wbtest.mbt)、[resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt)、[tests/integration/check.spec.mjs](../tests/integration/check.spec.mjs) |
+| 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[tests/integration.mjs](../tests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 | 报告与局部编辑 | [report/report.mbt](report/report.mbt)、[update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
 
