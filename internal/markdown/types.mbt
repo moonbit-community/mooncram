@@ -26,8 +26,6 @@ pub struct Case {
   replace_start : Int32
   /// Exclusive UTF-16 end of the expectation replacement, including terminators.
   replace_end : Int32
-  /// Source text before the logical command, including Markdown containers.
-  prefix : String
   /// Original command line terminator: LF, CRLF, CR or an empty string.
   newline : String
   /// Command-line formatting used as the fallback for inserted output lines.
