@@ -98,9 +98,7 @@ fn cli_command() -> @argparse.Command {
 ///|
 fn parse_cli(args : Array[String]) -> Cli raise {
   let matches = cli_command().parse(argv=args)
-  guard matches.subcommand is Some((name, sub)) else {
-    raise @diagnostic.Failure("expected test, update, or check")
-  }
+  let (name, sub) = matches.subcommand.unwrap()
   if name == "check" {
     for option in ["target", "timeout-ms"] {
       if sub.sources.get(option) is Some(@argparse.Argv) {

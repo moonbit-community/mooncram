@@ -22,11 +22,7 @@ fn config_json(
       reports.map(r => Show::to_string(r)).join("\n"),
     )
   }
-  let value = ToJson::to_json(ast)
-  guard value is Object(_) else {
-    raise @diagnostic.Failure("configuration must be an object: " + path)
-  }
-  value
+  ToJson::to_json(ast)
 }
 
 ///|
