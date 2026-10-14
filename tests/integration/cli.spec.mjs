@@ -14,7 +14,7 @@ import {
   writeDocument,
 } from "./basic.mjs";
 
-const CLI_VERSION = "0.0.4";
+const CLI_VERSION = "0.0.6";
 const INVALID_CLI_ARGUMENTS = [
   ["test", "--timeout-ms", "0"],
   ["test", "--target", "js"],

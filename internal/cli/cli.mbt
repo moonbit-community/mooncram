@@ -45,7 +45,7 @@ fn cli_command() -> @argparse.Command {
   @argparse.Command(
     "mooncram",
     about="Run MoonBit command examples in Markdown mooncram fences.",
-    version="0.0.4",
+    version="0.0.6",
     subcommand_required=true,
     options=[
       @argparse.OptionArg(

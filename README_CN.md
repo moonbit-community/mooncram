@@ -334,9 +334,6 @@ CI 应使用 `test` 判断测试是否通过。
 - [完整的命令行与格式参考](internal/CLI_SPEC_CN.md)
 - [scrut 文档](https://facebookincubator.github.io/scrut/docs/)：本项目的 Markdown 测试工作流及本指南的教程结构参考了它
 
-mooncram 有自己的格式和执行规则。scrut 的 `.t` 文件、Shell 执行、
-内联 JSON 配置、`(equal)` 后缀，以及 `(glob+)` 等预期量词，目前都不支持。
-
 ## 开发
 
 在仓库根目录运行：

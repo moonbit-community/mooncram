@@ -355,10 +355,6 @@ Use `test` for the CI pass/fail decision.
 - [Detailed CLI and format reference](internal/CLI_SPEC.md)
 - [scrut documentation](https://facebookincubator.github.io/scrut/docs/), which inspired the Markdown testing workflow and this guide's tutorial structure
 
-mooncram has its own format and execution rules. scrut's `.t` files, shell
-execution, inline JSON settings, `(equal)` suffix, and expectation quantifiers
-such as `(glob+)` are not supported.
-
 ## Development
 
 From the repository root:

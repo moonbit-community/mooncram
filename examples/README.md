@@ -12,7 +12,7 @@ from this repository root. Programs still run in the `examples` directory.
 
 ```mooncram moonbit-community/mooncram
 $ mooncram --version
-0.0.4
+0.0.6
 ```
 
 A file can also import a fixed-version Mooncakes tool:
