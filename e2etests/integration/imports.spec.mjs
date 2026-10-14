@@ -37,7 +37,7 @@ export async function testImports({ executable, docs, project, directory, target
   const runner = copyTool("moonrun", tools);
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const stub = join(project, "moonx-double");
-  const helper = fs.readFileSync(join(ROOT, "tests/fixtures/moonx.mbt"), "utf8");
+  const helper = fs.readFileSync(join(ROOT, "e2etests/fixtures/moonx.mbt"), "utf8");
   writePackage(stub, formatImports([...IMPORTS, "moonbitlang/async/process"]) +
     MAIN_PACKAGE_CONFIG, helper + PROGRAM.replace("let args = @env.args()", "let args = imported_args()"));
   const artifact = JSON.parse(run([

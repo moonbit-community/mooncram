@@ -911,12 +911,12 @@ expected exit statuses.
 | Behavior | Implementation | Existing verification |
 | --- | --- | --- |
 | Entry point and arguments | [main.mbt](../main.mbt), [cli/cli.mbt](cli/cli.mbt), [cli/run.mbt](cli/run.mbt) | [cli/cli_wbtest.mbt](cli/cli_wbtest.mbt) |
-| Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [tests/integration.mjs](../tests/integration.mjs) |
+| Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
-| Document validation and target resolution | [resolve/document.mbt](resolve/document.mbt), [resolve/module.mbt](resolve/module.mbt), [resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt), [resolve/module_wbtest.mbt](resolve/module_wbtest.mbt), [resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt), [tests/integration/check.spec.mjs](../tests/integration/check.spec.mjs) |
-| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [tests/integration.mjs](../tests/integration.mjs) |
+| File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [e2etests/integration.mjs](../e2etests/integration.mjs) |
+| Document validation and target resolution | [resolve/document.mbt](resolve/document.mbt), [resolve/module.mbt](resolve/module.mbt), [resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt), [resolve/module_wbtest.mbt](resolve/module_wbtest.mbt), [resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt), [e2etests/integration/check.spec.mjs](../e2etests/integration/check.spec.mjs) |
+| Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 | Reports and local edits | [report/report.mbt](report/report.mbt), [update/update.mbt](update/update.mbt) | [report/report_test.mbt](report/report_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
 
@@ -929,7 +929,7 @@ Existing project checks are:
 
 ```text
 moon test
-node tests/integration.mjs
+node e2etests/integration.mjs
 moon info && moon fmt
 ```
 

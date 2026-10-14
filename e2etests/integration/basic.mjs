@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 export const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const BUILD_DIRECTORY = join(ROOT, "_build");
-export const PROGRAM = fs.readFileSync(join(ROOT, "tests/fixtures/program.mbt"), "utf8");
+export const PROGRAM = fs.readFileSync(join(ROOT, "e2etests/fixtures/program.mbt"), "utf8");
 export const TARGETS = ["wasm", "native"];
 export const EXIT_CODE = { SUCCESS: 0, FAILURE: 1, ERROR: 2 };
 const COMMAND_TIMEOUT_MS = 120_000;

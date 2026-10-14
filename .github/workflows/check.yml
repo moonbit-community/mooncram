@@ -64,4 +64,4 @@ jobs:
           node-version: '22'
 
       - name: Run CLI integration tests
-        run: node tests/integration.mjs
+        run: node e2etests/integration.mjs

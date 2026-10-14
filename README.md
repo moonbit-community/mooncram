@@ -363,7 +363,7 @@ From the repository root:
 moon test
 moon test --target native
 moon run . -- test README.md README_CN.md
-node tests/integration.mjs
+node e2etests/integration.mjs
 moon info && moon fmt
 ```
 
