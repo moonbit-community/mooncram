@@ -225,24 +225,37 @@ such as generated IDs or version numbers.
 ### Environment variables
 
 Commands inherit your environment. Use `export` for values shared by later cases
-in the same document, or a prefix assignment for one command:
+in the same document, or a prefix assignment for one command. The tested program
+reads the environment itself, for example in `environment.mbtx`:
+
+```mbt
+import { "moonbitlang/core/env" }
+
+fn main {
+  let name = @env.get_env_var("NAME").unwrap_or("World")
+  println("Hello, \{name}!")
+}
+```
 
 ````markdown
 ```mooncram
 $ export NAME='Moon Bit'
-$ ./hello.mbtx "${NAME}"
+$ ./environment.mbtx
 Hello, Moon Bit!
 
-$ NAME=World ./hello.mbtx "${NAME}"
+$ NAME=World ./environment.mbtx
 Hello, World!
 ```
 ````
 
 Exports carry over to later blocks and reset for the next document. Temporary
-assignments apply to that pipeline segment and its build. `${NAME}` expands in
-unquoted or double-quoted arguments; single quotes keep it literal. Undefined
-variables are errors. `$NAME` is literal, and expected output does not expand
-variables.
+assignments apply to that pipeline segment and its build. Mooncram does not
+expand environment variables: `${NAME}` and `$NAME` are ordinary text in
+arguments, assignment values, executable paths, working directories and expected
+output. Normal argument splitting, quoting and escaping still apply. For example,
+`NAME=World ./hello.mbtx "${NAME}"` passes the literal argument `${NAME}` while
+setting `NAME` to `World` in the child process. To pass a name as an argument,
+write it explicitly, as in `./hello.mbtx World`.
 
 ### Working directory and fixtures
 
