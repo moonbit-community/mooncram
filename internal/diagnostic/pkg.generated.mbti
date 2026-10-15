@@ -2,16 +2,45 @@
 package "moonbit-community/mooncram/internal/diagnostic"
 
 // Values
+pub fn context(Error, file? : String, line? : Int, command? : String, phase? : String, segment? : String, tool? : String, cwd? : String, hint? : String) -> Failure
+
 pub fn error_text(Error) -> String
+
+pub fn failure(String) -> Failure
 
 pub fn located(String, Int, String) -> Failure
 
+pub fn render(Error) -> String
+
+pub fn with_logs(Error, Array[Log]) -> Failure
+
+pub fn wrap(Error, String) -> Failure
+
 // Errors
 pub(all) suberror Failure {
-  Failure(String)
+  Failure(Diagnostic)
 }
 
 // Types and methods
+pub struct Diagnostic {
+  summary : String
+  file : String?
+  line : Int?
+  command : String?
+  phase : String?
+  segment : String?
+  tool : String?
+  cwd : String?
+  cause : String?
+  hint : String?
+  logs : Array[Log]
+}
+
+pub(all) struct Log {
+  label : String
+  bytes : Bytes
+  complete : Bool
+}
 
 // Type aliases
 

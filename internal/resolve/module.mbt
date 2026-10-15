@@ -17,9 +17,9 @@ fn config_json(
     @moon_config.parse_moon_pkg(source, name=path)
   }
   if !reports.is_empty() {
-    raise @diagnostic.Failure(
-      "invalid configuration: \{path}\n" +
-      reports.map(r => Show::to_string(r)).join("\n"),
+    raise @diagnostic.wrap(
+      @diagnostic.failure(reports.map(r => Show::to_string(r)).join("\n")),
+      "invalid configuration: \{path}",
     )
   }
   ToJson::to_json(ast)
@@ -36,12 +36,7 @@ async fn validate_document_modules(
   }
   let (_, first_line) = document.module_declarations[0]
   let context = load_module(startup_cwd) catch {
-    e =>
-      raise @diagnostic.located(
-        document.path,
-        first_line,
-        @diagnostic.error_text(e),
-      )
+    e => raise @diagnostic.context(e, file=document.path, line=first_line)
   }
   for declaration in document.module_declarations {
     let (name, line) = declaration
@@ -61,23 +56,23 @@ async fn load_module(startup_cwd : String) -> ModuleContext {
   let root = @fs.realpath(startup_cwd)
   let path = @files.resolve_from(root, "moon.mod")
   if !@fs.exists(path) {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "module declaration requires moon.mod in startup cwd: " + root,
     )
   }
   let config = config_json(@fs.read_file(path).text(), path, module_config=true)
   let name = match config {
     { "name": String(name), .. } if !name.is_empty() => name
-    _ => raise @diagnostic.Failure("moon.mod requires a nonempty name: " + path)
+    _ => raise @diagnostic.failure("moon.mod requires a nonempty name: " + path)
   }
   let source = match config {
     { "source"? : None | Some(Null), .. } => ""
     { "source": String(source), .. } => source
-    _ => raise @diagnostic.Failure("moon.mod source must be a string: " + path)
+    _ => raise @diagnostic.failure("moon.mod source must be a string: " + path)
   }
   let source_root = @files.resolve_from(root, source)
   if @path.Path(source).is_absolute() || !inside_directory(source_root, root) {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "moon.mod source must stay inside the module: " + source,
     )
   }
@@ -119,7 +114,7 @@ fn callable_config(source : String, path : String) -> Bool raise {
   let config = config_json(source, path, module_config=false)
   match config {
     { "is-main"? : None | Some(True | False), .. } => ()
-    _ => raise @diagnostic.Failure("is-main must be a boolean: " + path)
+    _ => raise @diagnostic.failure("is-main must be a boolean: " + path)
   }
   match config {
     { "pkgtype": { "kind": String("executable"), .. }, .. } => true
@@ -171,7 +166,7 @@ async fn resolve_package(
   warning~ : async (String) -> Unit,
 ) -> String {
   if !valid_package_name(name) {
-    raise @diagnostic.Failure("invalid module package name: " + name)
+    raise @diagnostic.failure("invalid module package name: " + name)
   }
   let subpackage = @files.resolve_from(context.source_root, name)
   let basename = context.name.split("/").last().unwrap().to_owned()
@@ -192,7 +187,7 @@ async fn resolve_package(
   } else if callable_package(context, subpackage) {
     return subpackage
   }
-  raise @diagnostic.Failure(
+  raise @diagnostic.failure(
     "no executable package '\{name}' in module \{context.name} (nested modules are excluded)",
   )
 }

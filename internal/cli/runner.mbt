@@ -9,7 +9,9 @@ async fn run_cli(cli : Cli) -> Int32 {
   let mut updated_cases = 0
   for file in files {
     try {
-      let source = @fs.read_file(file).text()
+      let source = @fs.read_file(file).text() catch {
+        e => raise @diagnostic.wrap(e, "failed to read Markdown document")
+      }
       // Parse the whole document before executing anything in it.
       let document = @markdown.parse_document(file, source)
       let context = @resolve.validate_document(document, startup_cwd~)
@@ -22,8 +24,16 @@ async fn run_cli(cli : Cli) -> Int32 {
             @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
           }
           if cli.command is Check {
-            for segment in case.pipeline {
-              ignore(context.resolve_target(case, segment.argv[0], warning~))
+            for i, segment in case.pipeline {
+              ignore(context.resolve_target(case, segment.argv[0], warning~)) catch {
+                e =>
+                  raise @diagnostic.context(
+                    e,
+                    phase="resolve",
+                    cwd=context.cwd_for(case),
+                    segment="\{i + 1}/\{case.pipeline.length()} (\{segment.argv[0]})",
+                  )
+              }
             }
             continue
           }
@@ -48,7 +58,14 @@ async fn run_cli(cli : Cli) -> Int32 {
             document_error = true
             errors += 1
             @stdio.stderr.write(
-              "ERROR \{file}:\{case.line}: \{@diagnostic.error_text(e)}\n  \{case.command}\n",
+              @diagnostic.render(
+                @diagnostic.context(
+                  e,
+                  file~,
+                  line=case.line,
+                  command=case.command,
+                ),
+              ),
             )
           }
         }
@@ -69,7 +86,9 @@ async fn run_cli(cli : Cli) -> Int32 {
             ),
           )
         } else {
-          @files.write_document(document.path, document.source, updated)
+          @files.write_document(document.path, document.source, updated) catch {
+            e => raise @diagnostic.wrap(e, "failed to update Markdown document")
+          }
         }
         updated_cases += generated.changed_cases
       }
@@ -81,7 +100,7 @@ async fn run_cli(cli : Cli) -> Int32 {
     } catch {
       e => {
         errors += 1
-        @stdio.stderr.write("ERROR \{file}: \{@diagnostic.error_text(e)}\n")
+        @stdio.stderr.write(@diagnostic.render(@diagnostic.context(e, file~)))
       }
     }
   }

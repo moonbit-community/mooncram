@@ -190,7 +190,7 @@ fn parse_document_with_env(
           parent_lookup(key)
         }
       }) catch {
-        e => raise @diagnostic.located(path, line, @diagnostic.error_text(e))
+        e => raise @diagnostic.context(e, file=path, line~)
       }
       has_command = true
       let mut next = i + 1

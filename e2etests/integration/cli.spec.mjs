@@ -47,6 +47,25 @@ export function testCliArguments({ cli, docs }) {
   for (const args of INVALID_CLI_ARGUMENTS) {
     cli(args, { expected: EXIT_CODE.ERROR });
   }
+  for (const [option, values] of [
+    ["--timeout-ms", ["0", "-1", "1.5", "2147483648"]],
+    ["--target", ["js"]],
+    ["--color", ["invalid"]],
+  ]) {
+    for (const value of values) {
+      const result = cli(["test", `${option}=${value}`], { expected: EXIT_CODE.ERROR });
+      assert(result.stderr.includes(option) && result.stderr.includes(`'${value}'`), result.stderr);
+    }
+  }
+  const parsePath = writeDocument(docs, "parse-location.md", block("$ ./missing.mbtx '\n", ""));
+  const parseResult = cli(["check", parsePath], { expected: EXIT_CODE.ERROR });
+  assert(parseResult.stderr.startsWith(`ERROR ${fs.realpathSync(parsePath)}:2: unclosed quote`), parseResult.stderr);
+  assert.equal(parseResult.stderr.split(fs.realpathSync(parsePath)).length, 2);
+  const missingScript = writeDocument(docs, "missing-script.md", block("$ ./missing.mbtx\n", ""));
+  const missingResult = cli(["check", missingScript], { expected: EXIT_CODE.ERROR });
+  assert(missingResult.stderr.includes("cannot access script './missing.mbtx'"), missingResult.stderr);
+  assert(missingResult.stderr.includes("phase: resolve"), missingResult.stderr);
+  assert(missingResult.stderr.includes("segment: 1/1 (./missing.mbtx)"), missingResult.stderr);
   const empty = writeDocument(docs, "empty.md", "No test blocks.\n");
   assert(cli(["test", empty], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
   const legacy = writeDocument(

@@ -128,7 +128,7 @@ fn check_import_status(
   status : Int32,
 ) -> Unit raise {
   if imported is Some(binding) && (status == 255 || status == -1) {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "import '\{binding.name}' (\{binding.coordinate}), pipeline segment \{segment}: reserved execution status \{status}",
     )
   }

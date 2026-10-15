@@ -5,10 +5,7 @@ fn validate_generated(
   captures : Array[@output.Captured],
 ) -> Unit raise {
   let after = @markdown.parse_document(before.path, source) catch {
-    e =>
-      raise @diagnostic.Failure(
-        "generated document failed validation: " + @diagnostic.error_text(e),
-      )
+    e => raise @diagnostic.wrap(e, "generated document failed validation")
   }
   guard before.cases.length() == after.cases.length() &&
     before.fences.length() == after.fences.length() &&
@@ -17,14 +14,14 @@ fn validate_generated(
     before.working_directory_declarations.map(d => d.directory) ==
     after.working_directory_declarations.map(d => d.directory) &&
     before.imports.length() == after.imports.length() else {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "generated document changed cases or configuration",
     )
   }
   for name, import_ in before.imports {
     guard after.imports.get(name) is Some(other) &&
       other.coordinate == import_.coordinate else {
-      raise @diagnostic.Failure("generated document changed imports")
+      raise @diagnostic.failure("generated document changed imports")
     }
   }
   for i, old in before.cases {
@@ -36,12 +33,12 @@ fn validate_generated(
       old.fence == new.fence &&
       old.working_directory.map(d => d.directory) ==
       new.working_directory.map(d => d.directory) else {
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "generated document changed command or configuration for case \{i + 1}",
       )
     }
     guard new.expected.matches(captures[i]) else {
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "generated expectation does not match captured output for case \{i + 1}",
       )
     }

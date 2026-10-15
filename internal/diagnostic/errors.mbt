@@ -1,39 +1,120 @@
 ///|
-/// A user-facing parsing, validation or execution error.
-///
-/// The payload is the complete diagnostic message, optionally including a
-/// source location. Use `error_text` to display it without the error wrapper.
-pub(all) suberror Failure {
-  /// Wrap a diagnostic message without changing its text.
-  Failure(String)
+/// A diagnostic keeps its location and execution context separate from text.
+pub struct Diagnostic {
+  summary : String
+  file : String?
+  line : Int32?
+  command : String?
+  phase : String?
+  segment : String?
+  tool : String?
+  cwd : String?
+  cause : String?
+  hint : String?
+  logs : Array[Log]
 }
 
 ///|
-/// Return the message of a `Failure`, or the standard string representation of
-/// any other error. No location or extra prefix is added.
-///
-/// ```mbt check
-/// test {
-///   assert_eq(
-///     @diagnostic.error_text(
-///       @diagnostic.located("README.md", 3, "invalid command"),
-///     ),
-///     "README.md:3: invalid command",
-///   )
-/// }
-/// ```
-pub fn error_text(error : Error) -> String {
+/// Raw captured output. An incomplete stream has not reached EOF.
+pub(all) struct Log {
+  label : String
+  bytes : Bytes
+  complete : Bool
+}
+
+///|
+/// A user-facing error, rendered only at the reporting boundary.
+pub(all) suberror Failure {
+  Failure(Diagnostic)
+}
+
+///|
+/// Construct an error without source or execution context.
+pub fn failure(summary : String) -> Failure {
+  Failure({
+    summary,
+    file: None,
+    line: None,
+    command: None,
+    phase: None,
+    segment: None,
+    tool: None,
+    cwd: None,
+    cause: None,
+    hint: None,
+    logs: [],
+  })
+}
+
+///|
+fn diagnostic(error : Error) -> Diagnostic {
   match error {
-    Failure(message) => message
-    _ => error.to_string()
+    Failure(value) => value
+    _ => {
+      let Failure(value) = failure(error.to_string())
+      value
+    }
   }
 }
 
 ///|
-/// Construct a diagnostic formatted as `file:line: message`.
-///
-/// `line` is a one-based source line number. This function only formats the
-/// location; it neither reads the file nor validates the line number.
+fn[T] prefer(existing : T?, fallback : T?) -> T? {
+  match existing {
+    Some(_) => existing
+    None => fallback
+  }
+}
+
+///|
+/// Fill absent context without replacing a more precise inner location.
+pub fn context(
+  error : Error,
+  file? : String,
+  line? : Int32,
+  command? : String,
+  phase? : String,
+  segment? : String,
+  tool? : String,
+  cwd? : String,
+  hint? : String,
+) -> Failure {
+  let d = diagnostic(error)
+  Failure({
+    ..d,
+    file: prefer(d.file, file),
+    line: if d.file is Some(_) && d.file != file {
+      d.line
+    } else {
+      prefer(d.line, line)
+    },
+    command: prefer(d.command, command),
+    phase: prefer(d.phase, phase),
+    segment: prefer(d.segment, segment),
+    tool: prefer(d.tool, tool),
+    cwd: prefer(d.cwd, cwd),
+    hint: prefer(d.hint, hint),
+  })
+}
+
+///|
+/// Explain an operation while preserving its underlying reason and context.
+pub fn wrap(error : Error, summary : String) -> Failure {
+  let d = diagnostic(error)
+  let cause = match d.cause {
+    Some(cause) => d.summary + "\n" + cause
+    None => d.summary
+  }
+  Failure({ ..d, summary, cause: Some(cause), })
+}
+
+///|
+/// Attach a single snapshot of captured output after child cleanup finishes.
+pub fn with_logs(error : Error, logs : Array[Log]) -> Failure {
+  Failure({ ..diagnostic(error), logs, })
+}
+
+///|
+/// Construct a located error without embedding a location in the summary.
 pub fn located(file : String, line : Int32, message : String) -> Failure {
-  Failure("\{file}:\{line}: \{message}")
+  context(failure(message), file~, line~)
 }
