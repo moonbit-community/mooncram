@@ -78,7 +78,7 @@ test "pipeline arguments and original command text are preserved" {
 ///|
 test "module declarations are scoped to each fence and preserve opening lines" {
   let doc = parse_document(
-    "modules.md", "```mooncram user/foo\n$ moonx foo\n```\n\n> - ```mooncram\n>   $ moonx ./a.mbtx\n>   ```\n\n- ```mooncram user/bar\n  $ set-current-working-directory .\n  ```\n\n```mooncram user/baz\n$ moonx cmd/boo\n```\n",
+    "modules.md", "```mooncram user/foo\n$ moonx foo\n```\n\n> - ```mooncram\n>   $ moonx ./a.mbtx\n>   ```\n\n- ```mooncram user/bar\n  #cwd(.)\n  ```\n\n```mooncram user/baz\n$ moonx cmd/boo\n```\n",
   )
   assert_eq(doc.cases.length(), 3)
   assert_eq(doc.cases[0].module_name, Some("user/foo"))
@@ -108,9 +108,7 @@ test "invalid declarations fail at the opening fence including containers" {
         ignore(
           parse_document(
             "strict.md",
-            "text\n\n> - ```mooncram " +
-            suffix +
-            "\n>   $ set-current-working-directory .\n>   ```\n",
+            "text\n\n> - ```mooncram " + suffix + "\n>   #cwd(.)\n>   ```\n",
           ),
         )
       },
@@ -147,7 +145,7 @@ test "redirection errors retain the document command position" {
 test "working directories stay literal and reset between blocks" {
   let source =
     #|```mooncram
-    #|$ set-current-working-directory "${DIR}"
+    #|#cwd(${DIR})
     #|$ moonx ./a.mbtx ${DIR}
     #|$ moonx ./b.mbtx
     #|```
@@ -155,10 +153,10 @@ test "working directories stay literal and reset between blocks" {
     #|$ moonx ./c.mbtx ${DIR}
     #|```
     #|> - ```mooncram
-    #|>   $ set-current-working-directory '${DIR}'
+    #|>   #cwd(${DIR})
     #|>   ```
     #|```mooncram
-    #|$ set-current-working-directory "${PARENT}"
+    #|#cwd(${PARENT})
     #|$ moonx ./d.mbtx
     #|```
     #|
@@ -185,7 +183,7 @@ test "working directories stay literal and reset between blocks" {
   )
   assert_eq(doc.cases[0].pipeline, plain_pipeline([["./a.mbtx", "${DIR}"]]))
   assert_eq(doc.cases[2].pipeline, plain_pipeline([["./c.mbtx", "${DIR}"]]))
-  let only = parse_example("$ set-current-working-directory nonexistent\n\n")
+  let only = parse_example("#cwd(nonexistent)\n\n")
   assert_eq(only.cases.length(), 0)
   assert_eq(only.working_directory_declarations, [
     { directory: "nonexistent", line: 2, },
@@ -193,28 +191,22 @@ test "working directories stay literal and reset between blocks" {
 }
 
 ///|
-test "working directory rejects duplicate late and expectation declarations with locations" {
+test "working directory rejects duplicate late and unexpected lines with locations" {
   assert_error_contains(
-    () => {
-      ignore(
-        parse_example(
-          "$ set-current-working-directory a\n\n$ set-current-working-directory b\n",
-        ),
-      )
-    },
-    "example.md:4: duplicate set-current-working-directory",
+    () => ignore(parse_example("#cwd(a)\n\n#cwd(b)\n")),
+    "example.md:4: duplicate #cwd declaration",
   )
   for command in ["moonx ./a.mbtx", "moonx ./a.mbtx|moonx ./b.mbtx"] {
-    assert_error_contains(
-      () => {
-        ignore(
-          parse_example(
-            "$ " + command + "\n\n$ set-current-working-directory a\n",
-          ),
-        )
-      },
-      "example.md:4: set-current-working-directory must precede",
-    )
+    for output in ["", "hello\n", "@STDOUT\nhello\n@STDERR (empty)\n", "[2]\n"] {
+      assert_error_contains(
+        () => {
+          ignore(parse_example("$ " + command + "\n" + output + "\n#cwd(a)\n"))
+        },
+        "example.md:" +
+        (4 + output.split("\n").count() - 1).to_string() +
+        ": #cwd must be the first nonempty line",
+      )
+    }
   }
   for output in ["hello", "[0]", "[2]", "@STDOUT", "\"\" (escaped)"] {
     assert_error_contains(
@@ -222,13 +214,11 @@ test "working directory rejects duplicate late and expectation declarations with
         ignore(
           parse_document(
             "cwd.md",
-            "> - ```mooncram\n>   $ set-current-working-directory a\n>   " +
-            output +
-            "\n>   ```\n",
+            "> - ```mooncram\n>   #cwd(a)\n>   " + output + "\n>   ```\n",
           ),
         )
       },
-      "cwd.md:3: set-current-working-directory does not accept expected output or an exit code",
+      "cwd.md:3: expected a command",
     )
   }
 }
@@ -256,4 +246,83 @@ test "export statements fail at the command line including export-only fences" {
     },
     "nested.md:2: command must start with moonx: export",
   )
+}
+
+///|
+test "working directory paths preserve every character without tokenization" {
+  for
+    directory in [
+      "../fixtures with spaces", " leading and trailing ", " ", "a\\b", "C:\\fixtures\\中文",
+      "\"foo\"", "'foo'", "a(b)c", "a)b(c)", "(", ")", "中文目录", "${NAME}",
+      "${A B}", "a|b > c; $HOME", "\tpath\t",
+    ] {
+    let body = "\n\n#cwd(" + directory + ")\n\n$ moonx ./a.mbtx\n"
+    let doc = parse_example(body)
+    assert_eq(doc.working_directory_declarations, [{ directory, line: 4, }])
+    assert_eq(doc.cases[0].working_directory, Some({ directory, line: 4, }))
+    assert_eq(doc.cases[0].line, 6)
+    let only = parse_example("#cwd(" + directory + ")\n")
+    assert_eq(only.cases.length(), 0)
+    assert_eq(only.working_directory_declarations, [{ directory, line: 2, }])
+  }
+}
+
+///|
+test "malformed working directory declarations and old commands retain locations" {
+  for
+    (body, message) in [
+      ("#cwd()", "#cwd requires a nonempty path"),
+      ("#cwd(foo", "#cwd declaration must end with ')'"),
+      ("#cwd(foo) trailing", "#cwd declaration must end with ')'"),
+      ("#cwd(foo) ", "#cwd declaration must end with ')'"),
+      ("#cwd", "expected a command"),
+      ("#cwd (foo)", "expected a command"),
+      (" #cwd(foo)", "expected a command"),
+      (
+        "$ set-current-working-directory dir", "command must start with moonx: set-current-working-directory",
+      ),
+      (
+        "$ MODE=x set-current-working-directory dir", "command must start with moonx: set-current-working-directory",
+      ),
+      (
+        "$ moonx ./a.mbtx|set-current-working-directory dir", "command must start with moonx: set-current-working-directory",
+      ),
+    ] {
+    assert_error_contains(
+      () => {
+        ignore(
+          parse_document(
+            "bad.md",
+            "> - ```mooncram\r\n>   \r\n>   " + body + "\r\n>   ```\r\n",
+          ),
+        )
+      },
+      "bad.md:3: " + message,
+    )
+  }
+}
+
+///|
+test "working directory shaped output is literal when escaped" {
+  for line in ["#cwd(.)", "#cwd()", "#cwd(unclosed", "#cwd(late) trailing"] {
+    let doc = parse_example(
+      "#cwd(real)\n$ moonx ./a.mbtx\n" +
+      Json::string(line).stringify() +
+      " (escaped)\n",
+    )
+    assert_eq(doc.working_directory_declarations, [
+      { directory: "real", line: 2, },
+    ])
+    assert_true(
+      doc.cases[0].expected.matches({
+        output: line + "\n",
+        diagnostic: "",
+        exit_code: 0,
+      }),
+    )
+    assert_error_contains(
+      () => ignore(parse_example("$ moonx ./a.mbtx\n" + line + "\n")),
+      "example.md:3: #cwd must be the first nonempty line",
+    )
+  }
 }

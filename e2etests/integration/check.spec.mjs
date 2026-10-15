@@ -4,7 +4,7 @@ import { join } from "node:path";
 import {
   EXIT_CODE, INVALID_PROGRAM, MAIN_PACKAGE_CONFIG, SCRIPT_COMMAND,
   block, copyExecutable, copyTool, createCli, createEnvironment,
-  formatImports, isolatedExecutable, quoteArgument, run, writeDocument, writePackage,
+  formatImports, isolatedExecutable, run, writeDocument, writePackage,
 } from "./basic.mjs";
 
 export function testCheck({ executable, target, directory, docs, project }) {
@@ -86,7 +86,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
 
   const empty = write("empty", "No examples.\n");
   assert(invoke(["check", empty], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
-  const onlyConfig = write("config-only", block("$ set-current-working-directory .\n"));
+  const onlyConfig = write("config-only", block("#cwd(.)\n"));
   assert(invoke(["check", onlyConfig], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
   const errors = write("targets", block(
     "$ moonx ./missing.mbtx | moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/check-invalid\n"));
@@ -102,8 +102,8 @@ export function testCheck({ executable, target, directory, docs, project }) {
     ["command", block("$ moonx ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
     ["expectation", block("$ moonx ./check-invalid.mbtx\n[ (regex)\n", ""), "invalid regex"],
 
-    ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory .\n", "user/other"), "does not match"],
-    ["directory-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory missing-check-cwd\n", ""), "invalid working directory"],
+    ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("#cwd(.)\n", "user/other"), "does not match"],
+    ["directory-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("#cwd(missing-check-cwd)\n", ""), "invalid working directory"],
   ]) {
     const path = write(name, source);
     result = invoke(["check", path, passing], { expected: EXIT_CODE.ERROR });
@@ -127,7 +127,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
   fs.mkdirSync(work);
   fs.writeFileSync(join(work, "script.mbtx"), INVALID_PROGRAM);
   const cwd = write("cwd", block(
-    `$ set-current-working-directory ${quoteArgument(work)}\n$ moonx ./script.mbtx\n`, ""));
+    `#cwd(${work})\n$ moonx ./script.mbtx\n`, ""));
   assert.equal(invoke(["check", cwd]).stdout, "1 cases, 0 errors\n");
   for (const coordinate of ["missing/module@latest", "missing/module@^1.2.3", "missing/module@1.2"]) {
     const invalid = write("coordinate", block(`$ moonx ${coordinate}\n`, ""));

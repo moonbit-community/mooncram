@@ -200,7 +200,8 @@ acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 | ` (no-eol)` | 最后一行没有结尾换行符；可接在其他后缀之后 |
 
 每条预期匹配一行输出。输出看起来像测试语法时，用 JSON 转义，
-例如 `"[2]" (escaped)` 或 `"$ this is output" (escaped)`。
+例如 `"[2]" (escaped)`、`"$ this is output" (escaped)` 或
+`"#cwd(output)" (escaped)`。
 用 `"" (escaped)` 明确表示一个空输出行，尤其是最后的空行。
 比较时会将 CRLF 统一为 LF；捕获的输出必须是合法 UTF-8。
 
@@ -236,22 +237,29 @@ Hello, World!
 临时赋值只作用于当前管道段及其构建过程，后续命令继承原始环境。
 mooncram 不展开环境变量：参数、赋值值、
 可执行路径、工作目录及预期输出中的 `${NAME}` 和 `$NAME` 都是普通文本，
-仍遵循通常的分词、引号和转义规则。例如，`NAME=World moonx ./hello.mbtx "${NAME}"`
+参数和赋值值仍遵循通常的分词、引号和转义规则。例如，`NAME=World moonx ./hello.mbtx "${NAME}"`
 传入字面参数 `${NAME}`，同时子进程的环境变量 `NAME` 为 `World`。
 若要将名字作为参数传入，请显式写出值，如 `moonx ./hello.mbtx World`。
 
 ### 工作目录与 fixture
 
 默认情况下，程序在测试文档所在目录中运行。将 fixture 放在文档旁边，
-就可以通过相对路径参数读取它。若要使用其他目录，在代码块的第一条测试命令前设置：
+就可以通过相对路径参数读取它。若要使用其他目录，将 `#cwd(路径)` 放在代码块的第一条非空逻辑行：
 
 ````markdown
 ```mooncram
-$ set-current-working-directory ../examples
+#cwd(../examples)
 $ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
+
+声明独占一行，每块最多一次，允许前导空行。路径为 `#cwd(` 与最后一个 `)` 之间的全部内容，
+不去空格、不转义、不展开变量，也不检查括号配对。空格、反斜杠、引号和括号均原样保留：
+`#cwd(../fixtures with spaces)` 无需引号，`#cwd("foo")` 的目录名包含双引号。
+空路径、缺少结尾 `)`、重复声明或测试命令后的声明均报错。
+以 `#cwd(` 开头的输出应使用 `(escaped)`，更新器也会自动转义。
+不再接受旧的 `$ set-current-working-directory` 语法。
 
 路径相对于测试文档，目录必须已存在，设置仅作用于当前代码块。
 本地模块仍从启动 mooncram 的目录查找。用例按文档顺序执行，

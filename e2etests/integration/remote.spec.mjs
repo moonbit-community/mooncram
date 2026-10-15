@@ -50,7 +50,7 @@ export async function testRemotePackages({ executable, docs, project, directory,
   const passing = write("passing", [
     block("$ moonx fixture/tool@1.2.3 hello\nHello, Moon Bit!\n", ""),
     block('$ moonx fixture/tool@1.2.3 args -- --target native\n["--","--target","native"]\n', ""),
-    block('$ set-current-working-directory "../cwd fixture"\n' +
+    block('#cwd(../cwd fixture)\n' +
       '$ moonx fixture/tool@1.2.3 context\nparent\nyes\nconfigured contents\n' +
       `$ moonx fixture/tool@1.2.3 read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'|moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-file-echo 'configured contents'\nconfigured contents\n`),
     block('$ moonx fixture/tool@1.2.3 args "${MODE}" \'a|b\' \'\' --target native\n' +

@@ -3,10 +3,7 @@ fn segments(
   command : String,
   case_insensitive~ : Bool = false,
 ) -> Array[@command.PipelineSegment] raise {
-  guard @command.parse(command, case_insensitive~) is Pipeline(segments) else {
-    fail("expected pipeline")
-  }
-  segments
+  @command.parse(command, case_insensitive~)
 }
 
 ///|
@@ -139,7 +136,7 @@ test "temporary assignment errors retain existing syntax restrictions" {
   }
   assert_error_contains(
     () => ignore(@command.parse("A=x set-current-working-directory dir")),
-    "does not accept temporary environment assignments",
+    "command must start with moonx: set-current-working-directory",
   )
   assert_eq(segments("A=x moonx ${A}")[0].argv, ["moonx", "${A}"])
   assert_eq(segments("A=x moonx ./\"${A}\".mbtx")[0].argv, [

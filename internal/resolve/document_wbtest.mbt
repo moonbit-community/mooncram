@@ -17,7 +17,7 @@ async test "shared targets use case directories and fence module scope with dire
   )
   let document = @markdown.parse_document(
     @files.resolve_from(docs, "test.md"),
-    "```mooncram user/foo\n$ set-current-working-directory ../work\n$ moonx ./invalid.mbtx | moonx missing/module@1.2.3\n$ moonx user/foo/cmd/deep\n```\n```mooncram\n$ moonx user/foo/cmd/deep\n$ moonx missing/module@1.2.3\n```\n",
+    "```mooncram user/foo\n#cwd(../work)\n$ moonx ./invalid.mbtx | moonx missing/module@1.2.3\n$ moonx user/foo/cmd/deep\n```\n```mooncram\n$ moonx user/foo/cmd/deep\n$ moonx missing/module@1.2.3\n```\n",
   )
   let context = validate_document(document, startup_cwd=root)
   let first = document.cases[0]
@@ -93,7 +93,7 @@ async test "shared validation checks modules before directories including config
   defer @fs.rmdir(root, recursive=true)
   let path = @files.resolve_from(root, "test.md")
   let document = @markdown.parse_document(
-    path, "```mooncram user/foo\n$ set-current-working-directory .\n```\n```mooncram\n$ set-current-working-directory missing\n```\n",
+    path, "```mooncram user/foo\n#cwd(.)\n```\n```mooncram\n#cwd(missing)\n```\n",
   )
   assert_async_error_contains(
     () => ignore(validate_document(document, startup_cwd=root)),

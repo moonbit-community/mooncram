@@ -8,7 +8,6 @@ import {
   SCRIPT_COMMAND,
   LOCAL_PACKAGE,
   block,
-  quoteArgument,
   findTool,
   createEnvironment,
   createDocuments,
@@ -121,6 +120,30 @@ export function testCommandEnvironmentCasing({ cli, docs, target }) {
 }
 
 export function testWorkingDirectories({ cli, docs, directory, target }) {
+  const sideEffect = join(docs, "side-effect.txt");
+  for (const [body, line, diagnostic] of [
+    ["#cwd()\n", 2, "nonempty path"],
+    ["#cwd(unclosed\n", 2, "must end with ')'"],
+    ["#cwd(.) trailing\n", 2, "must end with ')'"],
+    ["#cwd(.)\n\n#cwd(.)\n", 4, "duplicate #cwd"],
+    [`$ ${LOCAL_PACKAGE} setup\n#cwd(.)\n`, 3, "first nonempty line"],
+    [`$ ${LOCAL_PACKAGE} setup\nhello\n#cwd(.)\n`, 4, "first nonempty line"],
+    ["$ set-current-working-directory .\n", 2, "command must start with moonx"],
+  ]) {
+    const source = block(`$ ${LOCAL_PACKAGE} setup\n`) + block(body);
+    const bad = writeDocument(docs, "cwd-syntax-error.md", source);
+    for (const operation of [["check"], ["test", "--target", target],
+      ["update", "--target", target], ["update", "--target", target, "--dry-run"]]) {
+      fs.rmSync(sideEffect, { force: true });
+      const result = cli([...operation, bad], { expected: EXIT_CODE.ERROR });
+      assert(result.stderr.includes(`cwd-syntax-error.md:${line + 3}:`), result.stderr);
+      assert(result.stderr.includes(diagnostic), result.stderr);
+      assert(result.stdout.includes("0 cases"), result.stdout);
+      assert(!fs.existsSync(sideEffect), "a case ran before document validation completed");
+      assert.equal(fs.readFileSync(bad, "utf8"), source);
+    }
+  }
+
   const workspace = join(directory, "cwd fixture");
   createDocuments(workspace);
   fs.writeFileSync(join(workspace, "relative.txt"), "configured contents\n");
@@ -131,15 +154,15 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   const link = join(docs, "cwd-link");
   fs.symlinkSync(workspace, link, DIRECTORY_LINK_TYPE);
   const source = [
-    block('$ set-current-working-directory "../cwd fixture"\n' +
+    block('#cwd(../cwd fixture)\n' +
       '$ moonx ./selected.mbtx\nworkspace script\n' +
       `$ ${SCRIPT_COMMAND} read-file relative.txt\nconfigured contents\n` +
       `$ ${LOCAL_PACKAGE} context\nparent\nyes\nconfigured contents\n` +
       `$ ${LOCAL_PACKAGE} read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'\nconfigured contents\n`),
-    block(`$ set-current-working-directory ${quoteArgument(workspace)}\n` +
+    block(`#cwd(${workspace})\n` +
       `$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-file-echo 'configured contents'|${SCRIPT_COMMAND} check-file-echo 'configured contents'\nparent\nyes\nconfigured contents\n`),
-    block('$ set-current-working-directory cwd-link\n$ moonx ./selected.mbtx\nworkspace script\n'),
-    block('$ set-current-working-directory "../cwd fixture"\n'),
+    block('#cwd(cwd-link)\n$ moonx ./selected.mbtx\nworkspace script\n'),
+    block('#cwd(../cwd fixture)\n'),
     block('$ moonx ./selected.mbtx\ndocument script\n' +
       `$ ${LOCAL_PACKAGE} read-file relative.txt\ncwd contents\n`),
   ].join("\n");
@@ -149,7 +172,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   const alias = join(directory, "cwd-document-alias.md");
   fs.symlinkSync(document, alias, "file");
   cli(["test", alias, "--target", target]);
-  const only = writeDocument(docs, "cwd-only.md", block('$ set-current-working-directory cwd-link\n'));
+  const only = writeDocument(docs, "cwd-only.md", block('#cwd(cwd-link)\n'));
   assert(cli(["test", only], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases found"));
 
   // Both directory and executable names use their literal spelling on disk.
@@ -157,14 +180,34 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   fs.mkdirSync(literalDirectory);
   fs.writeFileSync(join(literalDirectory, '${SCRIPT}.mbtx'), 'fn main { println("literal path") }\n');
   const literalCommand = '$ moonx ./${SCRIPT}.mbtx';
-  const literalPrefix = '$ set-current-working-directory "${WORKSPACE}"\n';
+  const literalPrefix = '#cwd(${WORKSPACE})\n';
   const literalDocument = writeDocument(docs, "cwd-literal.md", block(literalPrefix + literalCommand + '\nwrong\n'));
   cli(["check", literalDocument]);
   cli(["update", literalDocument, "--target", target]);
   assert.equal(fs.readFileSync(literalDocument, "utf8"), block(literalPrefix + literalCommand + '\nliteral path\n'));
   cli(["test", literalDocument, "--target", target]);
 
-  const directive = '$ set-current-working-directory "../cwd fixture"';
+  // Paths bypass command quoting, including mismatched parentheses and quotes.
+  const rawNames = ["中文 (fixtures) ${NAME}", "a)b(c"];
+  if (process.platform !== "win32") rawNames.push(' "quoted"\\path ');
+  for (const name of rawNames) {
+    const rawDirectory = join(docs, name);
+    fs.mkdirSync(rawDirectory);
+    fs.writeFileSync(join(rawDirectory, "relative.txt"), "#cwd(output)\n#cwd(unclosed");
+    const before = block(`\n#cwd(${name})\n$ ${LOCAL_PACKAGE} read-file relative.txt\nwrong\n`);
+    const wanted = before.replace("wrong\n", '"#cwd(output)" (escaped)\n"#cwd(unclosed" (escaped) (no-eol)\n');
+    const path = writeDocument(docs, "cwd-raw.md", before);
+    cli(["check", path]);
+    cli(["update", path, "--target", target, "--dry-run"]);
+    assert.equal(fs.readFileSync(path, "utf8"), before);
+    cli(["update", path, "--target", target]);
+    assert.equal(fs.readFileSync(path, "utf8"), wanted);
+    cli(["test", path, "--target", target]);
+    cli(["update", path, "--target", target]);
+    assert.equal(fs.readFileSync(path, "utf8"), wanted);
+  }
+
+  const directive = '#cwd(../cwd fixture)';
   const before = ("Intro\n\n> - ```mooncram\n>   " + directive +
     "\n>   $ moonx ./selected.mbtx\n>   wrong\n>   ```\n\nTail\n").replaceAll("\n", CRLF);
   const after = before.replace("wrong", "workspace script");
@@ -174,8 +217,10 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   cli(["update", update, "--target", target]);
   assert.equal(fs.readFileSync(update, "utf8"), after);
   cli(["test", update, "--target", target]);
+  cli(["update", update, "--target", target]);
+  assert.equal(fs.readFileSync(update, "utf8"), after);
 
-  const drySource = block('$ set-current-working-directory "../cwd fixture"\n' +
+  const drySource = block('#cwd(../cwd fixture)\n' +
     `$ ${LOCAL_PACKAGE} setup\n$ moonx ./selected.mbtx\nwrong\n`);
   const dryDocument = writeDocument(docs, "cwd-dry-side-effects.md", drySource);
   const workspaceEffect = join(workspace, "side-effect.txt");
@@ -184,13 +229,12 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   assert.equal(fs.readFileSync(dryDocument, "utf8"), drySource);
   assert.equal(fs.readFileSync(workspaceEffect, "utf8"), "side effect preserved\n");
 
-  const sideEffect = join(docs, "side-effect.txt");
   for (const name of ["cwd-missing", "relative.txt", "cwd-not-created-yet", "${UNDEFINED_CWD}"]) {
     const original = block(`$ ${LOCAL_PACKAGE} setup\n$ ${LOCAL_PACKAGE} hello\nwrong\n` +
       (name === "cwd-not-created-yet" ? `$ ${LOCAL_PACKAGE} make-directory ${name}\n` : "")) +
-      block(`$ set-current-working-directory ${name}\n`);
+      block(`#cwd(${name})\n`);
     const invalid = writeDocument(docs, "cwd-invalid.md", original);
-    const line = original.split("\n").findIndex(text => text.startsWith('$ set-current')) + 1;
+    const line = original.split("\n").findIndex(text => text.startsWith('#cwd(')) + 1;
     for (const operation of [["test"], ["update"], ["update", "--dry-run"]]) {
       fs.rmSync(sideEffect, { force: true });
       const result = cli([...operation, invalid, "--target", target], { expected: EXIT_CODE.ERROR });
@@ -225,7 +269,7 @@ export function testBuildEnvironment({ cli, docs, directory, target }) {
     'process.stdout.write(output);\n' +
     'process.exit(result.status ?? 2);\n', { mode: 0o755 });
   const document = writeDocument(docs, "command-env-build.md", block(
-    `$ set-current-working-directory "../cwd fixture"\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
+    `#cwd(../cwd fixture)\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
     `$ ${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo\nHello, Moon Bit!\n` +
     `$ MODE=package-temp ${LOCAL_PACKAGE} check-env MODE package-temp\npackage-temp\n` +
     `$ MODE=script-temp ${SCRIPT_COMMAND} check-env MODE script-temp|MODE=pipeline-temp ${LOCAL_PACKAGE} check-env-echo pipeline-temp\nscript-temp\n` +

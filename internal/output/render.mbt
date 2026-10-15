@@ -2,6 +2,7 @@
 fn encode_output_line(text : String) -> String {
   let needs_escape = text == "$" ||
     text.has_prefix("$ ") ||
+    text.has_prefix("#cwd(") ||
     reserved_stream(text) is Some(_) ||
     text.has_suffix(" (escaped)") ||
     text.has_suffix(" (glob)") ||
