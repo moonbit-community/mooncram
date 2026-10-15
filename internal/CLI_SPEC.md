@@ -98,14 +98,13 @@ module; target and timeout are controlled by the CLI options.
 validation, and document-level module/directory validation with `test` and
 `update`. Configuration-only fences are validated too. It then resolves each
 pipeline segment against the current filesystem, checking script existence,
-executable package selection, module boundaries, and import alias conflicts.
+full executable package names, module boundaries, and exact remote coordinates.
 It reads local files and configuration without building,
 downloading dependencies, starting subprocesses, or modifying Markdown.
 
 A document parse or declaration-validation failure counts as one error and
 prevents checking its cases. A target-resolution failure counts as one error for
 that case, skips its remaining segments, and continues with later cases and files.
-Ambiguity warnings follow the usual reporting rules and do not count as errors.
 The summary is `N cases, E errors`; a run with no cases and no other errors uses
 the existing no-cases error instead.
 
@@ -160,7 +159,7 @@ CLI reports `ERROR no mooncram cases found` and exits with `2` without a summary
 Documents are read as UTF-8; decoding failures are document errors. Markdown
 is parsed structurally with `cmark`, with source locations and layout retained.
 Fenced code blocks with a backtick opening fence and the exact, case-sensitive
-language `mooncram` contain tests; `mooncram-import` declares file tool imports. The info string accepts
+language `mooncram` contain tests. The info string accepts
 optional whitespace and a single module name, such as `mooncram user/foo`.
 The declaration is scoped to that fence; ordinary fences have no module name.
 Multiple words, JSON settings, or invalid module names are document parsing
@@ -169,7 +168,8 @@ components with ASCII letters, digits, `_`, `-`, or `.`; `.` and `..` components
 are prohibited. Valid longer backtick fences work as well as triple backticks.
 
 Other languages, indented code blocks, tilde fences, and apparent fences inside
-larger code examples are silently ignored. Cases inside block quotes and lists
+larger code examples are silently ignored. Legacy `mooncram-import` fences
+are also ignored, without validating their contents or settings. Cases inside block quotes and lists
 are supported; the Markdown container prefix is not part of the command or
 output. Normal Markdown indentation rules apply before parsing lines.
 
@@ -180,10 +180,10 @@ produce mooncram parsing errors.
 
 ````markdown
 ```mooncram user/foo
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 
-$ cmd/main --version
+$ moonx user/foo/cmd/main --version
 my-cli * (glob)
 ```
 ````
@@ -213,40 +213,22 @@ every case in that document from running, even cases before the error. Later
 documents are still processed. Reported source line numbers are one-based
 positions in the original Markdown document.
 
-### 3.1 File tool imports
+### 3.1 Remote package coordinates
 
-A document permits zero or one `mooncram-import` fence, with no settings after
-its language name. Recognition follows the same backtick/container rules as
-`mooncram`, including longer fences, lists and quotes. Tilde fences and fences
-inside larger examples are ignored. An eligible import fence must close and
-contain at least one declaration; blank or whitespace-only lines are allowed.
-Imports never count as cases, and an import-only document is legal subject to
-the overall no-cases rule.
-
-Each nonblank line must be `alias : user/module[/package]@version`. Whitespace
-around the colon and declaration is allowed. Aliases are case-sensitive
-`[A-Za-z_][A-Za-z0-9_-]*`; `export` and `set-current-working-directory` are reserved.
-Coordinates require at least two path components, following the module/package name rules above. Versions must
-be exact SemVer `MAJOR.MINOR.PATCH`, optionally followed by `-prerelease` and
-`+build`. Core numbers and numeric prerelease identifiers have no leading zeros;
-build identifiers may have them. Identifiers contain ASCII letters, digits and
-hyphens, separated by dots, with no empty identifiers. Omitted versions, `latest`,
-ranges, wildcards, default arguments and variable expansion are rejected.
-
-All imports are collected and validated before commands and exports are parsed
-in their original order. `Document.imports : Map[String, ToolImport]` stores each
-alias's `name`, `coordinate` and one-based source `line`. Bindings apply to every
-case in that document regardless of declaration position, and never cross files.
-A duplicate alias reports both declaration lines; a second import fence is a
-document parsing error reporting both opening positions. Other malformed input
-is located at the offending line or opening fence.
+Use `$ moonx user/module[/package]@version <args...>` directly in a test fence.
+Coordinates require at least two nonempty path components, following the
+module/package name rules above. Versions must be exact SemVer `MAJOR.MINOR.PATCH`,
+optionally followed by `-prerelease` and `+build`. Core numbers and numeric
+prerelease identifiers have no leading zeros; build identifiers may have them.
+Identifiers contain ASCII letters, digits and hyphens, separated by dots, with
+no empty identifiers. `latest`, ranges, wildcards and malformed versions are
+rejected during target resolution. Unversioned targets are local and require a
+matching module declaration. Coordinates do not need declarations or aliases,
+and their registry existence is not checked by `check`.
 
 ````markdown
-```mooncram-import
-moongrep : moonbit-community/moongrep@0.3.5
-```
 ```mooncram
-$ moongrep --version
+$ moonx moonbit-community/moongrep@0.3.5 --version
 * (glob)
 ```
 ````
@@ -263,13 +245,12 @@ Optional `case_insensitive : Bool = false` normalizes temporary assignment names
 to ASCII uppercase when enabled; the document parser enables it on Windows.
 Returned arguments, assignment values and directory names have quotes and escapes
 processed, with variable-like text kept literal.
-`PipelineSegment` has `argv : Array[String]`, `extra_env : Map[String, String]`,
-`stderr_to_stdout : Bool`, and `stdout_to_null : Bool`, with `Debug` and `Eq`.
-Both flags default to `false`
-when their markers are absent; `Case.pipeline` stores these segments. Segment
-`extra_env` contains only temporary assignments, while `Case.extra_env` retains
-the document export snapshot. The executor copies that snapshot and overlays
-each segment's temporary values for both its build and run.
+`PipelineSegment` has `argv : Array[String]` and `extra_env : Map[String, String]`,
+with `Debug` and `Eq`. `argv` includes `moonx`, the target and program arguments.
+`Case.pipeline` stores these segments. Segment `extra_env` contains only temporary
+assignments; `Case.extra_env` retains the document export snapshot. The executor
+copies that snapshot and overlays each segment's temporary values for its build
+and run.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -292,43 +273,17 @@ Empty pipeline segments, including leading/trailing `|` and `||`, are parsing
 errors. Quoted or escaped `|` is an ordinary argument character. For example:
 
 ```text
-$ ./producer.mbtx|cmd/filter|./consumer.mbtx
+$ moonx ./producer.mbtx|moonx user/foo/cmd/filter|moonx ./consumer.mbtx
 ```
 
-Except for the exact trailing redirection markers below, unquoted `&`, `;`,
-`<`, `>`, backticks, `(`, and `)` are rejected wherever they occur in a word.
-Quoting or escaping them passes them literally. There is no wildcard or tilde expansion or command substitution. For example, `'$HOME'`,
-`*`, and `~` are literal arguments; `'$(cmd)'` is literal, while unquoted
-`$(cmd)` is rejected because of its parentheses.
-
-Only nonfinal segments accept these trailing markers. The final segment,
-including a single command, rejects either marker or their combination with
-"redirection is not allowed in the final pipeline segment". Its stdout and
-stderr are always captured separately.
-
-| Markers | Original stdout | Original stderr |
-| --- | --- | --- |
-| None | Next segment | Diagnostic stderr |
-| `2>&1` | Next segment | Same output pipe |
-| `1>/dev/null` | Discarded | Diagnostic stderr |
-| Both, in either order | Discarded | Next segment |
-
-Markers contain no spaces or tabs and require at least one space or tab between
-the marker and the preceding command, argument or marker. The following `|`
-needs no whitespace. Each kind may occur at most once, and no ordinary argument
-may follow a marker in the same segment. Missing commands, duplicate markers,
-internal whitespace, other redirection forms, and redirection on `export` are
-parsing errors, retaining the document filename and command line number.
-
-Classification uses exact raw tokens during tokenization. Fully quoted or
-correctly escaped markers remain ordinary arguments. Literal `2>&1` requires
-quoting or `2\>\&1`, escaping both `>` and `&`; literal `1>/dev/null` can use
-`1\>/dev/null`. The old `>/dev/null`, `stdout>/null` and `stderr>/stdout` syntax
-is rejected. Decoded argv is never checked for redirection syntax. For example:
-
-```text
-$ ./producer.mbtx 1>/dev/null 2>&1|cmd/filter
-```
+Unquoted, unescaped `&`, `;`, `<`, `>`, backticks, `(` and `)` are rejected
+wherever they occur in a word. Output redirection, including `2>&1` and
+`1>/dev/null`, is unsupported in every pipeline segment. Quoting or escaping
+operators passes them literally: `'2>&1'`, `2\>\&1` and `1\>/dev/null` are ordinary
+arguments. There is no wildcard or tilde expansion or command substitution.
+For example, `'$HOME'`, `*`, `~` and `'$(cmd)'` are literal arguments; unquoted
+`$(cmd)` is rejected because of its parentheses. Errors retain the document
+filename and command line number.
 
 `$ set-current-working-directory <dir>` declares one working directory for the
 current fence. It requires exactly one nonempty argument, reusing normal
@@ -390,80 +345,61 @@ or reference validation. Normal splitting, quoting and escaping still apply:
 values follow the same rules. Expected output is literal too. The whole document
 must parse before any case runs.
 
-`$ NAME=value OTHER="${NAME}" command` sets temporary variables for one
+`$ NAME=value OTHER="${NAME}" moonx ./program.mbtx` sets temporary variables for one
 pipeline segment and its build. Only consecutive assignments before the executable
 are recognized, with an unquoted, unescaped name and `=`; names use the same
 `[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting
 and escaping rules, including empty values and additional `=`.
 Assignments after the executable are ordinary arguments.
 Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
-as temporary assignments. They are ordinary words and can select the executable
-when they are the first word after any temporary assignments.
+as temporary assignments. They are ordinary words; before `moonx` they cause
+a missing-moonx parsing error, and after the target they remain program arguments.
 
 Temporary values override document exports and the parent environment. Values and
-arguments remain literal: `A=new B="${A}" command "${B}"` sets `B` to `${A}` and
+arguments remain literal: `A=new B="${A}" moonx ./program.mbtx "${B}"` sets `B` to `${A}` and
 passes `${B}` as its argument. Repeated names keep the last value. Each pipeline
 segment has its own temporary environment, and later commands retain the document environment.
 Windows names remain case-insensitive; Linux and macOS names remain case-sensitive.
 Assignments without a command, or temporary prefixes on `export` or
 `set-current-working-directory`, are parsing errors.
 
-After any temporary assignments, the first word selects the segment's executable.
-Variable-like text in executable paths, working directories and file arguments
-is literal, with normal quoting and escaping. The existing path resolution and
-filesystem validation rules apply to that spelling.
+After temporary assignments, every executable segment must begin with `moonx`
+and a nonempty target. Missing prefixes, bare targets and empty targets are
+parsing errors. No moonx options are accepted before the target. Target paths,
+working directories and file arguments keep variable-like text literal.
 
-The first argument of each segment must be nonempty. A case in an ordinary
-`mooncram` fence can execute a file import alias or a regular `.mbtx` file. Script paths are resolved
-against the block's working directory; absolute script paths are accepted.
-Scripts are also allowed in fences with a module declaration.
+A target ending in `.mbtx` is a local script, relative to the block's working
+directory or absolute. This includes script filenames containing `@`.
+Otherwise a target containing `@` must be a valid remote coordinate with exact
+SemVer, even if its package name matches the declared local module.
 
-Before executing any case in a document, all declarations must exactly match
-`name` in the `moon.mod` located directly in mooncram's startup cwd. This includes
-configuration-only fences. Missing/invalid configuration or a mismatched
-declaration is a document error reported at the declaring fence's opening line. No parent
-search or registry module loading occurs. `Case.module_name` stores the optional
-name; `Document.module_declarations` stores names and opening line numbers.
-The execution context stores the module name, startup root, and source root.
+Before processing any case, all module declarations must exactly match `name`
+in the `moon.mod` directly in mooncram's startup cwd, including configuration-only
+fences. Missing/invalid configuration or mismatches are document errors at the
+opening fence. There is no parent-directory search. `Case.module_name` stores the
+optional name; `Document.module_declarations` stores names and opening lines.
 
-Declared fences additionally accept executable package names relative to the
-module's `source` directory. Missing, empty, or null `source` means the module
-root; otherwise it must resolve to a subdirectory inside the module root.
-For `user/foo`, `cmd/boo` refers to `user/foo/cmd/boo`. The short name `foo` first
-considers root package `user/foo`, then same-name subpackage `user/foo/foo`.
-A package is callable if its configuration declares `pkgtype(kind: "executable")`
-or `options("is-main": true)`. If only the subpackage is callable it is selected;
-if both are callable the root wins. If neither is callable the case errors.
-A selected package's compilation or backend failure errors without fallback.
+Unversioned package targets require a module-declared fence and the full package
+name. For module `user/foo`, `user/foo` selects the root package and
+`user/foo/cmd/boo` selects that subpackage. `foo`, `cmd/boo`, other module names
+and paths such as `./foo` are rejected. There is no short-name inference,
+ambiguity warning or fallback. Missing, empty or null `source` means the module
+root; otherwise the source root must remain inside the module. Full names are
+mapped relative to this source root. Packages must declare
+`pkgtype(kind: "executable")` or `options("is-main": true)`. Compilation and
+backend errors propagate. Traversal, empty path components, nested `moon.mod`
+boundaries and symlink escapes remain prohibited. `moon.pkg` is parsed with
+`moonbitlang/moon_config@0.4.2`; invalid configurations are errors.
 
-Each ambiguous pipeline segment emits one independent `WARNING` on mooncram's
-stderr with document position, both full names, and the chosen package. Warnings
-never enter captured program output, mismatch diagnostics, updated expectations,
-or error counts. Package names cannot be absolute directory paths, use `./` or
-`../`, contain traversal, or cross another `moon.mod` boundary,
-including through symlinks. `moon.pkg` is parsed with `moonbitlang/moon_config@0.4.2`.
-Invalid configurations are errors.
-Arbitrary binaries, shell commands and `.mbt` files are not case targets.
-Remote packages can only be accessed through declared aliases. User targets
-are never searched through `PATH`.
-Remaining arguments are forwarded to the tested program, so its `--version`
-or `--target` is not interpreted as a mooncram option.
-
-Each pipeline segment independently checks its first argument against
-`Document.imports`. An alias becomes `moonx --target wasm <coordinate> -- <args...>`;
-`Case.command` and the parsed pipeline are retained unchanged. Imported tools
-inherit the case cwd, environment snapshot and output routes. CLI `--target`
-continues to control local packages; imports always use Wasm. In a declared
-fence, probe the same local candidates used by local resolution (including root
-short-name and same-name subpackage candidates). If any is executable, fail
-before pipeline startup and require a different import alias. Local configuration
-read/parse failures propagate normally; they must not be treated as missing
-packages. Non-alias segments retain their existing resolution behavior.
+Arbitrary binaries, shell commands and `.mbt` files are not targets, and user
+targets are not searched through `PATH`. Every argument after the target,
+including `--`, `--version` and `--target`, is forwarded unchanged to the program.
+`Case.command` retains the original source command.
 
 ## 5. Build, execution, capture, and timeout
 
 Mooncram uses external MoonBit tools. `moon` must be available to build cases;
-scripts and imports also require `moonx`, Wasm packages require `moonrun`, and native
+scripts and remote packages also require `moonx`, Wasm packages require `moonrun`, and native
 package builds require the corresponding native toolchain. The backend used
 to run mooncram itself is separate from the backend selected for a test case.
 
@@ -475,7 +411,7 @@ items are placeholders, not shell syntax:
 | `.mbtx` script | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
 | Wasm package | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | Native package | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
-| Imported package | None; moonx fetches/builds it | `moonx --target wasm <coordinate> -- <args...>` |
+| Remote package | None; moonx fetches/builds it | `moonx --target wasm <coordinate> -- <args...>` |
 
 Scripts always use Wasm, including when the CLI specifies `native`.
 Mooncram requests a build for every local segment of every case, in segment order.
@@ -492,37 +428,27 @@ Nonzero build status, invalid JSON, or a missing/invalid artifact array is an
 execution error. Build stdout/stderr are included in build-error diagnostics;
 successful build output is not part of the program expectation.
 
-Pipeline segments run concurrently, with OS pipes passing intermediate routed
-output to the next stdin as raw bytes, without decoding or newline normalization.
-Only the final command's stdout is captured for stdout assertions.
-Unredirected stderr is drained concurrently and buffered, then concatenated in
-segment order without added separator bytes for mismatch diagnostics and paired
-`@STDERR` assertions. Unmarked cases do not match stderr.
-`2>&1` sends stderr to the same OS pipe as routed stdout, preserving
-pipe write order, and excludes it from diagnostic collection. When both markers
-are present, only original stderr uses the output pipe. `1>/dev/null` drains
-original stdout concurrently with a fixed 8 KiB byte buffer, without accumulating
-or decoding it. If neither stream uses the output pipe, its unused write end is
-closed immediately so downstream can observe EOF. Build
-processes always use the default routes. All captured streams must decode
-successfully. Pipelines use pipefail by default: Mooncram waits for every segment
-to finish and returns `0` if all succeeded, or the rightmost nonzero exit status
-in pipeline order otherwise. Completion order does not affect this result.
-Ordinary nonzero statuses remain assertable with `[N]` and do not stop later
-cases. Reserved imported statuses follow the error rules below. There is no
-configured output-size limit or live relay of program output.
+Pipeline segments run concurrently. OS pipes pass intermediate stdout to the
+next stdin as raw bytes, without decoding or newline normalization. Only the
+final stdout is captured for stdout assertions. Every segment's stderr is
+captured concurrently and concatenated in pipeline order without separator
+bytes for diagnostics and `@STDERR` assertions. Unmarked cases do not match stderr.
+All captured streams must decode successfully. Pipefail returns the rightmost
+nonzero exit status in pipeline order, or `0` if all segments succeed; completion
+order does not affect the result. Ordinary nonzero statuses remain assertable
+and do not stop later cases. Reserved remote statuses follow the rules below.
+There is no configurable output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
 override names using the case's export snapshot, then that segment's temporary
 assignments. The same merged environment is used for its build and execution,
-including script preflight and imported moonx tools. Their working directory is the
+including script preflight and remote moonx tools. Their working directory is the
 validated block directory, or the canonical document's parent by default.
 Build processes and the first pipeline segment receive immediate EOF on stdin rather than
-mooncram's interactive input. Later segments receive the preceding routed output.
+mooncram's interactive input. Later segments receive the preceding stdout.
 
 Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
-is an execution error. Discarded stdout need not be valid UTF-8; intermediate
-routed bytes remain undecoded. Every CRLF pair is normalized to LF before
+is an execution error. Intermediate stdout bytes remain undecoded. Every CRLF pair is normalized to LF before
 comparison and reporting. Standalone CR, NUL, ANSI escapes, trailing spaces, blank lines,
 and the presence or absence of a final newline otherwise remain significant.
 
@@ -540,10 +466,10 @@ Cases execute code with the invoking user's permissions, in the configured
 working directory. Mooncram provides no sandbox or temporary workspace
 isolation. This also applies to `test` and `update --dry-run`.
 
-Only imported commands reserve statuses `255` and `-1` as execution errors,
-even if the imported program itself returns them. Statuses are monitored
-concurrently for all segments. Any imported segment returning either reserved
-status raises an error naming the alias, coordinate, one-based pipeline segment
+Only remote commands reserve statuses `255` and `-1` as execution errors,
+even if the remote program itself returns them. Statuses are monitored
+concurrently for all segments. Any remote segment returning either reserved
+status raises an error naming the coordinate, one-based pipeline segment
 and status; remaining processes are immediately cancelled and reaped. A final
 success cannot hide an earlier reserved status, and waiting on a slow upstream
 must not delay detection of a later one. Other statuses follow the pipefail
@@ -561,7 +487,7 @@ and execution. `test`, `update` and `update --dry-run` use the same flow.
 For unmarked cases, a case passes only when all of the following match:
 
 1. Program exit status.
-2. Number of routed output lines.
+2. Number of final stdout lines.
 3. Every corresponding output line's matcher.
 4. Whether the final output line lacks a newline.
 
@@ -572,7 +498,7 @@ spaces, and other contents do not make a status marker. Leading zeroes are
 accepted. A syntactically numeric marker outside the integer range is a parse
 error. A status-looking line earlier in the expectation is ordinary output.
 Negative statuses represent signal termination as reported by the process
-library. A nonzero program exit is a normal matchable result, except for imported `255`
+library. A nonzero program exit is a normal matchable result, except for remote `255`
 or `-1`; a build failure
 or timeout is not.
 
@@ -618,7 +544,7 @@ in that stream, optionally followed by the final case exit-status marker. An exa
 
 ````markdown
 ```mooncram
-$ ./special.mbtx
+$ moonx ./special.mbtx
 "$ this is output" (escaped)
 "[2]" (escaped)
 "```" (escaped)
@@ -651,12 +577,12 @@ Use `@STDOUT` and `@STDERR` to assert both streams in one execution:
 
 ````markdown
 ```mooncram
-$ ./cli.mbtx
+$ moonx ./cli.mbtx
 @STDOUT
 result
 @STDERR (empty)
 
-$ ./cli.mbtx --invalid
+$ moonx ./cli.mbtx --invalid
 @STDOUT (ignore)
 @STDERR
 error: invalid argument
@@ -680,8 +606,7 @@ are separators; use `"" (escaped)` to assert an empty output line. The final
 `[N]` belongs to the whole case, with default exit code `0`.
 
 `@STDOUT` selects the final segment's stdout. `@STDERR` selects all
-unmerged stderr, concatenated in pipeline order without added separators.
-Redirection still applies: merged or discarded bytes are not recovered.
+stderr, concatenated in pipeline order without added separators.
 There is no comparison of timing between streams. Ignored streams are still
 captured and checked for UTF-8, with the same deadlines and process cleanup.
 Cases without stream markers keep the existing single-output behavior.
@@ -876,7 +801,7 @@ respectively. For example:
 
 | Counter | Meaning |
 | --- | --- |
-| `total` | Cases whose checking or execution was attempted, incremented before processing each case. Includes cases with target-resolution or execution errors; excludes configuration directives, imports and cases in documents that failed parsing or module/directory declaration validation. |
+| `total` | Cases whose checking or execution was attempted, incremented before processing each case. Includes cases with target-resolution or execution errors; excludes configuration directives and cases in documents that failed parsing or module/directory declaration validation. |
 | `failed` | Completed cases whose output and/or exit status mismatched. Execution errors are counted separately. Printed only for `test`. |
 | `errors` | Caught per-case target-resolution or execution errors plus document read/parse/declaration-validation/update errors. A parse or declaration-validation failure counts as one document error. |
 | `updated` | Changed cases in documents successfully written, or eligible for a dry-run document diff, including normalization and every case sharing changed fence markers. Each case counts once, not once per changed line. |
@@ -907,7 +832,7 @@ expected exit statuses.
 | Scheduling, counters, error isolation | [cli/runner.mbt](cli/runner.mbt) | [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | Discovery and atomic replacement | [files/files.mbt](files/files.mbt), [files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown and commands | [markdown/markdown.mbt](markdown/markdown.mbt), [markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| File tool imports | [markdown/imports.mbt](markdown/imports.mbt), [markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt), [e2etests/integration.mjs](../e2etests/integration.mjs) |
+| Remote coordinates | [resolve/coordinate.mbt](resolve/coordinate.mbt), [resolve/document.mbt](resolve/document.mbt) | [resolve/coordinate_wbtest.mbt](resolve/coordinate_wbtest.mbt), [e2etests/integration/remote.spec.mjs](../e2etests/integration/remote.spec.mjs) |
 | Document validation and target resolution | [resolve/document.mbt](resolve/document.mbt), [resolve/module.mbt](resolve/module.mbt), [resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt), [resolve/module_wbtest.mbt](resolve/module_wbtest.mbt), [resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt), [e2etests/integration/check.spec.mjs](../e2etests/integration/check.spec.mjs) |
 | Execution and artifact parsing | [execute/execute.mbt](execute/execute.mbt), [execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt), [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | Matching and output rendering | [output/expectation.mbt](output/expectation.mbt), [output/glob.mbt](output/glob.mbt), [output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt), [update/update_test.mbt](update/update_test.mbt) |
@@ -931,6 +856,6 @@ default, using real scripts and packages. `--target wasm` or `--target native`
 selects one CLI backend; those integration-runner options are separate from
 mooncram's case-target option.
 
-Import integration checks replace moonx with a locally built fixture executable,
+Remote integration checks replace moonx with a locally built fixture executable,
 so pinned remote tools are tested without registry/network dependencies. The
 fixture validates the exact wasm invocation, reserved exits and cancellation.

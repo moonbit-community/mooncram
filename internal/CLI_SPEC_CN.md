@@ -87,13 +87,12 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 
 `check` 与 `test/update` 共享文件发现、Markdown 解析、命令和预期输出校验，
 以及文档级模块、工作目录校验。仅含配置的围栏也会校验。随后逐用例、逐管道段
-根据当前文件系统解析目标，检查脚本存在性、可执行包选择、模块边界和导入别名冲突。
+根据当前文件系统解析目标，检查脚本存在性、完整可执行包名、模块边界及远程精确版本坐标。
 检查只读取本地文件及配置，不构建、不下载依赖、不启动子进程，
 也不修改 Markdown。
 
 文档解析或声明校验失败计一次错误，并阻止检查该文档中的用例。目标解析失败
-计当前用例一次错误，跳过其剩余管道段，并继续后续用例和文档。歧义警告沿用
-现有报告规则，不计错误。汇总格式为 `N cases, E errors`；整次检查没有用例且
+计当前用例一次错误，跳过其剩余管道段，并继续后续用例和文档。汇总格式为 `N cases, E errors`；整次检查没有用例且
 没有其他错误时，改为报告现有的无用例错误。
 
 命令解析不查询环境变量；参数和赋值值在处理引号、转义后保持字面量。
@@ -140,7 +139,7 @@ mooncram 不会自行展开路径通配符。启动它的 shell 若进行了展�
 文档按 UTF-8 读取，解码失败属于文档错误。
 Markdown 由 `cmark` 按结构解析，并保留源码位置和排版信息。
 起始围栏使用反引号、语言名严格为 `mooncram` 的围栏代码块包含测试，
-`mooncram-import` 围栏声明文件工具导入。语言名区分大小写。
+旧 `mooncram-import` 围栏按普通代码块忽略，不校验其中的内容或配置。语言名区分大小写。
 `mooncram` 后面允许空白和一个模块名，例如 `mooncram user/foo`。
 声明仅作用于当前围栏，普通围栏没有模块名。多个词、旧版 JSON 配置和非法模块名
 在围栏起始行报文档解析错误。模块名和包名由非空的斜杠分隔组件组成，组件仅含
@@ -156,10 +155,10 @@ mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
 
 ````markdown
 ```mooncram user/foo
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 
-$ cmd/main --version
+$ moonx user/foo/cmd/main --version
 my-cli * (glob)
 ```
 ````
@@ -183,32 +182,19 @@ my-cli * (glob)
 只要有解析错误，该文档的所有用例都不会执行，包括错误位置之前的用例。
 后续文档仍会继续处理。报告中的行号从 1 开始，对应原始 Markdown 文档中的位置。
 
-### 3.1 文件级工具导入
+### 3.1 远程包坐标
 
-每份文档允许零个或一个 `mooncram-import` 围栏，语言名后不接受配置。
-围栏识别规则与 `mooncram` 相同，支持较长反引号围栏、列表和引用；忽略波浪号
-围栏和较大示例内部的围栏。有效导入围栏必须闭合且包含至少一条声明，允许空白行。
-import 不计为用例；仅含 import 的文档合法，但整次运行仍遵循无用例报错规则。
-
-每个非空白行必须为 `别名 : user/module[/package]@version`，声明及冒号两侧可有空白。
-别名区分大小写，采用 `[A-Za-z_][A-Za-z0-9_-]*`，保留 `export` 和 `set-current-working-directory`。坐标至少含两个
-路径组件，遵循上面的模块／包名规则。版本必须是精确 SemVer `MAJOR.MINOR.PATCH`，
-可追加 `-prerelease` 和 `+build`。核心数字与纯数字预发布标识不允许前导零；
-构建标识允许前导零。标识仅含 ASCII 字母、数字和连字符，以点分隔，不允许空标识。
-拒绝省略版本、`latest`、范围、通配符、默认参数和变量展开。
-
-解析时先收集并校验所有 import，再按原顺序解析命令和 export。
-`Document.imports : Map[String, ToolImport]` 保存别名对应的 `name`、`coordinate`
-和从 1 开始的源码 `line`。绑定对该文档所有用例生效，与声明位置无关，不跨文件。
-重复别名指出两条声明所在行；第二个 import 围栏是文档解析错误，指出两个起始位置。
-其他非法输入定位到错误行或围栏起始行。
+在测试围栏中直接使用 `$ moonx user/module[/package]@version <参数...>`。
+坐标至少包含两个非空路径组件，遵循上面的模块／包名规则。
+版本必须是精确 SemVer `MAJOR.MINOR.PATCH`，可追加 `-prerelease` 和 `+build`。
+核心数字与纯数字预发布标识不允许前导零；构建标识允许前导零。
+标识仅含 ASCII 字母、数字和连字符，以点分隔，不允许空标识。
+目标解析时拒绝 `latest`、范围、通配符和非法版本。无版本目标属于本地包，
+必须具有匹配的模块声明。远程坐标无需声明或别名；`check` 不检查其注册表存在性。
 
 ````markdown
-```mooncram-import
-moongrep : moonbit-community/moongrep@0.3.5
-```
 ```mooncram
-$ moongrep --version
+$ moonx moonbit-community/moongrep@0.3.5 --version
 * (glob)
 ```
 ````
@@ -223,11 +209,9 @@ $ moongrep --version
 可选的 `case_insensitive : Bool = false` 开启后将临时变量名转为 ASCII
 大写；文档解析器在 Windows 下开启此选项。
 返回的参数、赋值和目录名已经处理引号和转义，变量形式的文本保持字面量。
-`PipelineSegment` 包含 `argv : Array[String]`、
-`extra_env : Map[String, String]`、
-`stderr_to_stdout : Bool` 和 `stdout_to_null : Bool`，派生 `Debug`、`Eq`。
-未出现对应标记时两个布尔值均为 `false`；`Case.pipeline` 存储这些段结构。
-段的 `extra_env` 仅保存临时赋值，`Case.extra_env` 仍保存文档级 export 快照。
+`PipelineSegment` 包含 `argv : Array[String]` 和 `extra_env : Map[String, String]`，
+派生 `Debug`、`Eq`。`argv` 包含 `moonx`、目标和程序参数；`Case.pipeline` 存储这些段。
+段的 `extra_env` 仅保存临时赋值，`Case.extra_env` 保存文档级 export 快照。
 执行器逐段复制文档快照并覆盖临时变量，供该段的构建与运行使用。
 
 | 语法 | 含义 |
@@ -249,39 +233,15 @@ Markdown 中的原始 NUL 会先被 cmark 替换为 `U+FFFD`（`�`），因此
 是普通参数字符。例如支持：
 
 ```text
-$ ./producer.mbtx|cmd/filter|./consumer.mbtx
+$ moonx ./producer.mbtx|moonx user/foo/cmd/filter|moonx ./consumer.mbtx
 ```
 
-除下述精确的尾部重定向标记外，未加引号的 `&`、`;`、`<`、`>`、反引号、
-`(` 和 `)`，无论出现在单词的哪个位置，都会被拒绝。通过引号或转义可以将它们作为普通字符传入。
-不进行通配符展开、波浪号展开或命令替换。例如 `'$HOME'`、`*` 和 `~`
-都是字面量参数；`'$(cmd)'` 也是字面量，但未加引号的 `$(cmd)` 会因圆括号报错。
-
-只有非末段的管道命令接受以下尾部标记。最后一段（包括单命令）禁止使用任一标记
-及其组合，报错 "redirection is not allowed in the final pipeline segment"；
-其 stdout 和 stderr 始终分别捕获。
-
-| 标记 | 原 stdout | 原 stderr |
-| --- | --- | --- |
-| 无 | 下一段 | 诊断 stderr |
-| `2>&1` | 下一段 | 同一输出管道 |
-| `1>/dev/null` | 丢弃 | 诊断 stderr |
-| 两者组合，任意顺序 | 丢弃 | 下一段 |
-
-标记内部不能有空格或制表符，与前面的命令、参数或其他标记之间必须有至少一个
-空格或制表符；后面的 `|` 无需空白。每种标记最多出现一次，出现标记后该段不能
-再接普通参数。缺少命令、重复标记、内部空白、其他重定向形式及 export 重定向
-都是解析错误，保留文档文件名和命令行号。
-
-分词阶段按原文中的精确标记分类。完整引用或正确转义的标记保持普通参数语义。
-字面量 `2>&1` 必须引用或写成 `2\>\&1`，同时转义 `>` 和 `&`；
-`1>/dev/null` 可写成 `1\>/dev/null`。
-旧写法 `>/dev/null`、`stdout>/null` 和 `stderr>/stdout` 会被拒绝。不根据处理引号和转义后的 argv 判断
-重定向。例如：
-
-```text
-$ ./producer.mbtx 1>/dev/null 2>&1|cmd/filter
-```
+未引用且未转义的 `&`、`;`、`<`、`>`、反引号、`(` 和 `)`，无论出现在词的
+哪个位置，都会被拒绝。所有管道段均不支持输出重定向，包括 `2>&1` 和
+`1>/dev/null`。引用或转义后作为普通参数传入，例如 `'2>&1'`、`2\>\&1` 和
+`1\>/dev/null`。不进行通配符展开、波浪号展开或命令替换。
+`'$HOME'`、`*`、`~` 和 `'$(cmd)'` 均为字面量；未引用的 `$(cmd)` 因圆括号报错。
+解析错误保留文档文件名和命令行号。
 
 `$ set-current-working-directory <dir>` 设置当前块的工作目录，恰好接受一个非空参数，
 复用现有引号和转义规则。每块最多一次，必须位于第一条实际测试
@@ -291,7 +251,7 @@ $ ./producer.mbtx 1>/dev/null 2>&1|cmd/filter
 相对目录始终以规范 Markdown 文件的父目录为基准，也接受绝对路径和目录符号链接。
 目录在处理引号和转义后按字面量保存，赋值不会改变它。
 export 跨块生效；工作目录配置只作用于当前块，下一块恢复文档目录。
-相对脚本查找、构建子进程、导入工具、所有管道段和程序的相对文件参数使用同一目录。
+相对脚本查找、构建子进程、远程工具、所有管道段和程序的相对文件参数使用同一目录。
 本地模块仍从启动 cwd 解析，包构建保留 `moon -C <module-root>`。
 
 解析和模块声明校验完成后，执行该文档的任何用例或构建前，统一校验所有目录声明，
@@ -328,63 +288,49 @@ Windows 下导出赋值和后续覆盖均不区分变量名大小写。导出名
 `${A B}` 分成两个参数，`"${A B}"` 则是一个字面参数。赋值值也遵循这些规则。
 预期输出保持字面量。整篇文档解析成功后才会执行用例。
 
-`$ NAME=value OTHER="${NAME}" command` 为一个管道段及其构建过程设置临时变量。
-仅识别实际执行目标之前连续出现的赋值，变量名和 `=` 必须未引用、未转义；
+`$ NAME=value OTHER="${NAME}" moonx ./program.mbtx` 为一个管道段及其构建过程设置临时变量。
+仅识别moonx 之前连续出现的赋值，变量名和 `=` 必须未引用、未转义；
 变量名沿用 `[A-Za-z_][A-Za-z0-9_]*`。值复用现有引号和转义规则，
-可以为空或包含额外的 `=`。执行目标之后的赋值形式仍是普通参数。
+可以为空或包含额外的 `=`。moonx 之后的赋值形式仍是普通参数。
 `9A=x`、`A-B=x` 等含非法变量名的词不会被识别为临时赋值，而会按普通词处理；
-若它们是跳过临时赋值后的首个词，就会被选为执行目标。
+若它们出现在 `moonx` 之前，会因缺少 moonx 前缀报错；位于目标之后则是程序参数。
 
 临时值优先于文档级 export 和父进程环境。赋值值和参数均保持字面量：
-`A=new B="${A}" command "${B}"` 将 `B` 设置为 `${A}`，并传入字面参数 `${B}`。
+`A=new B="${A}" moonx ./program.mbtx "${B}"` 将 `B` 设置为 `${A}`，并传入字面参数 `${B}`。
 重复赋值以后者为准。各管道段的临时环境独立，后续命令仍使用文档环境。
 Windows 下变量名仍不区分大小写，Linux 和 macOS 下仍区分大小写。
 仅有赋值而没有命令，或给 `export`、`set-current-working-directory` 添加临时前缀，
 均为解析错误。
 
-每个管道段跳过临时赋值后的首个词选择执行目标。可执行路径、工作目录和文件参数中
-变量形式的文本按字面量处理，仍遵循正常的引号和转义规则，再按现有路径解析和文件系统
-校验规则处理该路径。
+每个可执行管道段跳过临时赋值后必须以 `moonx` 和非空目标开头。
+缺少前缀、裸目标或空目标均为解析错误；目标之前不接受 moonx 选项。
+目标路径、工作目录和文件参数中的变量形式文本保持字面量。
 
-每个段的第一个参数不能为空。普通 `mooncram` 围栏可以执行文件导入别名或普通 `.mbtx` 文件。
-脚本路径相对于块的工作目录解析，也接受绝对脚本路径。
-声明模块的围栏同样允许脚本。
+以 `.mbtx` 结尾的目标是本地脚本，相对于块工作目录解析，也接受绝对路径，
+文件名可以包含 `@`。其他包含 `@` 的目标必须是带精确 SemVer 的远程坐标，
+即使其包名与本地模块相同，也按远程包处理。
 
-执行文档内任何用例前，校验所有模块声明，要求与 mooncram 启动 cwd 下的
-`moon.mod` 的 `name` 精确匹配，包括仅含配置的围栏。配置缺失、解析失败或
-名称不符属于文档错误，在声明围栏的起始行报告。不向父目录搜索，不加载注册表模块。
-`Case.module_name` 保存可选模块名；`Document.module_declarations` 保存声明和起始行。
-执行上下文保存模块名、启动根目录和源码根目录。
+处理任何用例前，校验全部模块声明与启动 cwd 下 `moon.mod` 的 `name` 精确匹配，
+包括仅含配置的围栏。配置缺失、无效或名称不符属于文档错误，定位到围栏起始行。
+不向父目录搜索。`Case.module_name` 保存可选模块名；
+`Document.module_declarations` 保存模块名和围栏起始行。
 
-声明围栏允许相对于模块 `source` 的可执行包名。`source` 缺失、为空或 null 时
-使用模块根目录；其他值必须解析到模块根目录内的子目录。
-对于 `user/foo`，`cmd/boo` 对应 `user/foo/cmd/boo`。短名称 `foo` 优先考虑根包
-`user/foo`，其次考虑同名子包 `user/foo/foo`。可调用包通过
-`pkgtype(kind: "executable")` 或 `options("is-main": true)` 声明。仅子包可调用时选择子包，
-双方可调用时选择根包；双方都不可调用时报错。选中包编译失败或不支持目标后端时
-直接报错，不回退。
+无版本包目标必须位于声明模块的围栏内，并写完整包名。
+对于模块 `user/foo`，`user/foo` 精确选择根包，`user/foo/cmd/boo` 选择对应子包。
+拒绝 `foo`、`cmd/boo`、其他模块名以及 `./foo` 等路径。不再推断短名、输出歧义警告或回退。
+`source` 缺失、为空或 null 时使用模块根目录，否则源码根目录必须位于模块内。
+完整包名相对于该源码根目录映射。包必须声明 `pkgtype(kind: "executable")`
+或 `options("is-main": true)`；编译和后端错误直接传播。
+路径穿越、空路径组件、嵌套 `moon.mod` 及符号链接越界均被拒绝。
+`moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析；非法配置报错。
 
-每个发生歧义的管道段向 mooncram 的 stderr 独立输出一次 `WARNING`，包含文档位置、
-两个完整包名和选择结果。警告不进入捕获输出、不匹配诊断、更新内容或错误计数。
-包名不接受绝对目录、`./`、`../`、路径穿越，也不得跨入其他 `moon.mod`
-界定的嵌套模块，符号链接也遵循此限制。
-`moon.pkg` 使用 `moonbitlang/moon_config@0.4.2` 解析；配置解析失败会报错。
-任意二进制、shell 命令、`.mbt` 文件和未声明导入的注册表模块不能作为用例目标，
-也不会通过 `PATH` 查找目标。
-其余参数会转发给被测程序，因此程序自己的 `--version` 或 `--target`
-不会被解释为 mooncram 选项。
-
-每个管道段独立用首个参数查询 `Document.imports`。命中别名时，执行
-`moonx --target wasm <coordinate> -- <args...>`；保留 `Case.command` 与已解析的
-管道结构。导入工具继承用例的 cwd、环境快照和输出路由。CLI `--target` 仍控制本地包，
-导入工具始终使用 Wasm。模块声明围栏内按本地解析规则探测同名候选，包括根包短名和
-同名子包；任一候选可执行，就在管道启动前报错，要求更换 import 别名。本地配置读取
-或解析失败正常传播，不能视为“找不到包”。未命中别名的段保持原有解析行为。
-远程包仅能通过已声明别名访问。
+任意二进制、shell 命令和 `.mbt` 文件不能作为目标，也不会通过 `PATH` 查找目标。
+目标之后所有参数均原样传给程序，包括 `--`、`--version` 和 `--target`。
+`Case.command` 保留原始命令文本。
 
 ## 5. 构建、执行、输出捕获与超时
 
-mooncram 使用外部 MoonBit 工具。构建本地用例需要 `moon`；脚本和导入还需要 `moonx`，
+mooncram 使用外部 MoonBit 工具。构建本地用例需要 `moon`；脚本和远程包还需要 `moonx`，
 Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 运行 mooncram 自身所用的后端，与用例选择的后端相互独立。
 
@@ -395,7 +341,7 @@ Wasm 包需要 `moonrun`，原生包构建需要对应的原生工具链。
 | `.mbtx` 脚本 | `moon run --build-only --target wasm <script>` | `moonx <script> -- <args...>` |
 | Wasm 包 | `moon -C <module-root> run --build-only --target wasm <package>` | `moonrun <artifact> -- <args...>` |
 | 原生包 | `moon -C <module-root> run --build-only --target native <package>` | `<artifact> <args...>` |
-| 导入包 | 无；moonx 获取并构建 | `moonx --target wasm <coordinate> -- <args...>` |
+| 远程包 | 无；moonx 获取并构建 | `moonx --target wasm <coordinate> -- <args...>` |
 
 脚本始终使用 Wasm，即使 CLI 指定了 `native`。
 mooncram 按段顺序为每个用例的所有本地段请求构建，是否复用已有构建由底层工具决定。
@@ -409,28 +355,22 @@ mooncram 按段顺序为每个用例的所有本地段请求构建，是否复�
 构建退出状态非零、JSON 无效或产物数组缺失／无效，都属于执行错误。
 构建错误诊断会包含构建的 stdout 和 stderr；成功构建的输出不属于程序预期结果。
 
-管道各段并发执行，系统管道将前一段路由后的输出原始字节传入后一段 stdin，
+管道各段并发执行，系统管道将前一段 stdout 的原始字节传入后一段 stdin，
 中间不进行解码或换行规范化。stdout 断言仅捕获最后一段的 stdout。
-未重定向的 stderr 并发读取、完整缓存，再按段顺序拼接用于不匹配时的诊断，
-拼接时不添加分隔字节。无标记用例不匹配 stderr；双流模式通过 `@STDERR` 断言其内容。
-`2>&1` 将 stderr 与路由后的 stdout 连到同一根系统管道，
-保留管道写入顺序，不再收集到诊断；两种标记同时出现时，仅原 stderr 使用输出
-管道。`1>/dev/null` 使用固定 8 KiB 字节缓冲区并发排空原 stdout，不累积或解码。
-两条流都不使用输出管道时，立即关闭其未使用的写端，让下游读到 EOF。
-构建进程始终使用默认路由。
-所有捕获流都必须能够成功解码。管道默认采用 pipefail：等待所有段结束后，
-全部成功返回 `0`，否则返回管道位置最右侧的非零退出码，不受完成顺序影响。
-普通非零状态仍可通过 `[N]` 断言，后续用例继续执行；导入的保留错误状态遵循下面的规则。
-当前没有可配置的输出大小上限，也不实时转发程序输出。
+各段 stderr 并发读取并完整缓存，按段顺序拼接且不添加分隔字节，供诊断及
+`@STDERR` 断言使用；无标记用例不匹配 stderr。所有捕获流都必须成功解码。
+管道采用 pipefail：等待全部段结束，全部成功返回 `0`，否则返回管道位置最右侧的
+非零状态，不受完成顺序影响。普通非零状态仍可通过 `[N]` 断言，后续用例继续。
+远程包保留错误状态遵循下面的规则。没有可配置的输出大小上限，也不实时转发程序输出。
 
 构建进程及每个管道段继承 mooncram 的环境，先覆盖该用例的 export 快照，
-再覆盖该段的临时变量。脚本构建预检查、导入的 moonx 工具及本地包的构建和运行
+再覆盖该段的临时变量。脚本构建预检查、远程 moonx 工具及本地包的构建和运行
 使用同一份合并后的环境。工作目录是校验后的块配置目录，默认为规范文档的父目录。
 构建进程和管道首段从 stdin 立即读到 EOF，不会读取 mooncram 的交互式输入。
-后续段接收前一段路由后的输出。
+后续段接收前一段 stdout。
 
 捕获到的输出必须是有效 UTF-8。任一捕获流中出现无效 UTF-8 都会导致执行错误。
-被丢弃的 stdout 无需为有效 UTF-8，中间路由字节保持未解码。
+中间 stdout 字节保持未解码。
 比较和报告前会把每个 CRLF 规范化为 LF。独立的 CR、NUL、ANSI 转义、行尾空格、
 空行以及末尾是否有换行符，除此之外均保持有意义的差异。
 
@@ -444,8 +384,8 @@ mooncram 按段顺序为每个用例的所有本地段请求构建，是否复�
 用例以调用者的权限，在配置的工作目录中执行代码。mooncram 不提供沙箱或临时
 工作区隔离。`test` 和 `update --dry-run` 也遵循这一规则。
 
-仅导入命令将 `255` 和 `-1` 保留为执行错误，包括导入程序自身返回这些状态。
-并发监视所有段的退出状态；任意导入段返回保留状态都会报错，包含别名、坐标、
+仅远程命令将 `255` 和 `-1` 保留为执行错误，包括远程程序自身返回这些状态。
+并发监视所有段的退出状态；任意远程段返回保留状态都会报错，包含坐标、
 从 1 开始的管道段序号和状态码，并立即取消及回收其他进程。末段成功不能掩盖前段
 保留错误，等待慢速前段也不能延迟发现后段错误。其他状态遵循上述 pipefail 规则。
 保留状态、启动／捕获失败及超时均阻止整份文档
@@ -461,7 +401,7 @@ mooncram 不增加远程依赖安装或缓存机制。moonx 启动后负责获�
 对于无标记用例，只有以下条件全部满足，用例才会通过：
 
 1. 程序退出状态相同。
-2. 路由后的输出行数相同。
+2. 最终 stdout 的输出行数相同。
 3. 每个对应输出行都满足该行的匹配规则。
 4. 最后一个输出行是否缺少换行符的状态相同。
 
@@ -470,7 +410,7 @@ mooncram 不增加远程依赖安装或缓存机制。moonx 启动后负责获�
 `-`；`+`、内部空格或其他内容不会构成退出状态标记。允许前导零。
 语法符合数字标记、但数值超出整数范围时，会产生解析错误。
 出现在更早位置的类似状态标记的行按普通输出处理。负数状态表示进程库报告的信号
-终止状态。除导入的 `255` 和 `-1` 外，非零退出状态是可以匹配的正常结果；构建失败或超时则不是。
+终止状态。除远程包的 `255` 和 `-1` 外，非零退出状态是可以匹配的正常结果；构建失败或超时则不是。
 
 没有预期输出行时，要求选定输出为空。空输出、一个换行符，以及末尾没有换行符的
 非空行，是不同的结果：
@@ -511,7 +451,7 @@ mooncram 不增加远程依赖安装或缓存机制。moonx 启动后负责获�
 
 ````markdown
 ```mooncram
-$ ./special.mbtx
+$ moonx ./special.mbtx
 "$ this is output" (escaped)
 "[2]" (escaped)
 "```" (escaped)
@@ -541,12 +481,12 @@ Glob 按 Unicode 字符而非字节工作。`*` 匹配零个或多个字符，`?
 
 ````markdown
 ```mooncram
-$ ./cli.mbtx
+$ moonx ./cli.mbtx
 @STDOUT
 result
 @STDERR (empty)
 
-$ ./cli.mbtx --invalid
+$ moonx ./cli.mbtx --invalid
 @STDOUT (ignore)
 @STDERR
 error: invalid argument
@@ -566,8 +506,8 @@ error: invalid argument
 这两种注解区段不接受预期输出行。每个区段末尾的裸空行用作分隔符，
 需要断言空输出行时使用 `"" (escaped)`。末尾的 `[N]` 属于整个用例，默认退出码为 `0`。
 
-`@STDOUT` 检查最后一段的 stdout；`@STDERR` 检查所有段未合并的 stderr，
-按管道段顺序拼接，不添加分隔字节。沿用重定向规则，不恢复已合并或丢弃的数据。
+`@STDOUT` 检查最后一段的 stdout；`@STDERR` 检查所有段的 stderr，
+按管道段顺序拼接，不添加分隔字节。
 不比较两条流之间的时间顺序。忽略的流仍会捕获并进行 UTF-8 校验，
 超时与进程回收规则保持一致。不含流标记的用例继续使用现有单流行为。
 
@@ -622,12 +562,12 @@ ERROR <file>[:<line>]: <summary>
 语法错误保留对应上下文的帮助文本。操作系统及依赖库的原因文本放在 `cause` 中，
 措辞可能随环境变化。配置解析器的详细报告也作为原因展示。
 
-构建、启动、导入工具保留状态码、输出读取和超时错误均保留已捕获日志。
+构建、启动、远程工具保留状态码、输出读取和超时错误均保留已捕获日志。
 最后一段 stdout 与各段未合并的 stderr 分别标注来源，按最终 stdout、各段 stderr
 的顺序展示。空日志省略，日志不截断，不重复展示成功构建的产物信息。
 仍未读到 EOF 的非空日志标题带有 `; partial`，表示仅包含当时已经读到的字节。
 无效 UTF-8 的错误摘要指出读取的流及管道端点，诊断日志以完整的字节转义形式
-展示并标记 `; escaped bytes`；不会推断重定向前的数据来源。
+展示并标记 `; escaped bytes`。
 
 读取日志与进程管理使用独立的任务组。错误发生后立即取消并回收直接管理的进程，
 读取任务在回收期间继续工作；普通错误回收后最多再补读 100 ms，仍受原用例期限
@@ -755,7 +695,7 @@ Not updating <canonical-file>: execution errors in this document
 
 | 计数 | 含义 |
 | --- | --- |
-| `total` | 尝试检查或执行的用例数，在处理每个用例之前递增。包含目标解析或执行错误用例；不包含配置指令、import 和解析或模块／目录声明校验失败文档中的用例。 |
+| `total` | 尝试检查或执行的用例数，在处理每个用例之前递增。包含目标解析或执行错误用例；不包含配置指令和解析或模块／目录声明校验失败文档中的用例。 |
 | `failed` | 执行完成但输出或退出状态不匹配的用例数。执行错误单独计数。仅在 `test` 汇总中打印。 |
 | `errors` | 捕获到的用例目标解析或执行错误与文档读取、解析、声明校验、更新错误之和。一次解析或声明校验失败计为一个文档错误。 |
 | `updated` | 已成功写入文档或可生成试运行差异的变化用例数，包括纯规范化及共享围栏变化涉及的所有用例。每个用例只计一次，不按文件或变更行计数。 |
@@ -784,7 +724,7 @@ Not updating <canonical-file>: execution errors in this document
 | 调度、计数与错误隔离 | [cli/runner.mbt](cli/runner.mbt) | [e2etests/integration.mjs](../e2etests/integration.mjs) |
 | 文件发现与原子替换 | [files/files.mbt](files/files.mbt)、[files/path.mbt](files/path.mbt) | [files/files_test.mbt](files/files_test.mbt) |
 | Markdown 与命令 | [markdown/markdown.mbt](markdown/markdown.mbt)、[markdown/command/command.mbt](markdown/command/command.mbt) | [markdown/parser_wbtest.mbt](markdown/parser_wbtest.mbt) |
-| 文件级工具导入 | [markdown/imports.mbt](markdown/imports.mbt)、[markdown/types.mbt](markdown/types.mbt) | [markdown/imports_wbtest.mbt](markdown/imports_wbtest.mbt)、[e2etests/integration.mjs](../e2etests/integration.mjs) |
+| 远程坐标 | [resolve/coordinate.mbt](resolve/coordinate.mbt)、[resolve/document.mbt](resolve/document.mbt) | [resolve/coordinate_wbtest.mbt](resolve/coordinate_wbtest.mbt)、[e2etests/integration/remote.spec.mjs](../e2etests/integration/remote.spec.mjs) |
 | 文档校验与目标解析 | [resolve/document.mbt](resolve/document.mbt)、[resolve/module.mbt](resolve/module.mbt)、[resolve/working_directory.mbt](resolve/working_directory.mbt) | [resolve/document_wbtest.mbt](resolve/document_wbtest.mbt)、[resolve/module_wbtest.mbt](resolve/module_wbtest.mbt)、[resolve/working_directory_wbtest.mbt](resolve/working_directory_wbtest.mbt)、[e2etests/integration/check.spec.mjs](../e2etests/integration/check.spec.mjs) |
 | 执行与产物解析 | [execute/execute.mbt](execute/execute.mbt)、[execute/pipeline.mbt](execute/pipeline.mbt) | [execute/execute_wbtest.mbt](execute/execute_wbtest.mbt)、[e2etests/integration.mjs](../e2etests/integration.mjs) |
 | 匹配与输出生成 | [output/expectation.mbt](output/expectation.mbt)、[output/glob.mbt](output/glob.mbt)、[output/render.mbt](output/render.mbt) | [output/matcher_test.mbt](output/matcher_test.mbt)、[update/update_test.mbt](update/update_test.mbt) |
@@ -806,5 +746,5 @@ moon info && moon fmt
 脚本和包进行验证。传入 `--target wasm` 或 `--target native` 可以只选择一种
 CLI 后端；这些是集成测试运行器的选项，与 mooncram 的用例后端选项相互独立。
 
-导入集成测试以本地构建的 fixture 可执行文件替代 moonx，不依赖注册表或网络状态，
+远程包集成测试以本地构建的 fixture 可执行文件替代 moonx，不依赖注册表或网络状态，
 验证固定 Wasm 调用参数、保留错误状态及取消回收行为。

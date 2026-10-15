@@ -37,7 +37,7 @@ moon run . -- test README.md
 That last command runs this example using [examples/hello.mbtx](examples/hello.mbtx):
 
 ```mooncram
-$ ./examples/hello.mbtx "Moon Bit"
+$ moonx ./examples/hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 
@@ -84,7 +84,7 @@ In `tests/hello.md`, describe what you want to test:
 The script greets the user.
 
 ```mooncram
-$ ./hello.mbtx
+$ moonx ./hello.mbtx
 Hello, MoonBit!
 ```
 ````
@@ -108,13 +108,13 @@ so they are not executed as part of the README.
 
 ### Local scripts
 
-Use a relative or absolute path to a `.mbtx` file. Arguments support single
+Write `moonx` followed by a relative or absolute path to a `.mbtx` file. Arguments support single
 quotes, double quotes, and backslash escapes. For a script accepting a name,
 such as this repository's `examples/hello.mbtx`:
 
 ````markdown
 ```mooncram
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
@@ -126,7 +126,7 @@ Add your module's full name after `mooncram`. Suppose `moon.mod` declares
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme 1.0.0
 ```
 ````
@@ -134,34 +134,33 @@ acme 1.0.0
 Launch mooncram from the directory containing that `moon.mod`. The declaration
 must match its name exactly and applies only to that block. The package must be
 executable, for example with `pkgtype(kind: "executable")` in `moon.pkg`.
-For an executable root package, use the module's short name (`acme` here).
+Write `moonx` and the full package name, including the module name. For an
+executable root package, use `moonx user/acme`.
 
 mooncram builds local packages before running them. Build diagnostics stay
 separate from the program output being tested. Packages use Wasm by default;
 `mooncram test tests --target native` selects native and requires a C toolchain.
 Standalone scripts always use Wasm.
 
+Arguments after the target are passed directly to the program, including a
+literal `--`. mooncram does not parse moonx options before the target.
+
 ### Tools from Mooncakes
 
-Declare an alias and an exact version in a `mooncram-import` block:
+Run a full coordinate and an exact version directly with `moonx`:
 
 ````markdown
-```mooncram-import
-mbtcram : moonbit-community/mooncram@0.0.3
-```
-
 ```mooncram
-$ mbtcram --version
+$ moonx moonbit-community/mooncram@0.0.3 --version
 0.0.3
 ```
 ````
 
-One import block can declare several tools. Aliases are available throughout the
-document, even before the import block. Pin each coordinate as
-`user/module[/package]@version`; ranges and `latest` are not accepted. Choose
-aliases that do not conflict with local executable packages.
+Coordinates use `user/module[/package]@version`. Versions must be exact SemVer;
+ranges, omitted versions and `latest` are rejected. No import block or alias is
+needed. Old `mooncram-import` blocks are ignored as ordinary Markdown.
 
-`moonx` downloads and caches imported tools. They always use Wasm, including
+`moonx` downloads and caches remote tools. They always use Wasm, including
 when local packages use `--target native`.
 
 ## Describe the expected result
@@ -173,7 +172,7 @@ place the expected exit code on the last line:
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --unknown
+$ moonx user/acme/cmd/acme --unknown
 @STDOUT (empty)
 @STDERR
 error: unknown option --unknown
@@ -195,10 +194,10 @@ For output that varies, match the stable parts with a glob or regex:
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme * (glob)
 
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 ```
 ````
@@ -240,10 +239,10 @@ fn main {
 ````markdown
 ```mooncram
 $ export NAME='Moon Bit'
-$ ./environment.mbtx
+$ moonx ./environment.mbtx
 Hello, Moon Bit!
 
-$ NAME=World ./environment.mbtx
+$ NAME=World moonx ./environment.mbtx
 Hello, World!
 ```
 ````
@@ -253,9 +252,9 @@ assignments apply to that pipeline segment and its build. Mooncram does not
 expand environment variables: `${NAME}` and `$NAME` are ordinary text in
 arguments, assignment values, executable paths, working directories and expected
 output. Normal argument splitting, quoting and escaping still apply. For example,
-`NAME=World ./hello.mbtx "${NAME}"` passes the literal argument `${NAME}` while
+`NAME=World moonx ./hello.mbtx "${NAME}"` passes the literal argument `${NAME}` while
 setting `NAME` to `World` in the child process. To pass a name as an argument,
-write it explicitly, as in `./hello.mbtx World`.
+write it explicitly, as in `moonx ./hello.mbtx World`.
 
 ### Working directory and fixtures
 
@@ -266,7 +265,7 @@ To use another directory, set it before the first test command in a block:
 ````markdown
 ```mooncram
 $ set-current-working-directory ../examples
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
@@ -279,11 +278,12 @@ mooncram does not create an isolated temporary workspace.
 
 ### Pipelines
 
-Connect scripts, local packages, and imported tools with `|`:
+Connect scripts, local packages, and remote tools with `|`. Every segment
+must explicitly name `moonx`:
 
 ````markdown
 ```mooncram user/acme
-$ ./input.mbtx | cmd/acme --uppercase
+$ moonx ./input.mbtx | moonx user/acme/cmd/acme --uppercase
 HELLO, MOONBIT!
 ```
 ````
@@ -292,12 +292,13 @@ Segments run concurrently. The last segment's stdout is matched. The expected
 exit code uses **pipefail**: the rightmost nonzero code, or `0` if all succeed.
 The first segment receives EOF on stdin.
 
-On a nonfinal segment, `2>&1` sends stderr into the pipe and `1>/dev/null`
-discards stdout. The final segment does not support these markers; use
-`@STDOUT` and `@STDERR` there.
+Each segment's stderr is captured separately, in pipeline order. Use `@STDOUT`
+and `@STDERR` to check both streams. Output redirection, including `2>&1` and
+`1>/dev/null`, is rejected in every segment. Quote or escape such text to pass it
+as an ordinary argument.
 
 Commands use mooncram's own parser, rather than a shell. Shell commands such as
-`echo` and `cat`, operators such as `&&` and `;`, command substitution, general
+`echo` and `cat`, operators such as `&&` and `;`, command substitution,
 redirection, and multiline shell expressions are unsupported. Put setup logic
 in a MoonBit script when needed.
 

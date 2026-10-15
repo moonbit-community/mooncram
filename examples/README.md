@@ -3,26 +3,22 @@
 Run `moon run . -- test examples` from the repository root.
 
 ```mooncram
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 
-The root executable can be called by the module's short name when launched
+Call the root executable with `moonx` and its full module name when launched
 from this repository root. Programs still run in the `examples` directory.
 
 ```mooncram moonbit-community/mooncram
-$ mooncram --version
+$ moonx moonbit-community/mooncram --version
 0.0.6
 ```
 
-A file can also import a fixed-version Mooncakes tool:
-
-```mooncram-import
-mbtcram : moonbit-community/mooncram@0.0.3
-```
+A fixed-version Mooncakes tool can be run directly:
 
 ```mooncram
-$ mbtcram help
+$ moonx moonbit-community/mooncram@0.0.3 help
 Usage: mooncram [options] <command>
 
 Run MoonBit command examples in Markdown mooncram fences.
@@ -40,6 +36,5 @@ Options:
   --color <color>            Color: auto, always, never [default: auto]
 ```
 
-The declaration applies to every test fence in that file, including earlier
-fences. Imported tools use Wasm even with `--target native`. moonx fetches and
-caches the pinned package; fetching shares the case timeout with execution.
+Remote tools use Wasm even with `--target native`. moonx fetches and caches
+the pinned package; fetching shares the case timeout with execution.
