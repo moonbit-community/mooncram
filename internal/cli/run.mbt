@@ -18,7 +18,7 @@
 pub async fn run(args : Array[String]) -> Int32 {
   run_cli(parse_cli(args)) catch {
     e => {
-      @stdio.stderr.write("ERROR \{@diagnostic.error_text(e)}\n")
+      @stdio.stderr.write(@diagnostic.render(e))
       2
     }
   }

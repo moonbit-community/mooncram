@@ -85,12 +85,12 @@ fn expand(
       Text(text) => result.write_string(text)
       Variable(name) => {
         if executable {
-          raise @diagnostic.Failure(
+          raise @diagnostic.failure(
             "variable expansion is not allowed in executable paths",
           )
         }
         guard lookup(name) is Some(value) else {
-          raise @diagnostic.Failure("undefined variable: \{name}")
+          raise @diagnostic.failure("undefined variable: \{name}")
         }
         result.write_string(value)
       }
@@ -160,7 +160,7 @@ pub fn parse(
       match token {
         Argument(parts, assignment) => {
           if stderr_to_stdout || stdout_to_null {
-            raise @diagnostic.Failure(
+            raise @diagnostic.failure(
               "ordinary arguments cannot follow redirection",
             )
           }
@@ -179,13 +179,13 @@ pub fn parse(
         }
         StderrToStdout => {
           if stderr_to_stdout {
-            raise @diagnostic.Failure("duplicate 2>&1 redirection")
+            raise @diagnostic.failure("duplicate 2>&1 redirection")
           }
           stderr_to_stdout = true
         }
         StdoutToNull => {
           if stdout_to_null {
-            raise @diagnostic.Failure("duplicate 1>/dev/null redirection")
+            raise @diagnostic.failure("duplicate 1>/dev/null redirection")
           }
           stdout_to_null = true
         }
@@ -193,42 +193,42 @@ pub fn parse(
     }
     if segment.is_empty() {
       if !extra_env.is_empty() {
-        raise @diagnostic.Failure("environment assignments require a command")
+        raise @diagnostic.failure("environment assignments require a command")
       }
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "empty pipeline segment; expected a local .mbtx file or executable package path",
       )
     }
     let executable = expand(segment[0], segment_lookup, executable=true)
     if executable == "" {
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "expected a local .mbtx file or executable package path",
       )
     }
     if executable == "set-current-working-directory" {
       if !extra_env.is_empty() {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "set-current-working-directory does not accept temporary environment assignments",
         )
       }
       if stderr_to_stdout || stdout_to_null {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "set-current-working-directory does not accept redirection",
         )
       }
       if words.length() != 1 {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "set-current-working-directory is not allowed in a pipeline",
         )
       }
       if segment.length() != 2 {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "set-current-working-directory requires exactly one nonempty directory argument",
         )
       }
       let directory = expand(segment[1], segment_lookup)
       if directory.is_empty() {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "set-current-working-directory requires exactly one nonempty directory argument",
         )
       }
@@ -236,32 +236,32 @@ pub fn parse(
     }
     if executable == "export" {
       if !extra_env.is_empty() {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "export does not accept temporary environment assignments",
         )
       }
       if stderr_to_stdout || stdout_to_null {
-        raise @diagnostic.Failure("export does not accept redirection")
+        raise @diagnostic.failure("export does not accept redirection")
       }
       if words.length() != 1 {
-        raise @diagnostic.Failure("export is not allowed in a pipeline")
+        raise @diagnostic.failure("export is not allowed in a pipeline")
       }
       if segment.length() != 2 {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "export requires exactly one NAME=value assignment",
         )
       }
       // The name and '=' must be literal; only the value may contain references.
       let assignment = segment[1]
       guard assignment[0] is Text(prefix) else {
-        raise @diagnostic.Failure("export requires a NAME=value assignment")
+        raise @diagnostic.failure("export requires a NAME=value assignment")
       }
       guard prefix.find("=") is Some(eq) else {
-        raise @diagnostic.Failure("export requires a NAME=value assignment")
+        raise @diagnostic.failure("export requires a NAME=value assignment")
       }
       let name = prefix[:eq].to_owned()
       if !valid_name(name) {
-        raise @diagnostic.Failure("invalid export variable name: \{name}")
+        raise @diagnostic.failure("invalid export variable name: \{name}")
       }
       let value_parts = [Text(prefix[eq + 1:].to_owned())] +
         assignment[1:].to_owned()
@@ -274,7 +274,7 @@ pub fn parse(
     pipeline.push({ argv: args, extra_env, stderr_to_stdout, stdout_to_null, })
   }
   if pipeline is [.., last] && (last.stderr_to_stdout || last.stdout_to_null) {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "redirection is not allowed in the final pipeline segment",
     )
   }
@@ -295,7 +295,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
   let chars = [ for c in command => c ]
   for c in chars {
     if c == '\u0000' || c == '\n' || c == '\r' {
-      raise @diagnostic.Failure("command contains a NUL or newline")
+      raise @diagnostic.failure("command contains a NUL or newline")
     }
   }
   for i = 0; i < chars.length(); {
@@ -351,10 +351,10 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
         end += 1
       }
       if end == chars.length() {
-        raise @diagnostic.Failure("unclosed variable reference")
+        raise @diagnostic.failure("unclosed variable reference")
       }
       if !valid_name(name.to_string()) {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "invalid variable reference: \{name.to_string()}",
         )
       }
@@ -397,7 +397,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
           args = []
         }
         '&' | ';' | '<' | '>' | '`' | '(' | ')' =>
-          raise @diagnostic.Failure(
+          raise @diagnostic.failure(
             "unquoted shell operator '\{c}'; quote it to pass it literally",
           )
         _ => {
@@ -409,10 +409,10 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
     continue i + 1
   }
   if escaped {
-    raise @diagnostic.Failure("trailing backslash in command")
+    raise @diagnostic.failure("trailing backslash in command")
   }
   if quote is Some(_) {
-    raise @diagnostic.Failure("unclosed quote in command")
+    raise @diagnostic.failure("unclosed quote in command")
   }
   if started {
     parts.push(Text(word.to_string()))

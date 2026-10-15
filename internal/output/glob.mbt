@@ -18,7 +18,7 @@ fn parse_glob(pattern : String) -> Array[GlobToken] raise {
       '\\' => {
         i += 1
         if i == chars.length() {
-          raise @diagnostic.Failure("trailing backslash in glob")
+          raise @diagnostic.failure("trailing backslash in glob")
         }
         tokens.push(Literal(chars[i]))
       }
@@ -37,7 +37,7 @@ fn parse_glob(pattern : String) -> Array[GlobToken] raise {
             c != ']' {
             let last = glob_char(chars, i + 1)
             if first.0 > last.0 {
-              raise @diagnostic.Failure("reversed character range in glob")
+              raise @diagnostic.failure("reversed character range in glob")
             }
             ranges.push((first.0, last.0))
             i = last.1
@@ -46,7 +46,7 @@ fn parse_glob(pattern : String) -> Array[GlobToken] raise {
           }
         }
         if i >= chars.length() || ranges.is_empty() {
-          raise @diagnostic.Failure("unclosed or empty character set in glob")
+          raise @diagnostic.failure("unclosed or empty character set in glob")
         }
         tokens.push(CharSet(ranges, negated))
       }
@@ -61,7 +61,7 @@ fn parse_glob(pattern : String) -> Array[GlobToken] raise {
 fn glob_char(chars : Array[Char], start : Int32) -> (Char, Int32) raise {
   let i = if chars[start] == '\\' { start + 1 } else { start }
   if i >= chars.length() {
-    raise @diagnostic.Failure("trailing backslash in glob set")
+    raise @diagnostic.failure("trailing backslash in glob set")
   }
   (chars[i], i + 1)
 }

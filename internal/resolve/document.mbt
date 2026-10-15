@@ -96,7 +96,7 @@ pub async fn DocumentContext::resolve_target(
   if self.imports.get(executable) is Some(binding) {
     if module_context is Some(context) &&
       has_local_candidate(context, binding.name) {
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "ambiguous import alias '\{binding.name}' (\{binding.coordinate}): executable package in module \{context.name}; choose a different import alias",
       )
     }
@@ -104,16 +104,26 @@ pub async fn DocumentContext::resolve_target(
   }
   let path = @files.resolve_from(self.cwd_for(case), executable)
   if path.has_suffix(".mbtx") {
-    if @fs.kind(path) != Regular {
-      raise @diagnostic.Failure(
+    let kind = @fs.kind(path) catch {
+      e => raise @diagnostic.wrap(e, "cannot access script '\{executable}'")
+    }
+    if kind != Regular {
+      raise @diagnostic.failure(
         "command must name a local .mbtx file: " + executable,
       )
     }
     Script(path)
   } else if module_context is Some(context) {
-    Package(context.root, resolve_package(context, executable, warning~))
+    let package_path = resolve_package(context, executable, warning~) catch {
+      e =>
+        raise @diagnostic.wrap(
+          e,
+          "cannot resolve executable package '\{executable}'",
+        )
+    }
+    Package(context.root, package_path)
   } else {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "command requires a .mbtx file or a module-declared executable package: \{executable}",
     )
   }

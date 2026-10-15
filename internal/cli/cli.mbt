@@ -17,13 +17,20 @@ priv struct Cli {
 ///|
 fn positive_int(text : String) -> Int32 raise {
   if text.is_empty() || !text.iter().all(c => c >= '0' && c <= '9') {
-    raise @diagnostic.Failure("expected a positive integer, got '\{text}'")
+    raise @diagnostic.failure(
+      "--timeout-ms must be an integer in 1..2147483647; got '\{text}'",
+    )
   }
   let value = @string.parse_int(text) catch {
-    _ => raise @diagnostic.Failure("integer out of range: '\{text}'")
+    _ =>
+      raise @diagnostic.failure(
+        "--timeout-ms must be an integer in 1..2147483647; got '\{text}' (out of range)",
+      )
   }
   if value <= 0 {
-    raise @diagnostic.Failure("expected a positive integer, got '\{text}'")
+    raise @diagnostic.failure(
+      "--timeout-ms must be an integer in 1..2147483647; got '\{text}'",
+    )
   }
   value
 }
@@ -31,7 +38,9 @@ fn positive_int(text : String) -> Int32 raise {
 ///|
 fn validate_target(target : String) -> Unit raise {
   if target != "wasm" && target != "native" {
-    raise @diagnostic.Failure("target must be wasm or native")
+    raise @diagnostic.failure(
+      "--target must be wasm or native; got '\{target}'",
+    )
   }
 }
 
@@ -102,7 +111,7 @@ fn parse_cli(args : Array[String]) -> Cli raise {
   if name == "check" {
     for option in ["target", "timeout-ms"] {
       if sub.sources.get(option) is Some(@argparse.Argv) {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "--" + option + " is only supported by test/update",
         )
       }
@@ -113,7 +122,9 @@ fn parse_cli(args : Array[String]) -> Cli raise {
   let timeout_ms = positive_int(sub.values["timeout-ms"][0])
   let color = sub.values["color"][0]
   if color != "auto" && color != "always" && color != "never" {
-    raise @diagnostic.Failure("color must be auto, always, or never")
+    raise @diagnostic.failure(
+      "--color must be auto, always, or never; got '\{color}'",
+    )
   }
   let paths = sub.values.get("paths").unwrap_or([])
   {

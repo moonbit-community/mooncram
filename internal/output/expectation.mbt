@@ -10,7 +10,7 @@ fn exit_marker(text : String) -> Int32? raise {
   }
   Some(
     @string.parse_int(value) catch {
-      _ => raise @diagnostic.Failure("exit status is out of range")
+      _ => raise @diagnostic.failure("exit status is out of range")
     },
   )
 }
@@ -20,13 +20,13 @@ fn parse_expected_line(raw : String) -> ExpectedLine raise {
   let matcher = if raw.has_suffix(" (escaped)") {
     let encoded = raw[:raw.length() - 10].to_owned()
     let value = @json.parse(encoded) catch {
-      _ => raise @diagnostic.Failure("(escaped) requires a JSON string")
+      _ => raise @diagnostic.failure("(escaped) requires a JSON string")
     }
     guard value is String(text) else {
-      raise @diagnostic.Failure("(escaped) requires a JSON string")
+      raise @diagnostic.failure("(escaped) requires a JSON string")
     }
     if text.contains("\n") {
-      raise @diagnostic.Failure("an escaped output line cannot contain LF")
+      raise @diagnostic.failure("an escaped output line cannot contain LF")
     }
     Equal(text)
   } else if raw.has_suffix(" (glob)") {
@@ -35,10 +35,7 @@ fn parse_expected_line(raw : String) -> ExpectedLine raise {
     let pattern = raw[:raw.length() - 8].to_owned()
     Regex(
       @string.Regex("^(?:\{pattern})$") catch {
-        e =>
-          raise @diagnostic.Failure(
-            "invalid regex: \{@diagnostic.error_text(e)}",
-          )
+        e => raise @diagnostic.wrap(e, "invalid regex")
       },
     )
   } else {
@@ -58,7 +55,7 @@ fn parse_stream_lines(
     let @cmark_base.LinePos(line, _) = node.meta.loc.first_line
     try {
       if no_eol {
-        raise @diagnostic.Failure("(no-eol) must be on the final output line")
+        raise @diagnostic.failure("(no-eol) must be on the final output line")
       }
       no_eol = node.v.has_suffix(" (no-eol)")
       let raw = if no_eol {
@@ -68,13 +65,13 @@ fn parse_stream_lines(
       }
       let parsed = parse_expected_line(raw)
       if no_eol && parsed.matcher is Equal("") {
-        raise @diagnostic.Failure(
+        raise @diagnostic.failure(
           "an empty output line cannot have (no-eol); omit it for empty output",
         )
       }
       lines.push({ ..parsed, raw: node.v, })
     } catch {
-      e => raise @diagnostic.located(file, line, @diagnostic.error_text(e))
+      e => raise @diagnostic.context(e, file~, line~)
     }
   }
   { lines, no_eol, }
@@ -105,7 +102,7 @@ fn stream_marker(text : String) -> (Stream, StreamConstraint)? raise {
     "" => Match({ lines: [], no_eol: false, })
     " (ignore)" => Ignore
     " (empty)" => Empty
-    _ => raise @diagnostic.Failure("unknown stream marker annotation: " + text)
+    _ => raise @diagnostic.failure("unknown stream marker annotation: " + text)
   }
   Some((stream, constraint))
 }
@@ -137,7 +134,7 @@ pub fn parse_expectation(
     let node = nodes[end - 1]
     let @cmark_base.LinePos(line, _) = node.meta.loc.first_line
     if (exit_marker(node.v) catch {
-        e => raise @diagnostic.located(file, line, @diagnostic.error_text(e))
+        e => raise @diagnostic.context(e, file~, line~)
       })
       is Some(code) {
       exit_code = code
@@ -149,7 +146,7 @@ pub fn parse_expectation(
     let node = nodes[i]
     let @cmark_base.LinePos(line, _) = node.meta.loc.first_line
     if (stream_marker(node.v) catch {
-        e => raise @diagnostic.located(file, line, @diagnostic.error_text(e))
+        e => raise @diagnostic.context(e, file~, line~)
       })
       is Some((stream, constraint)) {
       if markers.iter().any(m => m.1 == stream) {

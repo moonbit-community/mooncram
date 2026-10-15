@@ -9,15 +9,15 @@ async fn validate_document_working_directories(
     let path = @files.resolve_from(base, declaration.directory)
     let directory = try {
       if @fs.kind(path) != Directory {
-        raise @diagnostic.Failure("expected an existing directory")
+        raise @diagnostic.failure("expected an existing directory")
       }
       @fs.realpath(path)
     } catch {
       e =>
-        raise @diagnostic.located(
-          document.path,
-          declaration.line,
-          "invalid working directory '\{path}': \{@diagnostic.error_text(e)}",
+        raise @diagnostic.context(
+          @diagnostic.wrap(e, "invalid working directory '\{path}'"),
+          file=document.path,
+          line=declaration.line,
         )
     }
     directories[declaration.line] = directory

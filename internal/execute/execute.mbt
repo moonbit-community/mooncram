@@ -53,7 +53,7 @@ pub async fn execute_case(
       }
       capture_pipeline(commands, cwd)
     },
-    error=@diagnostic.Failure(
+    error=@diagnostic.failure(
       "timed out after \{timeout_ms} ms (including build)",
     ),
   )
@@ -147,13 +147,13 @@ async fn build_artifact(
     cwd,
   )
   if build.exit_code != 0 {
-    raise @diagnostic.Failure(
+    raise @diagnostic.failure(
       "build failed (exit \{build.exit_code})\n\{build.output}\{build.diagnostic}",
     )
   }
   let artifact = parse_artifact(build.output) catch {
     e =>
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "\{@diagnostic.error_text(e)}\n\{build.output}\{build.diagnostic}",
       )
   }
@@ -163,12 +163,12 @@ async fn build_artifact(
 ///|
 fn parse_artifact(output : String) -> String raise {
   let value = @json.parse(output) catch {
-    _ => raise @diagnostic.Failure("moon returned invalid build artifact JSON")
+    _ => raise @diagnostic.failure("moon returned invalid build artifact JSON")
   }
   match value {
     { "artifacts_path": [String(path)], .. } => path
     _ =>
-      raise @diagnostic.Failure(
+      raise @diagnostic.failure(
         "moon must return exactly one artifacts_path entry",
       )
   }
