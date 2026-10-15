@@ -1,12 +1,7 @@
 ///|
 fn plain_pipeline(argvs : Array[Array[String]]) -> @command.Command {
   @command.Pipeline(
-    argvs.map(argv => {
-      argv,
-      extra_env: Map([]),
-      stderr_to_stdout: false,
-      stdout_to_null: false,
-    }),
+    argvs.map(argv => { argv: ["moonx"] + argv, extra_env: Map([]), }),
   )
 }
 
@@ -26,15 +21,17 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 ///|
 test "command quoting and literal expansion characters" {
   assert_eq(
-    @command.parse("./hello.mbtx 'Moon Bit' \"a b\" x\\ y '' \"\" a\"b\"c"),
+    @command.parse(
+      "moonx ./hello.mbtx 'Moon Bit' \"a b\" x\\ y '' \"\" a\"b\"c",
+    ),
     plain_pipeline([["./hello.mbtx", "Moon Bit", "a b", "x y", "", "", "abc"]]),
   )
   assert_eq(
-    @command.parse("./a.mbtx '$HOME' * ~ \"$(cmd)\" '|' \\> 'a\\b'"),
+    @command.parse("moonx ./a.mbtx '$HOME' * ~ \"$(cmd)\" '|' \\> 'a\\b'"),
     plain_pipeline([["./a.mbtx", "$HOME", "*", "~", "$(cmd)", "|", ">", "a\\b"]]),
   )
   assert_eq(
-    @command.parse("./脚本.mbtx 😀\t\"a\\\"b\""),
+    @command.parse("moonx ./脚本.mbtx 😀\t\"a\\\"b\""),
     plain_pipeline([["./脚本.mbtx", "😀", "a\"b"]]),
   )
 }
@@ -43,27 +40,30 @@ test "command quoting and literal expansion characters" {
 test "command rejects shell operators and incomplete arguments" {
   for operator in [">", "<", ";", "&&", "&", "`", "$(whoami)"] {
     assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + operator)),
+      () => ignore(@command.parse("moonx ./a.mbtx " + operator)),
       "shell operator",
     )
   }
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx '")),
+    () => ignore(@command.parse("moonx ./a.mbtx '")),
     "unclosed quote",
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx \\")),
+    () => ignore(@command.parse("moonx ./a.mbtx \\")),
     "trailing backslash",
   )
-  assert_error_contains(() => ignore(@command.parse("''")), "expected a local")
-  assert_error_contains(() => ignore(@command.parse("./a.mbtx \u0000")), "NUL")
+  assert_error_contains(() => ignore(@command.parse("''")), "expected moonx")
+  assert_error_contains(
+    () => ignore(@command.parse("moonx ./a.mbtx \u0000")),
+    "NUL",
+  )
 }
 
 ///|
 test "pipelines split only unquoted unescaped separators" {
   for
     command in [
-      "./a.mbtx x | ./cmd/filter | ./b.mbtx", "./a.mbtx x|./cmd/filter|./b.mbtx",
+      "moonx ./a.mbtx x | moonx ./cmd/filter | moonx ./b.mbtx", "moonx ./a.mbtx x|moonx ./cmd/filter|moonx ./b.mbtx",
     ] {
     assert_eq(
       @command.parse(command),
@@ -71,7 +71,7 @@ test "pipelines split only unquoted unescaped separators" {
     )
   }
   assert_eq(
-    @command.parse("./a.mbtx '|' \"|\" \\| a\\|b|./b.mbtx 'x|y'"),
+    @command.parse("moonx ./a.mbtx '|' \"|\" \\| a\\|b|moonx ./b.mbtx 'x|y'"),
     plain_pipeline([["./a.mbtx", "|", "|", "|", "a|b"], ["./b.mbtx", "x|y"]]),
   )
 }
@@ -80,17 +80,18 @@ test "pipelines split only unquoted unescaped separators" {
 test "pipelines reject empty segments and targets" {
   for
     command in [
-      "", "|./a.mbtx", "./a.mbtx|", "./a.mbtx||./b.mbtx", "./a.mbtx | | ./b.mbtx",
+      "", "|moonx ./a.mbtx", "moonx ./a.mbtx|", "moonx ./a.mbtx||moonx ./b.mbtx",
+      "moonx ./a.mbtx | | moonx ./b.mbtx",
     ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
       "empty pipeline segment",
     )
   }
-  for command in ["'' | ./a.mbtx", "./a.mbtx | \"\""] {
+  for command in ["'' | moonx ./a.mbtx", "moonx ./a.mbtx | \"\""] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
-      "expected a local",
+      "expected moonx",
     )
   }
 }
@@ -128,7 +129,7 @@ test "export assigns one valid name and preserves empty values and equals" {
 test "variable-like text stays literal through quoting escaping and concatenation" {
   assert_eq(
     @command.parse(
-      "./a.mbtx ${VALUE} \"${VALUE}\" '${VALUE}' \\${VALUE} \"\\${VALUE}\" pre${VALUE}post a\"${EMPTY}\"b '$VAR' $VAR",
+      "moonx ./a.mbtx ${VALUE} \"${VALUE}\" '${VALUE}' \\${VALUE} \"\\${VALUE}\" pre${VALUE}post a\"${EMPTY}\"b '$VAR' $VAR",
     ),
     plain_pipeline([
       [
@@ -142,7 +143,7 @@ test "variable-like text stays literal through quoting escaping and concatenatio
     @command.Export(name="NAME", value="${NAME}-after"),
   )
   assert_eq(
-    @command.parse("./a.mbtx ${VALUE}|./b.mbtx ${EMPTY}"),
+    @command.parse("moonx ./a.mbtx ${VALUE}|moonx ./b.mbtx ${EMPTY}"),
     plain_pipeline([["./a.mbtx", "${VALUE}"], ["./b.mbtx", "${EMPTY}"]]),
   )
 }
@@ -155,32 +156,32 @@ test "variable-like text has no reference validation and uses ordinary token rul
     ] {
     for argument in [text, "'" + text + "'", "\"" + text + "\""] {
       assert_eq(
-        @command.parse("./a.mbtx " + argument),
+        @command.parse("moonx ./a.mbtx " + argument),
         plain_pipeline([["./a.mbtx", text]]),
       )
       assert_eq(
         @command.parse("export A=" + argument),
         @command.Export(name="A", value=text),
       )
-      assert_eq(segments("A=" + argument + " ./a.mbtx")[0].extra_env, {
+      assert_eq(segments("A=" + argument + " moonx ./a.mbtx")[0].extra_env, {
         "A": text,
       })
     }
   }
   assert_eq(
-    @command.parse("./a.mbtx ${A B} ${A|B}"),
+    @command.parse("moonx ./a.mbtx ${A B} ${A|moonx B}"),
     plain_pipeline([["./a.mbtx", "${A", "B}", "${A"], ["B}"]]),
   )
   assert_eq(
-    @command.parse("./a.mbtx '${A B}' \"${A|B}\""),
+    @command.parse("moonx ./a.mbtx '${A B}' \"${A|B}\""),
     plain_pipeline([["./a.mbtx", "${A B}", "${A|B}"]]),
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx \"${A")),
+    () => ignore(@command.parse("moonx ./a.mbtx \"${A")),
     "unclosed quote",
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx ${A>B}")),
+    () => ignore(@command.parse("moonx ./a.mbtx ${A>B}")),
     "shell operator",
   )
 }
@@ -189,7 +190,7 @@ test "variable-like text has no reference validation and uses ordinary token rul
 test "executable paths retain variable-like text and exports reject pipelines" {
   assert_eq(
     @command.parse(
-      "${PATH}|./${PATH}.mbtx arg|\"${PATH}\"|'${PATH}'|./\\${PATH}.mbtx",
+      "moonx ${PATH}|moonx ./${PATH}.mbtx arg|moonx \"${PATH}\"|moonx '${PATH}'|moonx ./\\${PATH}.mbtx",
     ),
     plain_pipeline([
       ["${PATH}"],
@@ -201,7 +202,7 @@ test "executable paths retain variable-like text and exports reject pipelines" {
   )
   for
     command in [
-      "export A=x|./a.mbtx", "./a.mbtx|export A=x", "./a.mbtx|export A=x|./b.mbtx",
+      "export A=x|moonx ./a.mbtx", "moonx ./a.mbtx|export A=x", "moonx ./a.mbtx|export A=x|moonx ./b.mbtx",
     ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
@@ -211,37 +212,17 @@ test "executable paths retain variable-like text and exports reject pipelines" {
 }
 
 ///|
-test "redirection routes nonfinal segments and rejects final segments" {
-  for
-    (suffix, stderr_to_stdout, stdout_to_null) in [
-      ("2>&1", true, false),
-      ("1>/dev/null", false, true),
-      ("2>&1 1>/dev/null", true, true),
-      ("1>/dev/null 2>&1", true, true),
-    ] {
+test "redirection is rejected in every pipeline segment" {
+  for suffix in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null", "1>/dev/null 2>&1"] {
     for count in [1, 2, 3] {
       for position in 0..<count {
         for whitespace in [" ", "\t", " \t "] {
-          let commands = Array::make(count, "./a.mbtx arg")
+          let commands = Array::make(count, "moonx ./a.mbtx arg")
           commands[position] += whitespace + suffix
-          let expected : Array[@command.PipelineSegment] = Array::makei(count, i => {
-            argv: ["./a.mbtx", "arg"],
-            extra_env: Map([]),
-            stderr_to_stdout: i == position && stderr_to_stdout,
-            stdout_to_null: i == position && stdout_to_null,
-          })
-          // A marker can touch the following pipe, but requires preceding space.
-          if position == count - 1 {
-            assert_error_contains(
-              () => ignore(@command.parse(commands.join("|"))),
-              "redirection is not allowed in the final pipeline segment",
-            )
-          } else {
-            assert_eq(
-              @command.parse(commands.join("|")),
-              @command.Pipeline(expected),
-            )
-          }
+          assert_error_contains(
+            () => ignore(@command.parse(commands.join("|"))),
+            "unquoted shell operator",
+          )
         }
       }
     }
@@ -258,68 +239,38 @@ test "quoted escaped and variable-like markers remain ordinary arguments" {
         marker.replace(old=">", new="\\>").replace(old="&", new="\\&"),
       ] {
       assert_eq(
-        @command.parse("./a.mbtx " + literal + " after"),
+        @command.parse("moonx ./a.mbtx " + literal + " after"),
         plain_pipeline([["./a.mbtx", marker, "after"]]),
       )
     }
   }
   assert_eq(
-    @command.parse("./a.mbtx ${MARKER} '${MARKER}' \\${MARKER} 2>&1|./b.mbtx"),
-    @command.Pipeline([
-      {
-        argv: ["./a.mbtx", "${MARKER}", "${MARKER}", "${MARKER}"],
-        stderr_to_stdout: true,
-        extra_env: Map([]),
-        stdout_to_null: false,
-      },
-      {
-        argv: ["./b.mbtx"],
-        extra_env: Map([]),
-        stderr_to_stdout: false,
-        stdout_to_null: false,
-      },
+    @command.parse(
+      "moonx ./a.mbtx ${MARKER} '${MARKER}' \\${MARKER}|moonx ./b.mbtx",
+    ),
+    plain_pipeline([
+      ["./a.mbtx", "${MARKER}", "${MARKER}", "${MARKER}"],
+      ["./b.mbtx"],
     ]),
   )
 }
 
 ///|
-test "redirection rejects missing commands duplicates trailing args and exports" {
-  for command in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null", "./a.mbtx|2>&1"] {
+test "raw redirections are shell operators in commands and configuration" {
+  for
+    command in [
+      "2>&1", "1>/dev/null", "moonx ./a.mbtx|2>&1", "moonx ./a.mbtx 2>&1 arg", "moonx ./a.mbtx 1>/dev/null B=y",
+      "export A=x 2>&1", "export A=x 1>/dev/null", "set-current-working-directory dir 2>&1",
+    ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
-      "empty pipeline segment",
+      "shell operator",
     )
   }
-  for marker in ["2>&1", "1>/dev/null"] {
-    assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + marker + " " + marker)),
-      "duplicate " + marker + " redirection",
-    )
-    assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + marker + " arg")),
-      "ordinary arguments",
-    )
-    assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + marker + " '${MARKER}'")),
-      "ordinary arguments",
-    )
-    assert_error_contains(
-      () => ignore(@command.parse("export A=x " + marker)),
-      "export does not accept redirection",
-    )
-  }
-  assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx 2>&1 1>/dev/null 2>&1")),
-    "duplicate 2>&1 redirection",
-  )
-  assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx 1>/dev/null 2>&1 1>/dev/null")),
-    "duplicate 1>/dev/null redirection",
-  )
 }
 
 ///|
-test "redirection requires exact raw tokens and whitespace boundaries" {
+test "redirection operators are rejected even when attached or partially escaped" {
   for
     invalid in [
       "arg2>&1", "arg1>/dev/null", "2 >&1", "2> &1", "2>& 1", "2>\t&1", "2>&\t1",
@@ -331,16 +282,16 @@ test "redirection requires exact raw tokens and whitespace boundaries" {
       "stderr>/std${SUFFIX}", ">/dev/null", "2>/dev/null", "'1'>/dev/null",
     ] {
     assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + invalid)),
+      () => ignore(@command.parse("moonx ./a.mbtx " + invalid)),
       "shell operator",
     )
   }
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx2>&1")),
+    () => ignore(@command.parse("moonx ./a.mbtx2>&1")),
     "shell operator",
   )
   assert_error_contains(
-    () => ignore(@command.parse("./a.mbtx1>/dev/null")),
+    () => ignore(@command.parse("moonx ./a.mbtx1>/dev/null")),
     "shell operator",
   )
 }
@@ -371,8 +322,8 @@ test "working directory takes one nonempty literal argument with normal quoting"
   }
   for
     command in [
-      "set-current-working-directory dir|./a.mbtx", "./a.mbtx|set-current-working-directory dir",
-      "./a.mbtx|set-current-working-directory dir|./b.mbtx",
+      "set-current-working-directory dir|moonx ./a.mbtx", "moonx ./a.mbtx|set-current-working-directory dir",
+      "moonx ./a.mbtx|set-current-working-directory dir|moonx ./b.mbtx",
     ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
@@ -384,7 +335,33 @@ test "working directory takes one nonempty literal argument with normal quoting"
       () => {
         ignore(@command.parse("set-current-working-directory dir " + marker))
       },
-      "does not accept redirection",
+      "shell operator",
     )
   }
+}
+
+///|
+test "commands require explicit moonx and a nonempty target" {
+  for
+    command in [
+      "./a.mbtx", "user/foo", "tool arg", "NAME=x ./a.mbtx", "moonx ./a.mbtx|tool",
+    ] {
+    assert_error_contains(
+      () => ignore(@command.parse(command)),
+      "must start with moonx",
+    )
+  }
+  for
+    command in [
+      "moonx", "moonx ''", "moonx \"\"", "A=x moonx", "moonx ./a.mbtx|moonx",
+    ] {
+    assert_error_contains(
+      () => ignore(@command.parse(command)),
+      "requires a nonempty target",
+    )
+  }
+  assert_eq(
+    @command.parse("moonx ./a.mbtx -- --target native"),
+    plain_pipeline([["./a.mbtx", "--", "--target", "native"]]),
+  )
 }

@@ -15,12 +15,12 @@ pub struct DocumentContext {
   // private fields
 }
 pub fn DocumentContext::cwd_for(Self, @markdown.Case) -> String
-pub async fn DocumentContext::resolve_target(Self, @markdown.Case, String, warning~ : async (String) -> Unit) -> ResolvedTarget
+pub async fn DocumentContext::resolve_target(Self, @markdown.Case, String) -> ResolvedTarget
 
 pub(all) enum ResolvedTarget {
   Script(String)
   Package(String, String)
-  Imported(@markdown.ToolImport)
+  Remote(String)
 }
 
 // Type aliases

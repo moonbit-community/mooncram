@@ -4,9 +4,7 @@ priv struct Command {
   program : String
   args : Array[String]
   extra_env : Map[String, String]
-  imported : @markdown.ToolImport?
-  stderr_to_stdout : Bool
-  stdout_to_null : Bool
+  remote : String?
 }
 
 ///|
@@ -94,38 +92,20 @@ async fn capture_pipeline(
           progress.segment = Some(labels[i])
           progress.tool = Some(command.program)
           let is_last = i == last
-          let stdout_writer = if is_last {
-            out_writer
-          } else if command.stdout_to_null {
-            let (reader, writer) = @process.read_from_process()
-            readers.push(reader)
-            outputs.push(writer)
-            log_group.spawn_bg(() => drain_output(reader))
-            if !command.stderr_to_stdout {
-              outputs[i].close()
-            }
-            writer
-          } else {
-            outputs[i]
-          }
-          let stderr_writer = if !is_last && command.stderr_to_stdout {
-            outputs[i]
-          } else {
-            let (reader, writer) = @process.read_from_process()
-            readers.push(reader)
-            outputs.push(writer)
-            let log = StreamCapture::new(
-              phase,
-              "stderr",
-              labels[i],
-              command.program,
-            )
-            progress.logs.push(log)
-            errors.push(
-              log_group.spawn(() => capture_stream(reader, log, progress)),
-            )
-            writer
-          }
+          let stdout_writer = if is_last { out_writer } else { outputs[i] }
+          let (reader, stderr_writer) = @process.read_from_process()
+          readers.push(reader)
+          outputs.push(stderr_writer)
+          let log = StreamCapture::new(
+            phase,
+            "stderr",
+            labels[i],
+            command.program,
+          )
+          progress.logs.push(log)
+          errors.push(
+            log_group.spawn(() => capture_stream(reader, log, progress)),
+          )
           let process = @process.spawn(
             process_group,
             command.program,
@@ -160,7 +140,7 @@ async fn capture_pipeline(
             process_group.spawn(() => {
               let status = process.wait()
               progress.pending[i] = None
-              check_import_status(command.imported, i + 1, status) catch {
+              check_remote_status(command.remote, i + 1, status) catch {
                 e =>
                   raise progress.remember(
                     @diagnostic.context(
@@ -220,23 +200,14 @@ async fn capture_pipeline(
 }
 
 ///|
-fn check_import_status(
-  imported : @markdown.ToolImport?,
+fn check_remote_status(
+  coordinate : String?,
   segment : Int32,
   status : Int32,
 ) -> Unit raise {
-  if imported is Some(binding) && (status == 255 || status == -1) {
+  if coordinate is Some(coordinate) && (status == 255 || status == -1) {
     raise @diagnostic.failure(
-      "import '\{binding.name}' (\{binding.coordinate}), pipeline segment \{segment}: reserved execution status \{status}",
+      "remote '\{coordinate}', pipeline segment \{segment}: reserved execution status \{status}",
     )
-  }
-}
-
-///|
-/// Discard without accumulating bytes or attempting UTF-8 decoding.
-async fn drain_output(reader : @process.ReadFromProcess) -> Unit {
-  let buffer = FixedArray::make(8192, b'\x00')
-  while reader.read(buffer) != 0 {
-    ()
   }
 }

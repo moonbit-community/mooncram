@@ -23,7 +23,7 @@ fn assert_output(
   code : Int32,
   matches : Bool,
 ) -> Unit raise {
-  let expected = parse_example("$ ./a.mbtx\n" + body).cases[0].expected
+  let expected = parse_example("$ moonx ./a.mbtx\n" + body).cases[0].expected
   assert_eq(
     expected.matches({
       output: @output.normalize_output(output),
@@ -58,24 +58,24 @@ test "no-eol escaped controls and syntax conflicts" {
     3, true,
   )
   assert_output(
-    "\"$ ./looks-like-command\" (escaped)\n\"[1]\" (escaped)\n", "$ ./looks-like-command\n[1]\n",
+    "\"$ moonx ./looks-like-command\" (escaped)\n\"[1]\" (escaped)\n", "$ moonx ./looks-like-command\n[1]\n",
     0, true,
   )
   assert_output("\"literal (glob)\" (escaped)\n", "literal (glob)\n", 0, true)
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx\na (no-eol)\nb\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx\na (no-eol)\nb\n")),
     "example.md:4:",
   )
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx\n\"\" (escaped) (no-eol)\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx\n\"\" (escaped) (no-eol)\n")),
     "empty output line",
   )
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx\nnot-json (escaped)\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx\nnot-json (escaped)\n")),
     "JSON string",
   )
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx\n\"a\\nb\" (escaped)\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx\n\"a\\nb\" (escaped)\n")),
     "cannot contain LF",
   )
 }
@@ -97,7 +97,7 @@ test "glob is anchored Unicode aware and supports sets ranges and escapes" {
   }
   for pattern in ["[", "[a", "[z-a]", "[]", "abc\\"] {
     assert_error_contains(
-      () => ignore(parse_example("$ ./a.mbtx\n" + pattern + " (glob)\n")),
+      () => ignore(parse_example("$ moonx ./a.mbtx\n" + pattern + " (glob)\n")),
       "glob",
     )
   }
@@ -110,7 +110,7 @@ test "regex matches whole lines including alternations" {
   assert_output("foo|bar (regex)\n", "xbar\n", 0, false)
   assert_output("foo|bar (regex)\n", "foox\n", 0, false)
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx\n[ (regex)\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx\n[ (regex)\n")),
     "example.md:3: invalid regex",
   )
 }
@@ -159,7 +159,7 @@ fn assert_streams(
   code : Int32,
   matches : Bool,
 ) -> Unit raise {
-  let expected = parse_example("$ ./a.mbtx\n" + body).cases[0].expected
+  let expected = parse_example("$ moonx ./a.mbtx\n" + body).cases[0].expected
   assert_eq(
     expected.matches({ output: stdout, diagnostic: stderr, exit_code: code, }),
     matches,
@@ -248,7 +248,7 @@ test "stream parser rejects malformed pairs and reports exact source positions" 
       ),
     ] {
     assert_error_contains(
-      () => ignore(parse_example("$ ./a.mbtx\n" + body)),
+      () => ignore(parse_example("$ moonx ./a.mbtx\n" + body)),
       message,
     )
   }
@@ -257,7 +257,7 @@ test "stream parser rejects malformed pairs and reports exact source positions" 
     () => {
       ignore(
         @markdown.parse_document(
-          "quote.md", "> ```mooncram\n> $ ./a.mbtx\n> @STDERR (unknown)\n> ```\n",
+          "quote.md", "> ```mooncram\n> $ moonx ./a.mbtx\n> @STDERR (unknown)\n> ```\n",
         ),
       )
     },

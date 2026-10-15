@@ -23,8 +23,6 @@ pub fn Command::to_repr(Self) -> @debug.Repr
 pub(all) struct PipelineSegment {
   argv : Array[String]
   extra_env : Map[String, String]
-  stderr_to_stdout : Bool
-  stdout_to_null : Bool
 } derive(Eq, @debug.Debug)
 pub fn PipelineSegment::equal(Self, Self) -> Bool
 pub fn PipelineSegment::not_equal(Self, Self) -> Bool

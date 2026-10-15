@@ -1,5 +1,5 @@
 ///|
-/// Validated module, import and working-directory information for one document.
+/// Validated module and working-directory information for one document.
 ///
 /// Obtain this opaque context with `validate_document`, then use it with cases
 /// from that same document. Directory declarations are resolved during
@@ -8,7 +8,6 @@ pub struct DocumentContext {
   priv module_context : ModuleContext?
   priv default_cwd : String
   priv working_directories : Map[Int32, String]
-  priv imports : Map[String, @markdown.ToolImport]
 }
 
 ///|
@@ -18,8 +17,8 @@ pub(all) enum ResolvedTarget {
   Script(String)
   /// Absolute module root and absolute executable-package directory, in order.
   Package(String, String)
-  /// Document-scoped alias with a pinned Mooncakes coordinate for `moonx`.
-  Imported(@markdown.ToolImport)
+  /// Pinned Mooncakes coordinate passed directly to `moonx`.
+  Remote(String)
 }
 
 ///|
@@ -46,7 +45,6 @@ pub async fn validate_document(
     module_context,
     default_cwd: @path.Path(document.path).dirname().to_string(),
     working_directories,
-    imports: document.imports,
   }
 }
 
@@ -68,42 +66,19 @@ pub fn DocumentContext::cwd_for(
 }
 
 ///|
-/// Resolve against the current filesystem without building or running tools.
+/// Resolve a parsed moonx target without building or running tools.
 ///
-/// `executable` is the parsed first argument of one case pipeline segment.
-/// Document import aliases take precedence; an alias that also names a local
-/// executable in a module-declared case raises an ambiguity error. Other names
-/// resolve to existing `.mbtx` scripts relative to the case directory, or to
-/// executable packages under the declared module's source root. Nested modules
-/// and packages outside that root are excluded.
-///
-/// A name equal to the module basename prefers the root executable package.
-/// If both root and same-named subpackage are executable, `warning` is awaited
-/// with the ambiguity message. Invalid configuration/targets raise errors;
-/// filesystem and warning-callback errors also propagate. Use a case from the
-/// same document as this context.
+/// Scripts resolve relative to the case directory. Remote coordinates require an
+/// exact SemVer version. Unversioned package names must be fully qualified and
+/// belong to this case's declared module. Nested modules and packages outside
+/// its source root are excluded. Use a case from this context's document.
 pub async fn DocumentContext::resolve_target(
   self : DocumentContext,
   case : @markdown.Case,
   executable : String,
-  warning~ : async (String) -> Unit,
 ) -> ResolvedTarget {
-  let module_context = if case.module_name is Some(_) {
-    self.module_context
-  } else {
-    None
-  }
-  if self.imports.get(executable) is Some(binding) {
-    if module_context is Some(context) &&
-      has_local_candidate(context, binding.name) {
-      raise @diagnostic.failure(
-        "ambiguous import alias '\{binding.name}' (\{binding.coordinate}): executable package in module \{context.name}; choose a different import alias",
-      )
-    }
-    return Imported(binding)
-  }
   let path = @files.resolve_from(self.cwd_for(case), executable)
-  if path.has_suffix(".mbtx") {
+  if executable.has_suffix(".mbtx") {
     let kind = @fs.kind(path) catch {
       e => raise @diagnostic.wrap(e, "cannot access script '\{executable}'")
     }
@@ -112,9 +87,18 @@ pub async fn DocumentContext::resolve_target(
         "command must name a local .mbtx file: " + executable,
       )
     }
-    Script(path)
-  } else if module_context is Some(context) {
-    let package_path = resolve_package(context, executable, warning~) catch {
+    return Script(path)
+  }
+  if executable.contains("@") {
+    if !valid_coordinate(executable) {
+      raise @diagnostic.failure(
+        "invalid remote coordinate (exact SemVer required): " + executable,
+      )
+    }
+    return Remote(executable)
+  }
+  if case.module_name is Some(_) && self.module_context is Some(context) {
+    let package_path = resolve_package(context, executable) catch {
       e =>
         raise @diagnostic.wrap(
           e,
@@ -124,7 +108,8 @@ pub async fn DocumentContext::resolve_target(
     Package(context.root, package_path)
   } else {
     raise @diagnostic.failure(
-      "command requires a .mbtx file or a module-declared executable package: \{executable}",
+      "command requires a .mbtx file, a module-declared full package name or a remote coordinate with exact SemVer: " +
+      executable,
     )
   }
 }

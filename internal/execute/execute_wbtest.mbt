@@ -26,26 +26,24 @@ test "artifact JSON is validated" {
 }
 
 ///|
-test "reserved statuses apply only to imports and report binding and segment" {
-  let binding = @markdown.parse_document(
-      "test.md", "```mooncram-import\ngrep : user/module@1.2.3\n```\n",
-    ).imports["grep"]
+test "reserved statuses apply only to remote tools and report coordinate and segment" {
+  let coordinate = "user/module@1.2.3"
   for status in [255, -1] {
     for
       expected in [
-        "import 'grep' (user/module@1.2.3)",
+        "remote 'user/module@1.2.3'",
         "pipeline segment 2",
         "status \{status}",
       ] {
       assert_error_contains(
-        () => check_import_status(Some(binding), 2, status),
+        () => check_remote_status(Some(coordinate), 2, status),
         expected,
       )
     }
-    check_import_status(None, 2, status)
+    check_remote_status(None, 2, status)
   }
   for status in [0, 1, 2, 254, -2, -9] {
-    check_import_status(Some(binding), 1, status)
+    check_remote_status(Some(coordinate), 1, status)
   }
 }
 

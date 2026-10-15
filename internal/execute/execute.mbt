@@ -2,19 +2,18 @@
 /// Build and execute one parsed case using its validated document context.
 ///
 /// `target` must be `"wasm"` or `"native"` and applies to local packages;
-/// scripts and imported tools always run as Wasm. `timeout_ms` is the positive
+/// scripts and remote tools always run as Wasm. `timeout_ms` is the positive
 /// deadline for target resolution, all builds, remote fetching and execution.
-/// `warning` receives nonfatal target-resolution diagnostics.
 ///
 /// Every local segment finishes its build preflight before tested programs
 /// start. Segments run concurrently, inheriting the process environment with
 /// document exports and then segment assignments applied. The first segment
 /// receives EOF; subsequent segments receive raw bytes through OS pipes.
 ///
-/// Returns final stdout and unmerged stderr (concatenated in segment order),
+/// Returns final stdout and per-segment stderr (concatenated in segment order),
 /// both decoded as UTF-8 with CRLF normalized. The exit code is the rightmost
 /// nonzero segment status, or zero. Ordinary nonzero statuses are returned for
-/// assertion; imported statuses 255 and -1 raise `@diagnostic.Failure`.
+/// assertion; remote statuses 255 and -1 raise `@diagnostic.Failure`.
 ///
 /// Resolution, build, startup, UTF-8 capture and timeout errors propagate.
 /// Failure cancels and reaps directly managed children. Commands run in the
@@ -23,7 +22,6 @@
 pub async fn execute_case(
   case : @markdown.Case,
   context : @resolve.DocumentContext,
-  warning~ : async (String) -> Unit,
   target~ : String,
   timeout_ms~ : Int32,
 ) -> @output.Captured {
@@ -35,7 +33,7 @@ pub async fn execute_case(
     for i, segment in case.pipeline {
       progress.phase = "resolve"
       progress.segment = Some(
-        segment_label(i, case.pipeline.length(), segment.argv[0]),
+        segment_label(i, case.pipeline.length(), segment.argv[1]),
       )
       progress.tool = None
       progress.pending = []
@@ -44,7 +42,7 @@ pub async fn execute_case(
       for name, value in segment.extra_env {
         extra_env[name] = value
       }
-      let resolved = context.resolve_target(case, segment.argv[0], warning~)
+      let resolved = context.resolve_target(case, segment.argv[1])
       let command = prepare_command(
         segment.argv,
         cwd,
@@ -53,11 +51,7 @@ pub async fn execute_case(
         extra_env~,
         progress~,
       )
-      commands.push({
-        ..command,
-        stderr_to_stdout: segment.stderr_to_stdout,
-        stdout_to_null: segment.stdout_to_null,
-      })
+      commands.push(command)
     }
     capture_pipeline(commands, cwd, progress~)
   }) catch {
@@ -83,17 +77,15 @@ async fn prepare_command(
   extra_env~ : Map[String, String],
   progress~ : Progress,
 ) -> Command {
-  let args = argv[1:].to_owned()
+  let args = argv[2:].to_owned()
   match resolved {
-    Imported(binding) =>
+    Remote(coordinate) =>
       {
-        label: argv[0],
+        label: argv[1],
         program: "moonx",
         extra_env,
-        args: ["--target", "wasm", binding.coordinate, "--"] + args,
-        imported: Some(binding),
-        stderr_to_stdout: false,
-        stdout_to_null: false,
+        args: ["--target", "wasm", coordinate, "--"] + args,
+        remote: Some(coordinate),
       }
     Script(executable) => {
       // moonx combines build and program statuses. Check compilation first.
@@ -106,13 +98,11 @@ async fn prepare_command(
         ),
       )
       {
-        label: argv[0],
+        label: argv[1],
         program: "moonx",
         extra_env,
-        imported: None,
+        remote: None,
         args: [executable, "--"] + args,
-        stderr_to_stdout: false,
-        stdout_to_null: false,
       }
     }
     Package(module_root, package_path) => {
@@ -126,24 +116,14 @@ async fn prepare_command(
       )
       if target == "wasm" {
         {
-          label: argv[0],
+          label: argv[1],
           program: "moonrun",
           extra_env,
-          imported: None,
+          remote: None,
           args: [artifact, "--"] + args,
-          stderr_to_stdout: false,
-          stdout_to_null: false,
         }
       } else {
-        {
-          label: argv[0],
-          program: artifact,
-          extra_env,
-          imported: None,
-          args,
-          stderr_to_stdout: false,
-          stdout_to_null: false,
-        }
+        { label: argv[1], program: artifact, extra_env, remote: None, args, }
       }
     }
   }
@@ -159,17 +139,7 @@ async fn build_artifact(
   progress.phase = "build"
   progress.tool = Some("moon")
   let build = capture_pipeline(
-    [
-      {
-        label: "moon",
-        program: "moon",
-        extra_env,
-        args,
-        imported: None,
-        stderr_to_stdout: false,
-        stdout_to_null: false,
-      },
-    ],
+    [{ label: "moon", program: "moon", extra_env, args, remote: None, }],
     cwd,
     progress~,
     building=true,

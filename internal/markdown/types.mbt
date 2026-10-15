@@ -5,7 +5,7 @@
 /// array indices and UTF-16 source offsets are zero-based. Layout and offsets
 /// refer to the unchanged `Document.source` and support lossless updates.
 pub struct Case {
-  /// Module declared by this fence, or `None` for script/import-only resolution.
+  /// Module declared by this fence, or `None` for script/remote-only resolution.
   module_name : String?
   /// Optional block-local directory declaration preceding all test commands.
   working_directory : WorkingDirectoryDeclaration?
@@ -52,8 +52,6 @@ pub struct Document {
   module_declarations : Array[(String, Int32)]
   /// All block directory declarations, including those in fences without cases.
   working_directory_declarations : Array[WorkingDirectoryDeclaration]
-  /// File-wide alias bindings, collected before parsing any test command.
-  imports : Map[String, ToolImport]
 }
 
 ///|
@@ -120,28 +118,6 @@ pub extend WorkingDirectoryDeclaration with @debug.Debug::{to_repr}
 ///|
 /// Expose structural equality; both directory text and source line must match.
 pub extend WorkingDirectoryDeclaration with Eq::{equal, not_equal}
-
-///|
-/// One file-wide binding from a tool alias to a pinned Mooncakes executable.
-///
-/// The coordinate is parsed syntactically; downloading and remote validation
-/// happen only when `moonx` executes the tool.
-pub struct ToolImport {
-  /// Case-sensitive command alias declared in `mooncram-import`.
-  name : String
-  /// Coordinate `user/module[/package]@version` with an exact SemVer version.
-  coordinate : String
-  /// One-based line of the import binding.
-  line : Int32
-} derive(Debug, Eq)
-
-///|
-/// Expose the derived debug representation of the alias, coordinate and line.
-pub extend ToolImport with @debug.Debug::{to_repr}
-
-///|
-/// Expose structural equality over the alias, coordinate and source line.
-pub extend ToolImport with Eq::{equal, not_equal}
 
 ///|
 priv struct SourceLine {

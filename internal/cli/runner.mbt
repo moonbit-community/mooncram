@@ -20,18 +20,15 @@ async fn run_cli(cli : Cli) -> Int32 {
       for case in document.cases {
         total += 1
         try {
-          let warning : async (String) -> Unit = message => {
-            @stdio.stderr.write("WARNING \{file}:\{case.line}: \{message}\n")
-          }
           if cli.command is Check {
             for i, segment in case.pipeline {
-              ignore(context.resolve_target(case, segment.argv[0], warning~)) catch {
+              ignore(context.resolve_target(case, segment.argv[1])) catch {
                 e =>
                   raise @diagnostic.context(
                     e,
                     phase="resolve",
                     cwd=context.cwd_for(case),
-                    segment="\{i + 1}/\{case.pipeline.length()} (\{segment.argv[0]})",
+                    segment="\{i + 1}/\{case.pipeline.length()} (\{segment.argv[1]})",
                   )
               }
             }
@@ -40,7 +37,6 @@ async fn run_cli(cli : Cli) -> Int32 {
           let actual = @execute.execute_case(
             case,
             context,
-            warning~,
             target=cli.target,
             timeout_ms=cli.timeout_ms,
           )

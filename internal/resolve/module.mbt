@@ -160,48 +160,26 @@ async fn callable_package(context : ModuleContext, path : String) -> Bool {
 }
 
 ///|
-async fn resolve_package(
-  context : ModuleContext,
-  name : String,
-  warning~ : async (String) -> Unit,
-) -> String {
+async fn resolve_package(context : ModuleContext, name : String) -> String {
   if !valid_package_name(name) {
     raise @diagnostic.failure("invalid module package name: " + name)
   }
-  let subpackage = @files.resolve_from(context.source_root, name)
-  let basename = context.name.split("/").last().unwrap().to_owned()
-  if name == basename {
-    let root_callable = callable_package(context, context.source_root)
-    let sub_callable = callable_package(context, subpackage)
-    if root_callable {
-      if sub_callable {
-        warning(
-          "ambiguous package '\{name}': \{context.name} and \{context.name}/\{name}; selected \{context.name}",
-        )
-      }
-      return context.source_root
-    }
-    if sub_callable {
-      return subpackage
-    }
-  } else if callable_package(context, subpackage) {
-    return subpackage
+  let package_path = if name == context.name {
+    context.source_root
+  } else if name.has_prefix(context.name + "/") {
+    @files.resolve_from(
+      context.source_root,
+      name[context.name.length() + 1:].to_owned(),
+    )
+  } else {
+    raise @diagnostic.failure(
+      "expected a full package name in module " + context.name + ": " + name,
+    )
+  }
+  if callable_package(context, package_path) {
+    return package_path
   }
   raise @diagnostic.failure(
     "no executable package '\{name}' in module \{context.name} (nested modules are excluded)",
   )
-}
-
-///|
-/// Probe the same candidates as local resolution without hiding config errors.
-async fn has_local_candidate(context : ModuleContext, name : String) -> Bool {
-  let subpackage = @files.resolve_from(context.source_root, name)
-  let basename = context.name.split("/").last().unwrap().to_owned()
-  if name == basename {
-    let root_callable = callable_package(context, context.source_root)
-    let sub_callable = callable_package(context, subpackage)
-    root_callable || sub_callable
-  } else {
-    callable_package(context, subpackage)
-  }
 }
