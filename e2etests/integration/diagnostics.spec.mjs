@@ -5,10 +5,10 @@ import { performance } from "node:perf_hooks";
 import {
   ROOT, EXIT_CODE, CANCELLATION_LIMIT_MS, IMPORTS, MAIN_PACKAGE_CONFIG,
   LOCAL_PACKAGE, run, formatImports, createEnvironment, copyExecutable,
-  writePackage, writeDocument, block,
+  copyTool, createCli, isolatedExecutable, writePackage, writeDocument, block,
 } from "./basic.mjs";
 
-export function testBuildDiagnostics({ cli, docs, project, directory, target }) {
+export function testBuildDiagnostics({ executable, docs, project, directory, target }) {
   const helper = join(project, "build-double");
   writePackage(helper, formatImports(IMPORTS) + MAIN_PACKAGE_CONFIG,
     fs.readFileSync(join(ROOT, "e2etests/fixtures/moon.mbt"), "utf8"));
@@ -18,6 +18,10 @@ export function testBuildDiagnostics({ cli, docs, project, directory, target }) 
   const tools = join(directory, "build-diagnostic-tools");
   fs.mkdirSync(tools);
   copyExecutable(artifact, tools, "moon");
+  // Windows searches the runner's directory before PATH. Keep it beside the
+  // double so the installed moon.exe cannot take precedence.
+  const runner = copyTool("moonrun", tools, "mooncram-test-runner");
+  const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const original = block(`$ ${LOCAL_PACKAGE} hello\nwrong\n`);
   const doc = writeDocument(docs, "build-diagnostic.md", original);
   for (const mode of ["fail", "invalid", "slow"]) {

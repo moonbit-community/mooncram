@@ -104,8 +104,8 @@ export function copyExecutable(source, directory, name) {
   return destination;
 }
 
-export function copyTool(name, directory) {
-  return copyExecutable(findTool(name), directory, name);
+export function copyTool(name, directory, destinationName = name) {
+  return copyExecutable(findTool(name), directory, destinationName);
 }
 
 export function isolatedExecutable(executable, target, runner) {

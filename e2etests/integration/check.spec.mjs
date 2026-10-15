@@ -8,27 +8,41 @@ import {
 } from "./basic.mjs";
 
 export function testCheck({ executable, target, directory, docs, project }) {
-  // Build the rejecting double before isolation. The CLI's Wasm runner has an
-  // independent saved path, so even an attempted moonrun child hits the double.
+  // Windows searches the runner's directory before PATH. Give the real runner
+  // a separate name beside the doubles, so child moonrun calls are rejected too.
   const tools = join(directory, "check-tools");
-  const runnerDirectory = join(directory, "check-runner");
   fs.mkdirSync(tools);
-  fs.mkdirSync(runnerDirectory);
-  const runner = copyTool("moonrun", runnerDirectory);
+  const runner = copyTool("moonrun", tools, "mooncram-test-runner");
   const stub = join(project, "reject-tools");
   writePackage(stub, formatImports([
-    "moonbitlang/async", "moonbitlang/async/fs", "moonbitlang/core/env", "moonbitlang/x/sys",
+    "moonbitlang/async", "moonbitlang/async/fs", "moonbitlang/async/process",
+    "moonbitlang/core/env", "moonbitlang/x/sys",
   ]) + MAIN_PACKAGE_CONFIG,
   'async fn main {\n' +
-    '  @fs.write_file(@env.get_env_var("MOONCRAM_TOOL_CALL").unwrap(), @env.args().join("\\n"))\n' +
+    '  let args = @env.args()\n' +
+    '  if args.get(1) is Some("--probe-tool") {\n' +
+    '    @sys.exit(@process.run(args[2], ["--mooncram-tool-probe", args[2]]))\n' +
+    '  }\n' +
+    '  @fs.write_file(@env.get_env_var("MOONCRAM_TOOL_CALL").unwrap(), args.join("\\n"))\n' +
     '  @sys.exit(99)\n}\n');
   const artifact = JSON.parse(run([
     "moon", "-C", project, "run", "--build-only", "--target", "native", stub,
   ]).stdout).artifacts_path[0];
+  const probe = target === "wasm" ? [runner, JSON.parse(run([
+    "moon", "-C", project, "run", "--build-only", "--target", "wasm", stub,
+  ]).stdout).artifacts_path[0], "--"] : [artifact];
   for (const name of ["moon", "moonx", "moonrun"]) copyExecutable(artifact, tools, name);
   const calls = join(directory, "check-tool-call.txt");
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const env = { ...createEnvironment(), PATH: tools, MOONCRAM_TOOL_CALL: calls };
+  // Exercise the actual backend's child-process lookup before relying on the
+  // absence of calls to prove that check never builds or executes anything.
+  for (const name of ["moon", "moonx", "moonrun"]) {
+    run([...probe, "--probe-tool", name], { cwd: project, env, expected: 99 });
+    assert.deepEqual(fs.readFileSync(calls, "utf8").split("\n").slice(1),
+      ["--mooncram-tool-probe", name]);
+    fs.rmSync(calls);
+  }
   const documents = new Map();
   const write = (name, source) => {
     const path = writeDocument(docs, `check-${name}.md`, source);
