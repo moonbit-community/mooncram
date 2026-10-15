@@ -602,17 +602,42 @@ FAIL <canonical-file>:<command-line>
 退出码统一在用例头部显示一次。参与 stderr 差异展示的内容不重复打印为诊断；
 stderr 被忽略而其他断言失败时，仍可作为诊断展示。
 
-错误写入 **stderr**：
+错误写入 **stderr**，位置、执行上下文和底层原因分别保存在结构化诊断中，
+由 CLI 统一渲染。已有的精确源码位置优先于外层提供的位置，文件前缀只打印一次：
 
-| 错误范围 | 报告形式 |
-| --- | --- |
-| 参数或文件发现 | `ERROR <message>` |
-| 文档读取、解析或更新 | `ERROR <canonical-file>: <message>` |
-| `check` 中的目标解析或单个用例执行 | `ERROR <canonical-file>:<command-line>: <message>`，随后打印缩进后的命令。 |
+```text
+ERROR <file>[:<line>]: <summary>
+  $ <original command text>
+  phase: <resolve|build|start|run|capture>
+  segment: <index>/<count> (<executable>)
+  tool: <actual tool or artifact>
+  cwd: <working directory>
+  cause: <underlying reason>
+  hint: <actionable suggestion>
+--- captured <build|run> <stdout|stderr> (segment <index>/<count> (<executable>))
+<captured output>
+```
 
-参数解析错误包含对应上下文的帮助文本。文档解析错误消息本身已包含文件和源码行号；
-当前外层文档错误处理还会再添加一次文件前缀。依赖库、操作系统的错误措辞和构建
-诊断会直接传递，因此可能随环境变化。
+仅打印可用字段。没有文档位置的参数错误省略文件前缀；没有命令的文档解析错误
+省略命令行。参数值校验错误包含选项名、实际值和有效值范围；参数解析器产生的
+语法错误保留对应上下文的帮助文本。操作系统及依赖库的原因文本放在 `cause` 中，
+措辞可能随环境变化。配置解析器的详细报告也作为原因展示。
+
+构建、启动、导入工具保留状态码、输出读取和超时错误均保留已捕获日志。
+最后一段 stdout 与各段未合并的 stderr 分别标注来源，按最终 stdout、各段 stderr
+的顺序展示。空日志省略，日志不截断，不重复展示成功构建的产物信息。
+仍未读到 EOF 的非空日志标题带有 `; partial`，表示仅包含当时已经读到的字节。
+无效 UTF-8 的错误摘要指出读取的流及管道端点，诊断日志以完整的字节转义形式
+展示并标记 `; escaped bytes`；不会推断重定向前的数据来源。
+
+读取日志与进程管理使用独立的任务组。错误发生后立即取消并回收直接管理的进程，
+读取任务在回收期间继续工作；普通错误回收后最多再补读 100 ms，仍受原用例期限
+约束。期限到达后不额外补读，不无限等待后代进程持有的管道句柄。
+最先记录的错误作为主错误，日志读取及清理期间的次生错误不会覆盖它。
+
+超时摘要继续包含 `timed out after N ms (including build)`，并附上最后的执行阶段、
+构建目标或尚未完成的管道段。`moonx` 内部的下载和执行归入 `run` 阶段；所有程序
+结束后仍在等待输出 EOF 时归入 `capture` 阶段。
 
 颜色策略在文件发现之后计算一次：
 

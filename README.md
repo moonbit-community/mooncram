@@ -332,6 +332,11 @@ files; no paths means the current directory. Hidden entries, `_build`, and
 `target` are skipped during traversal; directory symlinks are not followed.
 Files are deduplicated and sorted before their cases run.
 
+Execution errors include the source location, phase, pipeline segment, tool and
+working directory when available. Captured stdout/stderr is included in full;
+`partial` marks a stream cancelled before EOF. Invalid UTF-8 is shown as escaped
+bytes in diagnostics. Timeouts identify the last execution phase.
+
 The default target is `wasm`. The default timeout is `60000` milliseconds per
 case, including builds, downloads, and execution. `check` does not accept
 `--target` or `--timeout-ms`. All commands support `--color` (default `auto`);
