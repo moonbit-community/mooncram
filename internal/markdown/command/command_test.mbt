@@ -1,8 +1,8 @@
 ///|
-fn plain_pipeline(argvs : Array[Array[String]]) -> @command.Command {
-  @command.Pipeline(
-    argvs.map(argv => { argv: ["moonx"] + argv, extra_env: Map([]), }),
-  )
+fn plain_pipeline(
+  argvs : Array[Array[String]],
+) -> Array[@command.PipelineSegment] {
+  argvs.map(argv => { argv: ["moonx"] + argv, extra_env: Map([]), })
 }
 
 ///|
@@ -251,45 +251,16 @@ test "redirection operators are rejected even when attached or partially escaped
 }
 
 ///|
-test "working directory takes one nonempty literal argument with normal quoting" {
-  for
-    (argument, directory) in [
-      ("../fixtures", "../fixtures"),
-      ("'/absolute path'", "/absolute path"),
-      ("a\\ b", "a b"),
-      ("\"pre${DIR}/post\"", "pre${DIR}/post"),
-      ("${DIR}", "${DIR}"),
-      ("'${MISSING}'", "${MISSING}"),
-      ("\\${MISSING}", "${MISSING}"),
-      ("'2>&1'", "2>&1"),
-    ] {
-    assert_eq(
-      @command.parse("set-current-working-directory " + argument),
-      @command.SetCurrentWorkingDirectory(directory~),
-    )
-  }
-  for argument in ["", "''", "\"\"", "a b"] {
-    assert_error_contains(
-      () => ignore(@command.parse("set-current-working-directory " + argument)),
-      "exactly one nonempty directory argument",
-    )
-  }
+test "old working directory commands are rejected in every pipeline position" {
   for
     command in [
+      "set-current-working-directory dir", "A=x set-current-working-directory dir",
       "set-current-working-directory dir|moonx ./a.mbtx", "moonx ./a.mbtx|set-current-working-directory dir",
       "moonx ./a.mbtx|set-current-working-directory dir|moonx ./b.mbtx",
     ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
-      "is not allowed in a pipeline",
-    )
-  }
-  for marker in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null"] {
-    assert_error_contains(
-      () => {
-        ignore(@command.parse("set-current-working-directory dir " + marker))
-      },
-      "shell operator",
+      "command must start with moonx: set-current-working-directory",
     )
   }
 }

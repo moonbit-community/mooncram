@@ -64,12 +64,12 @@ fn collect_blocks(
 /// `source` is the complete Markdown text; `path` supplies diagnostic locations
 /// and later filesystem resolution (use an absolute path for execution).
 /// Recognizes backtick fences, including those in lists and blockquotes, and
-/// ignores unrelated Markdown. Block-local directory settings must precede
-/// that block's first executable command.
+/// ignores unrelated Markdown. A block-local directory declaration uses
+/// `#cwd(path)` on the first nonempty logical line.
 ///
 /// Temporary environment names are case-insensitive on Windows.
-/// Arguments and assignment values remain literal. Configuration
-/// commands are not cases. A document with no test fences returns an empty case list.
+/// Arguments and assignment values remain literal. Directory
+/// declarations are not cases. A document with no test fences returns an empty case list.
 ///
 /// Parses the entire document before returning. Invalid fence configuration,
 /// commands or expectations raise `@diagnostic.Failure` with file and
@@ -162,19 +162,47 @@ fn parse_document_with_case_sensitivity(
         i += 1
         continue
       }
+      if node.v.has_prefix("#cwd(") {
+        if working_directory is Some(_) {
+          raise @diagnostic.located(
+            path, line, "duplicate #cwd declaration in this block",
+          )
+        }
+        if has_test_command {
+          raise @diagnostic.located(
+            path, line, "#cwd must be the first nonempty line in this block",
+          )
+        }
+        if !node.v.has_suffix(")") {
+          raise @diagnostic.located(
+            path, line, "#cwd declaration must end with ')'",
+          )
+        }
+        let directory = node.v[5:node.v.length() - 1].to_owned()
+        if directory.is_empty() {
+          raise @diagnostic.located(path, line, "#cwd requires a nonempty path")
+        }
+        let declaration = { directory, line, }
+        working_directory = Some(declaration)
+        working_directory_declarations.push(declaration)
+        has_command = true
+        i += 1
+        continue
+      }
       if !node.v.has_prefix("$ ") && node.v != "$" {
         raise @diagnostic.located(
           path, line, "expected a command starting with '$ moonx '",
         )
       }
-      let command = @command.parse(node.v[1:].to_owned(), case_insensitive~) catch {
+      let pipeline = @command.parse(node.v[1:].to_owned(), case_insensitive~) catch {
         e => raise @diagnostic.context(e, file=path, line~)
       }
       has_command = true
       let mut next = i + 1
       while next < code.length() &&
             !code[next].v.has_prefix("$ ") &&
-            code[next].v != "$" {
+            code[next].v != "$" &&
+            !code[next].v.has_prefix("#cwd(") {
         next += 1
       }
       // Trailing empty source lines separate cases. A final escaped empty line
@@ -182,32 +210,6 @@ fn parse_document_with_case_sensitivity(
       let mut end = next
       while end > i + 1 && code[end - 1].v == "" {
         end -= 1
-      }
-      let pipeline = match command {
-        SetCurrentWorkingDirectory(directory~) => {
-          if working_directory is Some(_) {
-            raise @diagnostic.located(
-              path, line, "duplicate set-current-working-directory in this block",
-            )
-          }
-          if has_test_command {
-            raise @diagnostic.located(
-              path, line, "set-current-working-directory must precede the first test command in this block",
-            )
-          }
-          if end != i + 1 {
-            let @cmark_base.LinePos(output_line, _) = code[i + 1].meta.loc.first_line
-            raise @diagnostic.located(
-              path, output_line, "set-current-working-directory does not accept expected output or an exit code",
-            )
-          }
-          let declaration = { directory, line, }
-          working_directory = Some(declaration)
-          working_directory_declarations.push(declaration)
-          i = next
-          continue
-        }
-        Pipeline(pipeline) => pipeline
       }
       has_test_command = true
       let expected = @output.parse_expectation(code[i + 1:end], path)

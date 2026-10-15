@@ -25,6 +25,12 @@ test "only ambiguous exact syntax is escaped" {
     (line, rendered) in [
       ("$", "\"$\" (escaped)"),
       ("$ moonx command", "\"$ moonx command\" (escaped)"),
+      ("#cwd(.)", "\"#cwd(.)\" (escaped)"),
+      ("#cwd()", "\"#cwd()\" (escaped)"),
+      ("#cwd(unclosed", "\"#cwd(unclosed\" (escaped)"),
+      ("#cwd(x) trailing", "\"#cwd(x) trailing\" (escaped)"),
+      (" #cwd(.)", " #cwd(.)"),
+      ("#cwd", "#cwd"),
       ("$HOME", "$HOME"),
       (" $ moonx command", " $ moonx command"),
       ("@STDOUT", "\"@STDOUT\" (escaped)"),

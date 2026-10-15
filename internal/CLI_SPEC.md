@@ -2,7 +2,7 @@
 
 [中文版本](CLI_SPEC_CN.md)
 
-This document describes the CLI behavior of the current `0.0.6` module.
+This document describes the CLI behavior of the current `0.0.7` module.
 It covers the command line, Markdown input format, process execution, matching,
 reporting, and updates. It is a description of the current implementation, not
 a proposal for additional features. The English and Chinese versions have the
@@ -172,9 +172,9 @@ are also ignored, without validating their contents or settings. Cases inside bl
 are supported; the Markdown container prefix is not part of the command or
 output. Normal Markdown indentation rules apply before parsing lines.
 
-An eligible fence must have a closing fence and at least one command (a working
-directory declaration also satisfies this requirement). An unclosed
-or empty eligible fence is a document parsing error. Ignored fences do not
+An eligible fence must have a closing fence and at least one command or working
+directory declaration. An unclosed or empty eligible fence is a document parsing
+error. Ignored fences do not
 produce mooncram parsing errors.
 
 ````markdown
@@ -189,22 +189,23 @@ my-cli * (glob)
 
 Within the parsed code block:
 
-- A line beginning exactly with `$ ` starts a command;
-  `set-current-working-directory` configures the block, and every
-  other command starts a case. A line consisting only of
-  `$` is also treated as a command start, then rejected as an empty command.
-- Before the first command, only completely empty lines are ignored. Any other
-  line is an error. `$` followed only by a tab is not the `$ ` command prefix.
-- Every following line up to the next command or closing fence is an
-  expectation line, except completely empty lines at the end of that span.
+- A line beginning exactly with `#cwd(` starts a working directory declaration
+  and ends any preceding expectation span. It must be the first nonempty line.
+- A line beginning exactly with `$ ` starts a command and a case. A line consisting
+  only of `$` is also treated as a command start, then rejected as an empty command.
+- Before the first command, only completely empty lines and a valid directory
+  declaration are accepted. Any other line is an error. `$` followed only by a
+  tab is not the `$ ` command prefix.
+- Every following line up to the next command, directory declaration or closing
+  fence is an expectation line, except completely empty lines at the end of that span.
 - Trailing empty lines are separators and are excluded from expectations.
   Empty lines inside the remaining expectation span are real output lines;
   whitespace-only lines are not empty separators.
 - Commands occupy one source line. There is no multiline command continuation,
   comment syntax, or separate setup/teardown syntax inside a test block.
 
-A line of output that would look like a command must use a JSON string with
-`(escaped)`.
+A line of output that would look like a command or begin with `#cwd(` must use a
+JSON string with `(escaped)`.
 
 The whole document, including all commands and expectations, is parsed before
 executing any case in that document. A parsing error prevents
@@ -235,14 +236,11 @@ $ moonx moonbit-community/moongrep@0.3.5 --version
 ## 4. Command tokenization and executable selection
 
 The text after the leading `$` is tokenized directly into an array of pipeline
-segments or a working directory configuration.
-It is not passed to a shell. The command parser returns
-`Command::Pipeline(Array[PipelineSegment])` or
-`Command::SetCurrentWorkingDirectory(directory~ : String)`, with `Debug` and `Eq`.
-Optional `case_insensitive : Bool = false` normalizes temporary assignment names
-to ASCII uppercase when enabled; the document parser enables it on Windows.
-Returned arguments, assignment values and directory names have quotes and escapes
-processed, with variable-like text kept literal.
+segments. It is not passed to a shell. The command parser returns
+`Array[PipelineSegment]`. Optional `case_insensitive : Bool = false` normalizes
+temporary assignment names to ASCII uppercase when enabled; the document parser
+enables it on Windows. Returned arguments and assignment values have quotes and
+escapes processed, with variable-like text kept literal.
 `PipelineSegment` has `argv : Array[String]` and `extra_env : Map[String, String]`,
 with `Debug` and `Eq`. `argv` includes `moonx`, the target and program arguments.
 `Case.pipeline` stores these segments. Segment `extra_env` contains temporary
@@ -282,16 +280,26 @@ For example, `'$HOME'`, `*`, `~` and `'$(cmd)'` are literal arguments; unquoted
 `$(cmd)` is rejected because of its parentheses. Errors retain the document
 filename and command line number.
 
-`$ set-current-working-directory <dir>` declares one working directory for the
-current fence. It requires exactly one nonempty argument, reusing normal
-quoting and escaping. Each block permits at most one declaration,
-before its first actual test command. Duplicates, late
-declarations, pipes, redirection, expected output and exit codes are parsing errors
-with source locations. Blank separators are allowed. This directive is not a case;
+`#cwd(path)` declares one working directory for the current fence. The Markdown
+block parser recognizes a whole logical line starting exactly with `#cwd(` and
+ending with `)`. It takes all text between the opening prefix and the final `)`
+as the nonempty path, without trimming, tokenization, escaping, variable expansion
+or parenthesis matching. Spaces, backslashes, quotes, parentheses, Chinese text and
+`${NAME}` remain literal. For example, `#cwd(../fixtures with spaces)` needs no
+quotes; `#cwd("foo")` includes the double quotes in its path, and `#cwd(a)b(c))`
+stores `a)b(c)`. Each block permits at most one declaration on its first nonempty
+logical line; leading empty lines are allowed. Empty paths, missing final `)`,
+duplicates and declarations after a test command are parsing errors with source
+locations. A declaration accepts no expected output or exit code. It is not a case;
 configuration-only fences are legal, with the usual no-cases rule for a whole run.
+The old `$ set-current-working-directory` command is rejected by the command parser.
 
-The parser does not inspect the filesystem. It stores the literal argument after
-quoting and escaping; assignments do not change it. `WorkingDirectoryDeclaration`
+Output beginning with `#cwd(` must use a JSON string with `(escaped)`, even when
+it would be a malformed declaration. The updater automatically escapes such
+output so generated documents parse again and a second update is unchanged.
+Updates preserve the declaration's original text and Markdown layout.
+
+The parser does not inspect the filesystem. `WorkingDirectoryDeclaration`
 contains `directory : String` and its one-based `line : Int`. `Case.working_directory`
 is optional; `Document.working_directory_declarations` retains every declaration,
 including those in fences without cases. Configuration resets at each fence.
@@ -334,8 +342,8 @@ Values and arguments remain literal: `A=new B="${A}" moonx ./program.mbtx "${B}"
 passes `${B}` as its argument. Repeated names keep the last value. Each pipeline
 segment has its own temporary environment, and later commands inherit the parent environment.
 Windows names are normalized to ASCII uppercase and matched case-insensitively;
-Linux and macOS names remain case-sensitive. Assignments without a command, or
-temporary prefixes on `set-current-working-directory`, are parsing errors.
+Linux and macOS names remain case-sensitive. Assignments without a command
+are parsing errors.
 
 After temporary assignments, every executable segment must begin with `moonx`
 and a nonempty target. Missing prefixes, bare targets and empty targets are

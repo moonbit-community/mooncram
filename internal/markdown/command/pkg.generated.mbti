@@ -6,19 +6,11 @@ import {
 }
 
 // Values
-pub fn parse(String, case_insensitive? : Bool) -> Command raise
+pub fn parse(String, case_insensitive? : Bool) -> Array[PipelineSegment] raise
 
 // Errors
 
 // Types and methods
-pub(all) enum Command {
-  Pipeline(Array[PipelineSegment])
-  SetCurrentWorkingDirectory(directory~ : String)
-} derive(Eq, @debug.Debug)
-pub fn Command::equal(Self, Self) -> Bool
-pub fn Command::not_equal(Self, Self) -> Bool
-pub fn Command::to_repr(Self) -> @debug.Repr
-
 pub(all) struct PipelineSegment {
   argv : Array[String]
   extra_env : Map[String, String]

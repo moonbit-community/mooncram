@@ -1,7 +1,7 @@
 ///|
 /// One command's parsed arguments and temporary environment.
 ///
-/// Produced by `parse` inside a `Command::Pipeline`. Each segment begins with
+/// Produced by `parse`. Each segment begins with
 /// `moonx`, followed by a nonempty target and optional program arguments.
 pub(all) struct PipelineSegment {
   /// `moonx`, target and program arguments, with quotes and escapes processed.
@@ -17,26 +17,6 @@ pub extend PipelineSegment with @debug.Debug::{to_repr}
 ///|
 /// Expose structural equality over arguments and assignments.
 pub extend PipelineSegment with Eq::{equal, not_equal}
-
-///|
-/// Result of parsing one command line without its Markdown `$` prompt.
-///
-/// The configuration variant changes later parsing/resolution state and is not
-/// an executable test case.
-pub(all) enum Command {
-  /// Nonempty list of executable segments in pipeline order.
-  Pipeline(Array[PipelineSegment])
-  /// Nonempty block-local directory path, not yet filesystem-validated.
-  SetCurrentWorkingDirectory(directory~ : String)
-} derive(Debug, Eq)
-
-///|
-/// Expose the derived debug representation of the variant and its payload.
-pub extend Command with @debug.Debug::{to_repr}
-
-///|
-/// Expose structural equality; variants and all payload fields must match.
-pub extend Command with Eq::{equal, not_equal}
 
 ///|
 fn valid_name(name : String) -> Bool {
@@ -55,7 +35,7 @@ fn valid_name(name : String) -> Bool {
 }
 
 ///|
-/// Parse a pipeline or working directory configuration.
+/// Parse an executable pipeline.
 /// Variable-like text such as ${NAME} is literal, with normal quoting and escaping.
 /// Leading NAME=value assignments affect only their segment's environment.
 /// case_insensitive normalizes temporary names to uppercase; enable it on Windows.
@@ -67,14 +47,13 @@ fn valid_name(name : String) -> Bool {
 /// a shell, resolve targets or mutate the environment.
 ///
 /// Raises `@diagnostic.Failure` for malformed quotes, empty segments, unsupported
-/// shell operators, missing moonx/targets, invalid assignments or configuration placement.
+/// shell operators, missing moonx/targets or invalid assignments.
 ///
 /// ```mbt check
 /// test {
-///   let parsed = @command.parse("NAME='Moon Bit' moonx ./hello.mbtx \"${NAME}\"")
-///   guard parsed is @command.Pipeline(segments) else {
-///     fail("expected a pipeline")
-///   }
+///   let segments = @command.parse(
+///     "NAME='Moon Bit' moonx ./hello.mbtx \"${NAME}\"",
+///   )
 ///   assert_eq(segments[0].argv, ["moonx", "./hello.mbtx", "${NAME}"])
 ///   assert_eq(segments[0].extra_env.get("NAME"), Some("Moon Bit"))
 /// }
@@ -82,7 +61,7 @@ fn valid_name(name : String) -> Bool {
 pub fn parse(
   command : String,
   case_insensitive~ : Bool = false,
-) -> Command raise {
+) -> Array[PipelineSegment] raise {
   let words = tokenize(command)
   let pipeline : Array[PipelineSegment] = []
   for tokens in words {
@@ -114,30 +93,6 @@ pub fn parse(
     if executable == "" {
       raise @diagnostic.failure("expected moonx and a nonempty target")
     }
-    if executable == "set-current-working-directory" {
-      if !extra_env.is_empty() {
-        raise @diagnostic.failure(
-          "set-current-working-directory does not accept temporary environment assignments",
-        )
-      }
-      if words.length() != 1 {
-        raise @diagnostic.failure(
-          "set-current-working-directory is not allowed in a pipeline",
-        )
-      }
-      if segment.length() != 2 {
-        raise @diagnostic.failure(
-          "set-current-working-directory requires exactly one nonempty directory argument",
-        )
-      }
-      let directory = segment[1]
-      if directory.is_empty() {
-        raise @diagnostic.failure(
-          "set-current-working-directory requires exactly one nonempty directory argument",
-        )
-      }
-      return SetCurrentWorkingDirectory(directory~)
-    }
     if executable != "moonx" {
       raise @diagnostic.failure("command must start with moonx: " + executable)
     }
@@ -146,7 +101,7 @@ pub fn parse(
     }
     pipeline.push({ argv: segment, extra_env, })
   }
-  Pipeline(pipeline)
+  pipeline
 }
 
 ///|

@@ -41,7 +41,7 @@ pub struct Document {
   path : String
   /// Complete, unchanged Markdown text.
   source : String
-  /// Executable test cases in document order; configuration commands are excluded.
+  /// Executable test cases in document order; configuration declarations are excluded.
   cases : Array[Case]
   /// Test fences in document order, including configuration-only fences.
   fences : Array[Fence]
@@ -97,14 +97,14 @@ priv enum Container {
 }
 
 ///|
-/// A block-local `set-current-working-directory` declaration.
+/// A block-local `#cwd(path)` declaration.
 ///
 /// The parser stores the literal path without checking the filesystem; document
 /// validation resolves it against the Markdown file's parent directory.
 pub struct WorkingDirectoryDeclaration {
   /// Nonempty absolute or document-relative directory spelling.
   directory : String
-  /// One-based line of the configuration command.
+  /// One-based line of the directory declaration.
   line : Int32
 } derive(Debug, Eq)
 

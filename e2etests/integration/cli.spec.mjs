@@ -14,7 +14,7 @@ import {
   writeDocument,
 } from "./basic.mjs";
 
-const CLI_VERSION = "0.0.6";
+const CLI_VERSION = "0.0.7";
 const INVALID_CLI_ARGUMENTS = [
   ["test", "--timeout-ms", "0"],
   ["test", "--target", "js"],
@@ -139,13 +139,13 @@ export function testModuleResolution({ cli, docs, directory, target }) {
   const sideEffect = join(docs, "side-effect.txt");
   fs.rmSync(sideEffect, { force: true });
   const invalid = writeDocument(docs, "module-invalid.md",
-    block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory .\n", "user/other"));
+    block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("#cwd(.)\n", "user/other"));
   const before = fs.readFileSync(invalid);
   result = cli(["update", invalid, "--target", target], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
   assert(result.stderr.includes("module-invalid.md:4: module declaration 'user/other' does not match 'user/foo'"));
   assert(!fs.existsSync(sideEffect));
   assert.deepEqual(fs.readFileSync(invalid), before);
-  const declared = writeDocument(docs, "module-missing.md", block("$ set-current-working-directory .\n", declaration));
+  const declared = writeDocument(docs, "module-missing.md", block("#cwd(.)\n", declaration));
   for (const cwd of [docs, sourceRoot]) {
     assert(cli(["test", declared], { cwd, expected: EXIT_CODE.ERROR }).stderr.includes("requires moon.mod in startup cwd"));
   }

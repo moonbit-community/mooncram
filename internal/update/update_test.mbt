@@ -33,7 +33,7 @@ test "update special output round trips and is idempotent" {
   for
     output in [
       "", "\n", "\n\n", "😀  \n", "$ moonx ./other.mbtx\n[2]\n```\n", "x (regex)\n",
-      "\u0000\u001b\t\r\\\"", "final", "\nlast",
+      "\u0000\u001b\t\r\\\"", "final", "\nlast", "#cwd(.)\n#cwd(unclosed\n",
     ] {
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 4, }
     let updated = @update.generate(doc, [actual, other]).source
@@ -279,4 +279,81 @@ test "legacy updates escape marker-looking output before it can select dual mode
       new="\"@STDOUT\" (escaped)\n\"@STDERR (ignore)\" (escaped)\n",
     ),
   )
+}
+
+///|
+test "updates preserve raw directory declarations and container layout" {
+  for
+    (opening, prefix) in [
+      ("", ""),
+      ("- ", "  "),
+      ("> ", "> "),
+      ("> - ", ">   "),
+    ] {
+    for newline in ["\n", "\r\n"] {
+      let directive = "#cwd( ../中文 \\path \"quoted\" (nested) ${NAME} )"
+      let source = "Intro" +
+        newline +
+        newline +
+        opening +
+        "```mooncram" +
+        newline +
+        prefix +
+        newline +
+        prefix +
+        directive +
+        newline +
+        prefix +
+        "$ moonx ./a.mbtx" +
+        newline +
+        prefix +
+        "old" +
+        newline +
+        prefix +
+        "```" +
+        newline +
+        "Tail" +
+        newline
+      let doc = @markdown.parse_document("cwd.md", source)
+      let actual : @output.Captured = {
+        output: "#cwd(output)\n#cwd(unclosed",
+        diagnostic: "",
+        exit_code: 0,
+      }
+      let generated = @update.generate(doc, [actual])
+      assert_eq(generated.changed_cases, 1)
+      let expected = source.replace(
+        old=prefix + "old" + newline,
+        new=prefix +
+          "\"#cwd(output)\" (escaped)" +
+          newline +
+          prefix +
+          "\"#cwd(unclosed\" (escaped) (no-eol)" +
+          newline,
+      )
+      assert_eq(generated.source, expected)
+      let parsed = @markdown.parse_document("cwd.md", generated.source)
+      assert_eq(
+        parsed.working_directory_declarations,
+        doc.working_directory_declarations,
+      )
+      assert_true(parsed.cases[0].expected.matches(actual))
+      let again = @update.generate(parsed, [actual])
+      assert_eq(again.source, generated.source)
+      assert_eq(again.changed_cases, 0)
+      let only = @markdown.parse_document(
+        "cwd.md",
+        opening +
+        "```mooncram" +
+        newline +
+        prefix +
+        directive +
+        newline +
+        prefix +
+        "```" +
+        newline,
+      )
+      assert_eq(@update.generate(only, []).source, only.source)
+    }
+  }
 }

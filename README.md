@@ -211,7 +211,8 @@ acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 | ` (no-eol)` | The last output line has no terminating newline; may follow another suffix |
 
 Each expectation matches one output line. Use JSON escaping for lines that look
-like test syntax: `"[2]" (escaped)` or `"$ this is output" (escaped)`.
+like test syntax: `"[2]" (escaped)`, `"$ this is output" (escaped)`, or
+`"#cwd(output)" (escaped)`.
 Use `"" (escaped)` to assert an empty output line, especially at the end.
 CRLF is normalized to LF; captured output must be valid UTF-8.
 
@@ -250,7 +251,8 @@ Temporary assignments apply only to that pipeline segment and its build;
 later commands inherit the original environment. Mooncram does not
 expand environment variables: `${NAME}` and `$NAME` are ordinary text in
 arguments, assignment values, executable paths, working directories and expected
-output. Normal argument splitting, quoting and escaping still apply. For example,
+output. Arguments and assignment values use normal splitting, quoting and
+escaping. For example,
 `NAME=World moonx ./hello.mbtx "${NAME}"` passes the literal argument `${NAME}` while
 setting `NAME` to `World` in the child process. To pass a name as an argument,
 write it explicitly, as in `moonx ./hello.mbtx World`.
@@ -259,15 +261,24 @@ write it explicitly, as in `moonx ./hello.mbtx World`.
 
 Programs run in the directory containing the test document by default. Keep
 fixtures beside the document and pass their relative paths as arguments.
-To use another directory, set it before the first test command in a block:
+To use another directory, put `#cwd(path)` on the first nonempty line in a block:
 
 ````markdown
 ```mooncram
-$ set-current-working-directory ../examples
+#cwd(../examples)
 $ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
+
+The declaration occupies a whole line and may appear only once per block. The
+path is everything between `#cwd(` and the final `)`, without trimming, escaping,
+variable expansion or parenthesis matching. Spaces, backslashes, quotes and
+parentheses remain part of the path: `#cwd(../fixtures with spaces)` needs no
+quotes, and `#cwd("foo")` includes the double quotes in the directory name.
+Empty paths, a missing closing `)`, duplicate or late declarations are errors.
+Use `(escaped)` for output beginning with `#cwd(`; updates escape it automatically.
+The old `$ set-current-working-directory` syntax is no longer accepted.
 
 The directory is relative to the document, must already exist, and applies only
 to that block. Local module lookup still uses the directory where you launched

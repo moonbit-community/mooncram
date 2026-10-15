@@ -8,15 +8,10 @@ async test "working directory validation resolves all declarations including con
   @fs.mkdir(workspace)
   @fs.symlink(target=workspace, @files.resolve_from(docs, "link"))
   let path = @files.resolve_from(docs, "test.md")
-  for
-    argument in [
-      "'../workspace with spaces'",
-      "link",
-      "'" + workspace.replace(old="\\", new="/") + "'",
-    ] {
+  for argument in ["../workspace with spaces", "link", workspace] {
     let doc = @markdown.parse_document(
       path,
-      "```mooncram\n$ set-current-working-directory " + argument + "\n```\n",
+      "```mooncram\n#cwd(" + argument + ")\n```\n",
     )
     let directories = validate_document_working_directories(doc)
     assert_eq(directories.length(), 1)
@@ -26,9 +21,9 @@ async test "working directory validation resolves all declarations including con
   for name in ["missing", "file"] {
     let doc = @markdown.parse_document(
       path,
-      "```mooncram\n$ moonx ./a.mbtx\n```\n```mooncram\n$ set-current-working-directory " +
+      "```mooncram\n$ moonx ./a.mbtx\n```\n```mooncram\n#cwd(" +
       name +
-      "\n```\n",
+      ")\n```\n",
     )
     for expected in [path + ":5:", @files.resolve_from(docs, name)] {
       assert_async_error_contains(
