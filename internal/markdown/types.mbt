@@ -13,9 +13,6 @@ pub struct Case {
   command : String
   /// Nonempty pipeline of parsed commands in execution order.
   pipeline : Array[@command.PipelineSegment]
-  /// Snapshot of document exports at this command; excludes temporary segment
-  /// assignments and inherited process variables.
-  extra_env : Map[String, String]
   /// One-based line of the command in the source document.
   line : Int32
   /// Output constraints and expected pipeline exit status.
@@ -44,7 +41,7 @@ pub struct Document {
   path : String
   /// Complete, unchanged Markdown text.
   source : String
-  /// Executable test cases in document order; exports/configuration are excluded.
+  /// Executable test cases in document order; configuration commands are excluded.
   cases : Array[Case]
   /// Test fences in document order, including configuration-only fences.
   fences : Array[Fence]

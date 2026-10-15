@@ -7,8 +7,8 @@
 ///
 /// Every local segment finishes its build preflight before tested programs
 /// start. Segments run concurrently, inheriting the process environment with
-/// document exports and then segment assignments applied. The first segment
-/// receives EOF; subsequent segments receive raw bytes through OS pipes.
+/// segment assignments applied. The first segment receives EOF; subsequent
+/// segments receive raw bytes through OS pipes.
 ///
 /// Returns final stdout and per-segment stderr (concatenated in segment order),
 /// both decoded as UTF-8 with CRLF normalized. The exit code is the rightmost
@@ -38,17 +38,13 @@ pub async fn execute_case(
       progress.tool = None
       progress.pending = []
       progress.logs = []
-      let extra_env = case.extra_env.copy()
-      for name, value in segment.extra_env {
-        extra_env[name] = value
-      }
       let resolved = context.resolve_target(case, segment.argv[1])
       let command = prepare_command(
         segment.argv,
         cwd,
         resolved,
         target~,
-        extra_env~,
+        extra_env=segment.extra_env,
         progress~,
       )
       commands.push(command)

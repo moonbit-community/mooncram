@@ -1,6 +1,6 @@
 ///|
 test "validation rejects changed commands configuration case counts and output" {
-  let source = "```mooncram user/tool\n$ export MODE=one\n$ set-current-working-directory .\n$ moonx ./a.mbtx\nold\n```\n"
+  let source = "```mooncram user/tool\n$ set-current-working-directory .\n$ MODE=one moonx ./a.mbtx\nold\n```\n"
   let doc = @markdown.parse_document("validation.md", source)
   let captures : Array[@output.Captured] = [
     { output: "old\n", diagnostic: "", exit_code: 0, },

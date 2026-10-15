@@ -147,8 +147,7 @@ Cases run serially in document order. Segments of the same pipeline run
 concurrently. Filesystem side effects from earlier cases remain visible to later
 cases. Each process starts in the block's working
 directory (the canonical document's parent by default) and inherits mooncram's
-environment, overridden by the exports in effect for that case and then by the
-segment's temporary assignments.
+environment, overridden by the segment's temporary assignments.
 
 A document without cases is allowed when other documents contain cases. If
 there are no attempted cases (checked or executed) and no recorded errors, the
@@ -173,8 +172,8 @@ are also ignored, without validating their contents or settings. Cases inside bl
 are supported; the Markdown container prefix is not part of the command or
 output. Normal Markdown indentation rules apply before parsing lines.
 
-An eligible fence must have a closing fence and at least one command (an export
-or a working directory declaration also satisfies this requirement). An unclosed
+An eligible fence must have a closing fence and at least one command (a working
+directory declaration also satisfies this requirement). An unclosed
 or empty eligible fence is a document parsing error. Ignored fences do not
 produce mooncram parsing errors.
 
@@ -190,8 +189,8 @@ my-cli * (glob)
 
 Within the parsed code block:
 
-- A line beginning exactly with `$ ` starts a command; an export sets the
-  environment, `set-current-working-directory` configures the block, and every
+- A line beginning exactly with `$ ` starts a command;
+  `set-current-working-directory` configures the block, and every
   other command starts a case. A line consisting only of
   `$` is also treated as a command start, then rejected as an empty command.
 - Before the first command, only completely empty lines are ignored. Any other
@@ -236,10 +235,9 @@ $ moonx moonbit-community/moongrep@0.3.5 --version
 ## 4. Command tokenization and executable selection
 
 The text after the leading `$` is tokenized directly into an array of pipeline
-segments, a single export assignment, or a working directory configuration.
+segments or a working directory configuration.
 It is not passed to a shell. The command parser returns
-`Command::Pipeline(Array[PipelineSegment])`,
-`Command::Export(name~ : String, value~ : String)`, or
+`Command::Pipeline(Array[PipelineSegment])` or
 `Command::SetCurrentWorkingDirectory(directory~ : String)`, with `Debug` and `Eq`.
 Optional `case_insensitive : Bool = false` normalizes temporary assignment names
 to ASCII uppercase when enabled; the document parser enables it on Windows.
@@ -247,10 +245,9 @@ Returned arguments, assignment values and directory names have quotes and escape
 processed, with variable-like text kept literal.
 `PipelineSegment` has `argv : Array[String]` and `extra_env : Map[String, String]`,
 with `Debug` and `Eq`. `argv` includes `moonx`, the target and program arguments.
-`Case.pipeline` stores these segments. Segment `extra_env` contains only temporary
-assignments; `Case.extra_env` retains the document export snapshot. The executor
-copies that snapshot and overlays each segment's temporary values for its build
-and run.
+`Case.pipeline` stores these segments. Segment `extra_env` contains temporary
+assignments, which override inherited variables for that segment's build and run.
+The original command text is retained for reports, update and dry-run.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -288,7 +285,7 @@ filename and command line number.
 `$ set-current-working-directory <dir>` declares one working directory for the
 current fence. It requires exactly one nonempty argument, reusing normal
 quoting and escaping. Each block permits at most one declaration,
-before its first actual test command; exports may precede it. Duplicates, late
+before its first actual test command. Duplicates, late
 declarations, pipes, redirection, expected output and exit codes are parsing errors
 with source locations. Blank separators are allowed. This directive is not a case;
 configuration-only fences are legal, with the usual no-cases rule for a whole run.
@@ -297,8 +294,7 @@ The parser does not inspect the filesystem. It stores the literal argument after
 quoting and escaping; assignments do not change it. `WorkingDirectoryDeclaration`
 contains `directory : String` and its one-based `line : Int`. `Case.working_directory`
 is optional; `Document.working_directory_declarations` retains every declaration,
-including those in fences without cases. Configuration resets at each fence;
-document exports continue across fences.
+including those in fences without cases. Configuration resets at each fence.
 
 After parsing and module validation, before any case or build in that document,
 `validate_document_working_directories` checks every declaration. Relative paths
@@ -316,28 +312,6 @@ normal execution-error rules. This changes no filesystem side-effect or dry-run
 rules. Local modules still resolve from startup cwd and package builds retain
 `moon -C <module-root>`; their subprocess cwd is the configured block directory.
 
-`$ export NAME=value` sets exactly one variable. The assignment is split at the
-first literal `=`; the name must match `[A-Za-z_][A-Za-z0-9_]*` and cannot contain
-variable references. Empty values and additional `=` characters are allowed.
-The value follows the argument quoting and escaping rules. Missing assignments,
-invalid names, extra arguments, and an `export` segment in any pipeline are
-parsing errors. An export accepts no expected output or exit code; any following
-nonempty expectation span is a parsing error. Blank separator lines are allowed.
-Exports do not count as cases, and export-only fences are valid. The existing
-no-cases error still applies when the entire run contains no actual cases.
-
-Exports take effect in source order across eligible blocks in one document and
-reset at the next document. Exported values override the inherited environment
-when building and running programs. An exported empty string overrides the parent.
-Each actual case receives an independent `extra_env : Map[String, String]`
-snapshot. The original command text is retained for reports, update and dry-run.
-
-On Windows, export assignment and subsequent replacement are case-insensitive.
-Export names are normalized to ASCII uppercase,
-so differently cased assignments replace the same snapshot entry and child
-processes receive only one exported entry per variable. Linux and macOS retain
-case-sensitive names. These rules also apply to empty values.
-
 Environment variable expansion is not supported. `${NAME}`, `$NAME`, `${}`,
 `${A-B}` and `${UNCLOSED` are ordinary text and do not trigger environment lookup
 or reference validation. Normal splitting, quoting and escaping still apply:
@@ -347,26 +321,27 @@ must parse before any case runs.
 
 `$ NAME=value OTHER="${NAME}" moonx ./program.mbtx` sets temporary variables for one
 pipeline segment and its build. Only consecutive assignments before the executable
-are recognized, with an unquoted, unescaped name and `=`; names use the same
-`[A-Za-z_][A-Za-z0-9_]*` rule as exports. Values follow the existing quoting
+are recognized, with an unquoted, unescaped name and `=`; names must match
+`[A-Za-z_][A-Za-z0-9_]*`. Values follow the existing quoting
 and escaping rules, including empty values and additional `=`.
 Assignments after the executable are ordinary arguments.
 Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
 as temporary assignments. They are ordinary words; before `moonx` they cause
 a missing-moonx parsing error, and after the target they remain program arguments.
 
-Temporary values override document exports and the parent environment. Values and
-arguments remain literal: `A=new B="${A}" moonx ./program.mbtx "${B}"` sets `B` to `${A}` and
+Temporary values override the parent environment, including with an empty string.
+Values and arguments remain literal: `A=new B="${A}" moonx ./program.mbtx "${B}"` sets `B` to `${A}` and
 passes `${B}` as its argument. Repeated names keep the last value. Each pipeline
-segment has its own temporary environment, and later commands retain the document environment.
-Windows names remain case-insensitive; Linux and macOS names remain case-sensitive.
-Assignments without a command, or temporary prefixes on `export` or
-`set-current-working-directory`, are parsing errors.
+segment has its own temporary environment, and later commands inherit the parent environment.
+Windows names are normalized to ASCII uppercase and matched case-insensitively;
+Linux and macOS names remain case-sensitive. Assignments without a command, or
+temporary prefixes on `set-current-working-directory`, are parsing errors.
 
 After temporary assignments, every executable segment must begin with `moonx`
 and a nonempty target. Missing prefixes, bare targets and empty targets are
 parsing errors. No moonx options are accepted before the target. Target paths,
 working directories and file arguments keep variable-like text literal.
+An `export` executable is rejected with `command must start with moonx: export`.
 
 A target ending in `.mbtx` is a local script, relative to the block's working
 directory or absolute. This includes script filenames containing `@`.
@@ -440,9 +415,9 @@ and do not stop later cases. Reserved remote statuses follow the rules below.
 There is no configurable output-size limit or live relay of program output.
 
 Builds and every tested pipeline segment inherit mooncram's environment and
-override names using the case's export snapshot, then that segment's temporary
-assignments. The same merged environment is used for its build and execution,
-including script preflight and remote moonx tools. Their working directory is the
+override names using that segment's temporary assignments. The same environment
+is used for its build and execution, including script preflight and remote moonx
+tools. Their working directory is the
 validated block directory, or the canonical document's parent by default.
 Build processes and the first pipeline segment receive immediate EOF on stdin rather than
 mooncram's interactive input. Later segments receive the preceding stdout.

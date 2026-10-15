@@ -97,35 +97,6 @@ test "pipelines reject empty segments and targets" {
 }
 
 ///|
-test "export assigns one valid name and preserves empty values and equals" {
-  for name in ["A", "_", "_a9", "Camel_case12"] {
-    assert_eq(
-      @command.parse("export " + name + "="),
-      @command.Export(name~, value=""),
-    )
-  }
-  assert_eq(
-    @command.parse("export NAME=a=b=c"),
-    @command.Export(name="NAME", value="a=b=c"),
-  )
-  assert_eq(
-    @command.parse("export NAME='Moon Bit|\"quoted\"'"),
-    @command.Export(name="NAME", value="Moon Bit|\"quoted\""),
-  )
-  assert_eq(
-    @command.parse("export NAME=\"a b\""),
-    @command.Export(name="NAME", value="a b"),
-  )
-  for
-    command in [
-      "export", "export A", "export =x", "export 9A=x", "export A-B=x", "export 名=x",
-      "export A=x B=y", "export A =x", "export ${NAME}=x",
-    ] {
-    assert_error_contains(() => ignore(@command.parse(command)), "export")
-  }
-}
-
-///|
 test "variable-like text stays literal through quoting escaping and concatenation" {
   assert_eq(
     @command.parse(
@@ -137,10 +108,6 @@ test "variable-like text stays literal through quoting escaping and concatenatio
         "a${EMPTY}b", "$VAR", "$VAR",
       ],
     ]),
-  )
-  assert_eq(
-    @command.parse("export NAME=${NAME}-after"),
-    @command.Export(name="NAME", value="${NAME}-after"),
   )
   assert_eq(
     @command.parse("moonx ./a.mbtx ${VALUE}|moonx ./b.mbtx ${EMPTY}"),
@@ -158,10 +125,6 @@ test "variable-like text has no reference validation and uses ordinary token rul
       assert_eq(
         @command.parse("moonx ./a.mbtx " + argument),
         plain_pipeline([["./a.mbtx", text]]),
-      )
-      assert_eq(
-        @command.parse("export A=" + argument),
-        @command.Export(name="A", value=text),
       )
       assert_eq(segments("A=" + argument + " moonx ./a.mbtx")[0].extra_env, {
         "A": text,
@@ -187,7 +150,7 @@ test "variable-like text has no reference validation and uses ordinary token rul
 }
 
 ///|
-test "executable paths retain variable-like text and exports reject pipelines" {
+test "executable paths retain variable-like text" {
   assert_eq(
     @command.parse(
       "moonx ${PATH}|moonx ./${PATH}.mbtx arg|moonx \"${PATH}\"|moonx '${PATH}'|moonx ./\\${PATH}.mbtx",
@@ -200,15 +163,6 @@ test "executable paths retain variable-like text and exports reject pipelines" {
       ["./${PATH}.mbtx"],
     ]),
   )
-  for
-    command in [
-      "export A=x|moonx ./a.mbtx", "moonx ./a.mbtx|export A=x", "moonx ./a.mbtx|export A=x|moonx ./b.mbtx",
-    ] {
-    assert_error_contains(
-      () => ignore(@command.parse(command)),
-      "export is not allowed in a pipeline",
-    )
-  }
 }
 
 ///|
@@ -260,7 +214,7 @@ test "raw redirections are shell operators in commands and configuration" {
   for
     command in [
       "2>&1", "1>/dev/null", "moonx ./a.mbtx|2>&1", "moonx ./a.mbtx 2>&1 arg", "moonx ./a.mbtx 1>/dev/null B=y",
-      "export A=x 2>&1", "export A=x 1>/dev/null", "set-current-working-directory dir 2>&1",
+      "set-current-working-directory dir 2>&1",
     ] {
     assert_error_contains(
       () => ignore(@command.parse(command)),
@@ -363,5 +317,24 @@ test "commands require explicit moonx and a nonempty target" {
   assert_eq(
     @command.parse("moonx ./a.mbtx -- --target native"),
     plain_pipeline([["./a.mbtx", "--", "--target", "native"]]),
+  )
+}
+
+///|
+test "export is an unsupported executable but remains an ordinary argument" {
+  for
+    command in [
+      "export", "export A=x", "export A=", "export A='Moon Bit'", "export A=x B=y",
+      "A=x export B=y", "export A=x|moonx ./a.mbtx", "moonx ./a.mbtx|export A=x",
+      "moonx ./a.mbtx|export A=x|moonx ./b.mbtx",
+    ] {
+    assert_error_contains(
+      () => ignore(@command.parse(command)),
+      "command must start with moonx: export",
+    )
+  }
+  assert_eq(
+    @command.parse("moonx ./a.mbtx export A=x"),
+    plain_pipeline([["./a.mbtx", "export", "A=x"]]),
   )
 }

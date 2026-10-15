@@ -177,11 +177,11 @@ async test "deep packages and nested modules including symlinks stay within modu
 }
 
 ///|
-async test "module declarations validate export-only fences before execution" {
+async test "module declarations validate configuration-only fences before execution" {
   let dir = @fs.realpath(@fs.tmpdir(prefix="mooncram-declaration"))
   defer @fs.rmdir(dir, recursive=true)
   let doc = @markdown.parse_document(
-    "test.md", "```mooncram\n$ moonx ./a.mbtx\n```\n```mooncram user/foo\n$ export A=x\n```\n",
+    "test.md", "```mooncram\n$ moonx ./a.mbtx\n```\n```mooncram user/foo\n$ set-current-working-directory .\n```\n",
   )
   assert_async_error_contains(
     () => ignore(validate_document_modules(doc, dir)),

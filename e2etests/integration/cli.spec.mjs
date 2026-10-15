@@ -135,17 +135,17 @@ export function testModuleResolution({ cli, docs, directory, target }) {
   assert(invoke("$ moonx user/foo/nested/cmd\n", { expected: EXIT_CODE.ERROR }).stderr.includes("nested modules"));
   let result;
 
-  // Validate the whole document before the first command, even export-only declarations.
+  // Validate the whole document before the first command, even configuration-only declarations.
   const sideEffect = join(docs, "side-effect.txt");
   fs.rmSync(sideEffect, { force: true });
   const invalid = writeDocument(docs, "module-invalid.md",
-    block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ export A=x\n", "user/other"));
+    block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory .\n", "user/other"));
   const before = fs.readFileSync(invalid);
   result = cli(["update", invalid, "--target", target], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
   assert(result.stderr.includes("module-invalid.md:4: module declaration 'user/other' does not match 'user/foo'"));
   assert(!fs.existsSync(sideEffect));
   assert.deepEqual(fs.readFileSync(invalid), before);
-  const declared = writeDocument(docs, "module-missing.md", block("$ export A=x\n", declaration));
+  const declared = writeDocument(docs, "module-missing.md", block("$ set-current-working-directory .\n", declaration));
   for (const cwd of [docs, sourceRoot]) {
     assert(cli(["test", declared], { cwd, expected: EXIT_CODE.ERROR }).stderr.includes("requires moon.mod in startup cwd"));
   }

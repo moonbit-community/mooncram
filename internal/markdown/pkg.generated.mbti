@@ -18,7 +18,6 @@ pub struct Case {
   working_directory : WorkingDirectoryDeclaration?
   command : String
   pipeline : Array[@command.PipelineSegment]
-  extra_env : Map[String, String]
   line : Int
   expected : @output.Expectation
   fence : Int

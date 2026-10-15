@@ -64,11 +64,11 @@ fn collect_blocks(
 /// `source` is the complete Markdown text; `path` supplies diagnostic locations
 /// and later filesystem resolution (use an absolute path for execution).
 /// Recognizes backtick fences, including those in lists and blockquotes, and
-/// ignores unrelated Markdown. Exports apply to later commands across fences;
-/// block-local directory settings must precede that block's first executable command.
+/// ignores unrelated Markdown. Block-local directory settings must precede
+/// that block's first executable command.
 ///
-/// Export names are case-insensitive on Windows. Each case stores its own
-/// export snapshot. Arguments and assignment values remain literal. Configuration
+/// Temporary environment names are case-insensitive on Windows.
+/// Arguments and assignment values remain literal. Configuration
 /// commands are not cases. A document with no test fences returns an empty case list.
 ///
 /// Parses the entire document before returning. Invalid fence configuration,
@@ -86,7 +86,7 @@ fn collect_blocks(
 /// }
 /// ```
 pub fn parse_document(path : String, source : String) -> Document raise {
-  parse_document_with_env(
+  parse_document_with_case_sensitivity(
     path,
     source,
     case_insensitive=@async.platform is Windows,
@@ -94,20 +94,11 @@ pub fn parse_document(path : String, source : String) -> Document raise {
 }
 
 ///|
-fn parse_document_with_env(
+fn parse_document_with_case_sensitivity(
   path : String,
   source : String,
   case_insensitive~ : Bool,
 ) -> Document raise {
-  // Export names are ASCII. Normalize storage so each Windows
-  // variable has one entry in every child-process environment snapshot.
-  let env_key = fn(name : String) {
-    if case_insensitive {
-      name.to_upper()
-    } else {
-      name
-    }
-  }
   let markdown = @cmark.Doc::from_string(
     source,
     file=path,
@@ -122,7 +113,6 @@ fn parse_document_with_env(
   let fences = []
   let module_declarations = []
   let working_directory_declarations = []
-  let extra_env : Map[String, String] = Map([])
   for (block, containers) in blocks {
     guard block.v.layout is Fenced(layout) else { continue }
     if !layout.opening_fence.v.has_prefix("`") {
@@ -217,17 +207,6 @@ fn parse_document_with_env(
           i = next
           continue
         }
-        Export(name~, value~) => {
-          if end != i + 1 {
-            let @cmark_base.LinePos(output_line, _) = code[i + 1].meta.loc.first_line
-            raise @diagnostic.located(
-              path, output_line, "export does not accept expected output or an exit code",
-            )
-          }
-          extra_env[env_key(name)] = value
-          i = next
-          continue
-        }
         Pipeline(pipeline) => pipeline
       }
       has_test_command = true
@@ -249,7 +228,6 @@ fn parse_document_with_env(
         working_directory,
         command: node.v,
         pipeline,
-        extra_env: extra_env.copy(),
         line,
         expected,
         fence,

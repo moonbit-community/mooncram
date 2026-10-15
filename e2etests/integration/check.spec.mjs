@@ -86,7 +86,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
 
   const empty = write("empty", "No examples.\n");
   assert(invoke(["check", empty], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
-  const onlyConfig = write("config-only", block("$ export A=x\n"));
+  const onlyConfig = write("config-only", block("$ set-current-working-directory .\n"));
   assert(invoke(["check", onlyConfig], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
   const errors = write("targets", block(
     "$ moonx ./missing.mbtx | moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/check-invalid\n"));
@@ -102,7 +102,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
     ["command", block("$ moonx ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
     ["expectation", block("$ moonx ./check-invalid.mbtx\n[ (regex)\n", ""), "invalid regex"],
 
-    ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ export A=x\n", "user/other"), "does not match"],
+    ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory .\n", "user/other"), "does not match"],
     ["directory-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory missing-check-cwd\n", ""), "invalid working directory"],
   ]) {
     const path = write(name, source);

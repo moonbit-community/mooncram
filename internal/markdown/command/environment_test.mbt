@@ -137,12 +137,10 @@ test "temporary assignment errors retain existing syntax restrictions" {
       "assignments require a command",
     )
   }
-  for executable in ["export A=x", "set-current-working-directory dir"] {
-    assert_error_contains(
-      () => ignore(@command.parse("A=x " + executable)),
-      "does not accept temporary environment assignments",
-    )
-  }
+  assert_error_contains(
+    () => ignore(@command.parse("A=x set-current-working-directory dir")),
+    "does not accept temporary environment assignments",
+  )
   assert_eq(segments("A=x moonx ${A}")[0].argv, ["moonx", "${A}"])
   assert_eq(segments("A=x moonx ./\"${A}\".mbtx")[0].argv, [
     "moonx", "./${A}.mbtx",
