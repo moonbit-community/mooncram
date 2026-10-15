@@ -6,7 +6,7 @@
 pub(all) struct PipelineSegment {
   /// `moonx`, target and program arguments, with quotes and escapes processed.
   argv : Array[String]
-  /// Segment-only assignments; values override document/inherited variables.
+  /// Segment-only assignments; values override inherited variables.
   extra_env : Map[String, String]
 } derive(Debug, Eq)
 
@@ -21,13 +21,11 @@ pub extend PipelineSegment with Eq::{equal, not_equal}
 ///|
 /// Result of parsing one command line without its Markdown `$` prompt.
 ///
-/// Configuration variants change later parsing/resolution state and are not
-/// executable test cases.
+/// The configuration variant changes later parsing/resolution state and is not
+/// an executable test case.
 pub(all) enum Command {
   /// Nonempty list of executable segments in pipeline order.
   Pipeline(Array[PipelineSegment])
-  /// One document-scoped environment assignment with a literal value.
-  Export(name~ : String, value~ : String)
   /// Nonempty block-local directory path, not yet filesystem-validated.
   SetCurrentWorkingDirectory(directory~ : String)
 } derive(Debug, Eq)
@@ -57,7 +55,7 @@ fn valid_name(name : String) -> Bool {
 }
 
 ///|
-/// Parse a pipeline, environment assignment or working directory configuration.
+/// Parse a pipeline or working directory configuration.
 /// Variable-like text such as ${NAME} is literal, with normal quoting and escaping.
 /// Leading NAME=value assignments affect only their segment's environment.
 /// case_insensitive normalizes temporary names to uppercase; enable it on Windows.
@@ -139,30 +137,6 @@ pub fn parse(
         )
       }
       return SetCurrentWorkingDirectory(directory~)
-    }
-    if executable == "export" {
-      if !extra_env.is_empty() {
-        raise @diagnostic.failure(
-          "export does not accept temporary environment assignments",
-        )
-      }
-      if words.length() != 1 {
-        raise @diagnostic.failure("export is not allowed in a pipeline")
-      }
-      if segment.length() != 2 {
-        raise @diagnostic.failure(
-          "export requires exactly one NAME=value assignment",
-        )
-      }
-      let prefix = segment[1]
-      guard prefix.find("=") is Some(eq) else {
-        raise @diagnostic.failure("export requires a NAME=value assignment")
-      }
-      let name = prefix[:eq].to_owned()
-      if !valid_name(name) {
-        raise @diagnostic.failure("invalid export variable name: \{name}")
-      }
-      return Export(name~, value=prefix[eq + 1:].to_owned())
     }
     if executable != "moonx" {
       raise @diagnostic.failure("command must start with moonx: " + executable)

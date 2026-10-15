@@ -22,7 +22,6 @@ fn validate_generated(
     guard old.command == new.command &&
       old.pipeline == new.pipeline &&
       old.module_name == new.module_name &&
-      old.extra_env == new.extra_env &&
       old.fence == new.fence &&
       old.working_directory.map(d => d.directory) ==
       new.working_directory.map(d => d.directory) else {

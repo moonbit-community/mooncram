@@ -53,13 +53,13 @@ export async function testRemotePackages({ executable, docs, project, directory,
     block('$ set-current-working-directory "../cwd fixture"\n' +
       '$ moonx fixture/tool@1.2.3 context\nparent\nyes\nconfigured contents\n' +
       `$ moonx fixture/tool@1.2.3 read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'|moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-file-echo 'configured contents'\nconfigured contents\n`),
-    block('$ export MODE=remote\n$ moonx fixture/tool@1.2.3 args "${MODE}" \'a|b\' \'\' --target native\n' +
+    block('$ moonx fixture/tool@1.2.3 args "${MODE}" \'a|b\' \'\' --target native\n' +
       '["${MODE}","a|b","","--target","native"]\n' +
-      '$ moonx fixture/tool@1.2.3 context\nremote\nyes\ncwd contents\n', ""),
+      '$ MODE=remote moonx fixture/tool@1.2.3 context\nremote\nyes\ncwd contents\n', ""),
     block("$ MODE=${MODE}-temporary moonx fixture/tool@1.2.3 check-env MODE '${MODE}-temporary'\n${MODE}-temporary\n" +
-      '$ moonx fixture/tool@1.2.3 check-env MODE remote\nremote\n', ""),
-    block(`$ MODE=first moonx fixture/tool@1.2.3 check-env MODE first|${LOCAL_PACKAGE} check-env-echo remote|MODE=last moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-env-echo last|${SCRIPT_COMMAND} check-env-echo remote\nfirst\n`),
-    block(`$ ${LOCAL_PACKAGE} check-env MODE remote|MODE=middle moonx fixture/tool@1.2.3 check-env-echo middle|moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-env-echo remote\nremote\n`),
+      '$ moonx fixture/tool@1.2.3 check-env MODE parent\nparent\n', ""),
+    block(`$ MODE=first moonx fixture/tool@1.2.3 check-env MODE first|${LOCAL_PACKAGE} check-env-echo parent|MODE=last moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-env-echo last|${SCRIPT_COMMAND} check-env-echo parent\nfirst\n`),
+    block(`$ ${LOCAL_PACKAGE} check-env MODE parent|MODE=middle moonx fixture/tool@1.2.3 check-env-echo middle|moonx fixture/tool/cmd@2.0.0-rc.1+build.007 check-env-echo parent\nparent\n`),
     block("$ moonx fixture/tool/cmd@2.0.0-rc.1+build.007 invocation --version\n" +
       '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"]\n'),
     block(`$ moonx fixture/tool@1.2.3 hello|${LOCAL_PACKAGE} echo|moonx fixture/tool/cmd@2.0.0-rc.1+build.007 echo\nHello, Moon Bit!\n`),
@@ -92,7 +92,7 @@ export async function testRemotePackages({ executable, docs, project, directory,
   // Successful updates preserve the source command and CRLF quote/list layout.
   const command = '$ MODE="${MODE}-temporary" moonx fixture/tool@1.2.3 args "${MODE}"';
   const before = (quotedListItem(block(
-    "$ export MODE='Moon Bit'\n" + command + "\nwrong\n", "")) + "\nTail").replaceAll("\n", CRLF);
+    command + "\nwrong\n", "")) + "\nTail").replaceAll("\n", CRLF);
   const update = write("update", before);
   const expectedUpdate = before.replace("wrong", '["${MODE}"]');
   const dryRun = invoke(["update", update, "--dry-run"]);

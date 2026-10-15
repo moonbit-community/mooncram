@@ -23,9 +23,9 @@ import { testCliArguments, testModuleResolution, testDirectoryScanning } from ".
 import { testPassingCases } from "./integration/execution.spec.mjs";
 import { testCheck, testGeneratedTargets } from "./integration/check.spec.mjs";
 import {
-  testExports,
+  testExportRejection,
   testCommandEnvironment,
-  testExportCasing,
+  testCommandEnvironmentCasing,
   testWorkingDirectories,
   testBuildEnvironment,
 } from "./integration/environment.spec.mjs";
@@ -68,13 +68,13 @@ async function runIntegrationTests(target) {
     console.log(`${target}: check validation, tool isolation and generated target timing passed`);
     testModuleResolution(context);
     testPassingCases(context);
-    testExports(context);
-    testExportCasing(context);
+    testExportRejection(context);
+    testCommandEnvironmentCasing(context);
     testCommandEnvironment(context);
     testWorkingDirectories(context);
     testBuildEnvironment(context);
     testBuildDiagnostics(context);
-    console.log(`${target}: scripts, packages, args, document exports, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
+    console.log(`${target}: scripts, packages, args, temporary environments, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
 
     testDualStreams(context);
     testDiagnostics(context);

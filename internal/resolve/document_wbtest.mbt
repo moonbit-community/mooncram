@@ -93,7 +93,7 @@ async test "shared validation checks modules before directories including config
   defer @fs.rmdir(root, recursive=true)
   let path = @files.resolve_from(root, "test.md")
   let document = @markdown.parse_document(
-    path, "```mooncram user/foo\n$ export A=x\n```\n```mooncram\n$ set-current-working-directory missing\n```\n",
+    path, "```mooncram user/foo\n$ set-current-working-directory .\n```\n```mooncram\n$ set-current-working-directory missing\n```\n",
   )
   assert_async_error_contains(
     () => ignore(validate_document(document, startup_cwd=root)),

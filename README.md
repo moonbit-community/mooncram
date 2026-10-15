@@ -223,9 +223,9 @@ such as generated IDs or version numbers.
 
 ### Environment variables
 
-Commands inherit your environment. Use `export` for values shared by later cases
-in the same document, or a prefix assignment for one command. The tested program
-reads the environment itself, for example in `environment.mbtx`:
+Commands inherit your environment. Use a prefix assignment to set a variable
+for one command. The tested program reads the environment itself, for example
+in `environment.mbtx`:
 
 ```mbt
 import { "moonbitlang/core/env" }
@@ -238,8 +238,7 @@ fn main {
 
 ````markdown
 ```mooncram
-$ export NAME='Moon Bit'
-$ moonx ./environment.mbtx
+$ NAME='Moon Bit' moonx ./environment.mbtx
 Hello, Moon Bit!
 
 $ NAME=World moonx ./environment.mbtx
@@ -247,8 +246,8 @@ Hello, World!
 ```
 ````
 
-Exports carry over to later blocks and reset for the next document. Temporary
-assignments apply to that pipeline segment and its build. Mooncram does not
+Temporary assignments apply only to that pipeline segment and its build;
+later commands inherit the original environment. Mooncram does not
 expand environment variables: `${NAME}` and `$NAME` are ordinary text in
 arguments, assignment values, executable paths, working directories and expected
 output. Normal argument splitting, quoting and escaping still apply. For example,

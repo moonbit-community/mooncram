@@ -13,7 +13,6 @@ pub fn parse(String, case_insensitive? : Bool) -> Command raise
 // Types and methods
 pub(all) enum Command {
   Pipeline(Array[PipelineSegment])
-  Export(name~ : String, value~ : String)
   SetCurrentWorkingDirectory(directory~ : String)
 } derive(Eq, @debug.Debug)
 pub fn Command::equal(Self, Self) -> Bool
