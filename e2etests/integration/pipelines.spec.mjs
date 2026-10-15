@@ -234,7 +234,9 @@ export function testPipelineStartupFailure({ executable, docs, directory, projec
     const elapsed = performance.now() - start;
     const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
       `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
-    assert(result.stderr.includes("@process.spawn()"), diagnostic);
+    assert(result.stderr.includes("failed to start 'moonx'"), diagnostic);
+    assert(result.stderr.includes("phase: start"), diagnostic);
+    assert(result.stderr.includes("segment: 2/"), diagnostic);
     assert(result.stderr.includes("startup-error.md:5:"));
     assert(result.stdout.includes("+Hello, Moon Bit!"));
     assert(result.stderr.includes("Not updating"));

@@ -48,3 +48,53 @@ test "reserved statuses apply only to imports and report binding and segment" {
     check_import_status(Some(binding), 1, status)
   }
 }
+
+///|
+test "cleanup errors cannot replace the original failure context" {
+  let progress = Progress::new("/repo")
+  progress.phase = "build"
+  progress.segment = Some("2/3 (tool)")
+  progress.tool = Some("moon")
+  ignore(progress.remember(@diagnostic.failure("compiler failed")))
+  progress.phase = "capture"
+  progress.segment = None
+  let log = StreamCapture::new("build", "stderr", "2/3 (tool)", "moon")
+  log.bytes.write_bytes(b"compiler detail\n")
+  progress.logs.push(log)
+  let report = @diagnostic.render(
+    progress.report(@diagnostic.failure("reader closed")),
+  )
+  assert_true(
+    report.contains(
+      "compiler failed\n  phase: build\n  segment: 2/3 (tool)\n  tool: moon",
+    ),
+    msg=report,
+  )
+  assert_true(!report.contains("reader closed"), msg=report)
+  assert_true(report.contains("; partial\ncompiler detail\n"), msg=report)
+}
+
+///|
+async test "capture IO errors identify the operation and stream endpoint" {
+  let (reader, writer) = @process.read_from_process()
+  reader.close()
+  writer.close()
+  let progress = Progress::new("/repo")
+  let log = StreamCapture::new("run", "stdout", "2/3 (tool)", "moonx")
+  try capture_stream(reader, log, progress) catch {
+    e => {
+      let report = @diagnostic.render(progress.report(e))
+      assert_true(
+        report.has_prefix("ERROR failed to read captured stdout\n"),
+        msg=report,
+      )
+      assert_true(
+        report.contains("phase: capture\n  segment: 2/3 (tool)\n  tool: moonx"),
+        msg=report,
+      )
+      assert_true(report.contains("cause:"), msg=report)
+    }
+  } noraise {
+    _ => fail("reading a closed stream should fail")
+  }
+}

@@ -140,6 +140,7 @@ export async function testImports({ executable, docs, project, directory, target
   const cancelled = [];
   const failures = [
     ["remote status 255", 1],
+    ["remote reserved-output 255", 1],
     ["remote status 255|Remote hello", 1], // final success cannot mask failure
     ["remote hello|Remote status 255|remote hello", 2],
     ["remote hello|Remote status 255", 2],
@@ -179,6 +180,14 @@ export async function testImports({ executable, docs, project, directory, target
       const coordinate = failedAlias === "Remote" ? "fixture/tool/cmd@2.0.0-rc.1+build.007" : "fixture/tool@1.2.3";
       assert(result.stderr.includes(`import '${failedAlias}' (${coordinate})`), result.stderr);
       assert(result.stderr.includes("Not updating"));
+      assert(result.stderr.includes(`segment: ${segment}/${pipeline.split("|").length}`));
+      if (pipeline.includes("reserved-output")) {
+        assert(result.stderr.includes("stderr-begin\n" + "e".repeat(70000) + "\nstderr-end\n"));
+        assert.equal(result.stderr.split("stderr-begin").length, 2);
+        assert.equal(result.stderr.split("stdout before failure").length, 2);
+      }
+      if (slowFilename && status === 255) assert(result.stderr.includes("failure after sibling started"));
+      if (status === -1) assert(result.stderr.includes("stderr before signal"));
       assert(!result.stdout.includes(`${bad} (updated)`));
       assert.equal(fs.readFileSync(bad, "utf8"), original);
       assert.equal(fs.readFileSync(good, "utf8"), imports + block("$ remote hello\nHello, Moon Bit!\n", ""));
@@ -187,6 +196,36 @@ export async function testImports({ executable, docs, project, directory, target
   }
   for (const filename of cancelled) {
     assert(fs.existsSync(join(docs, filename + ".started")), "cancellation must exercise a running segment");
+  }
+
+  // An unmanaged descendant can hold a stream open after its parent exits.
+  // Preserve the partial log without extending the case deadline or hanging.
+  for (const mode of ["held-stderr", "held-success"]) {
+    const before = imports + block(`$ remote ${mode}\n`, "");
+    const document = write(mode, before);
+    const start = performance.now();
+    const result = invoke(["update", document, "--timeout-ms", "1000"], { expected: EXIT_CODE.ERROR });
+    const pid = result.stderr.match(/held-pid=(\d+)/)?.[1];
+    try {
+      assert(pid, result.stderr);
+      assert(performance.now() - start < CANCELLATION_LIMIT_MS, result.stderr);
+      assert(result.stderr.includes("held diagnostic"), result.stderr);
+      assert(result.stderr.includes("partial"), result.stderr);
+      if (mode === "held-success") {
+        assert(result.stderr.includes("timed out after 1000 ms"), result.stderr);
+        assert(result.stderr.includes("phase: capture"), result.stderr);
+      } else {
+        assert(result.stderr.includes("reserved execution status 255"), result.stderr);
+        assert(!result.stderr.includes("timed out"), result.stderr);
+      }
+      assert.equal(fs.readFileSync(document, "utf8"), before);
+    } finally {
+      if (pid) {
+        try { process.kill(Number(pid)); } catch (error) {
+          if (error.code !== "ESRCH") throw error;
+        }
+      }
+    }
   }
 
   // Local programs returning 255 remain assertable, including upstream.
@@ -220,7 +259,11 @@ export async function testImports({ executable, docs, project, directory, target
   const noMoonxEnv = { ...env, PATH: tools }; // keep lookup wholly isolated
   const startup = imports + block("$ remote hello\nwrong\n", "");
   const missing = write("startup", startup);
-  assert(invoke(["update", missing], { env: noMoonxEnv, expected: EXIT_CODE.ERROR }).stderr.includes("@process.spawn()"));
+  const startupResult = invoke(["update", missing], { env: noMoonxEnv, expected: EXIT_CODE.ERROR });
+  assert(startupResult.stderr.includes("failed to start 'moonx'"));
+  assert(startupResult.stderr.includes("phase: start"));
+  assert(startupResult.stderr.includes("segment: 1/1 (remote)"));
+  assert(startupResult.stderr.includes("hint: check that 'moonx' is available on PATH"));
   assert.equal(fs.readFileSync(missing, "utf8"), startup);
   await new Promise(resolve => setTimeout(resolve, 5500));
   for (const filename of [...cancelled, "import-timeout.txt"]) {

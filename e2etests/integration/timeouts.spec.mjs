@@ -17,6 +17,7 @@ const SLOW_SIDE_EFFECT_FILENAME = "slow-finished.txt";
 export function assertNoSlowSideEffect(docs) {
   assert(!fs.existsSync(join(docs, SLOW_SIDE_EFFECT_FILENAME)));
   assert(!fs.existsSync(join(docs, "dual-slow.txt")));
+  assert(!fs.existsSync(join(docs, "build-timeout-finished.txt")));
   for (const segment of ["first", "middle", "last", "spawn", "capture"]) {
     assert(!fs.existsSync(join(docs, `slow-${segment}.txt`)));
   }
@@ -50,6 +51,8 @@ export function testTimeouts({ cli, docs }) {
     ], { expected: EXIT_CODE.ERROR });
     assert(performance.now() - pipelineStart < CANCELLATION_LIMIT_MS);
     assert(cancelled.stderr.includes("timed out after 1500 ms"));
+    assert(cancelled.stderr.includes("phase: run"));
+    for (const index of [1, 2, 3]) assert(cancelled.stderr.includes(`${index}/3 (${LOCAL_PACKAGE})`));
     assert.deepEqual(fs.readFileSync(pipeline), original);
     for (const segment of ["first", "middle", "last"]) {
       assert(fs.existsSync(join(docs, `slow-${segment}.txt.started`)),

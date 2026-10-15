@@ -149,6 +149,11 @@ async fn main {
       @async.sleep(5000)
       @fs.write_file(filename, "finished")
     }
+    "split-utf8" => {
+      @stdio.stdout.write(b"\xf0\x9f")
+      @async.sleep(20)
+      @stdio.stdout.write(b"\x98\x80")
+    }
     "invalid-utf8" => @stdio.stdout.write(b"\xff")
     "invalid-stderr" => @stdio.stderr.write(b"\xff")
     _ => @sys.exit(3)
