@@ -79,7 +79,16 @@ export function testDualStreams({ cli, docs, target }) {
     const result = cli(args, { expected: EXIT_CODE.ERROR });
     assert(performance.now() - start < CANCELLATION_LIMIT_MS, result.stderr);
     assert(result.stderr.includes("Not updating"), result.stderr);
-    if (mode.startsWith("slow")) assert(result.stderr.includes("timed out"), result.stderr);
+    if (mode.startsWith("slow")) {
+      assert(result.stderr.includes("timed out"), result.stderr);
+      assert(result.stderr.includes("phase: run"), result.stderr);
+    } else {
+      const stream = mode === "invalid-utf8" ? "stdout" : "stderr";
+      assert(result.stderr.includes(`invalid UTF-8 in captured ${stream}`), result.stderr);
+      assert(result.stderr.includes("phase: capture"), result.stderr);
+      assert(result.stderr.includes("escaped bytes"), result.stderr);
+      assert(!result.stderr.includes("Malformed"), result.stderr);
+    }
     assert.equal(fs.readFileSync(error, "utf8"), before);
     const dry = cli([...args, "--dry-run"], { expected: EXIT_CODE.ERROR });
     assert(!dry.stdout.includes(`${error} (updated)`));

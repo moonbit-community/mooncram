@@ -18,6 +18,7 @@ import {
   createTemporaryDirectory,
   createFixtures,
 } from "./integration/basic.mjs";
+import { testBuildDiagnostics } from "./integration/diagnostics.spec.mjs";
 import { testCliArguments, testModuleResolution, testDirectoryScanning } from "./integration/cli.spec.mjs";
 import { testPassingCases } from "./integration/execution.spec.mjs";
 import { testCheck, testGeneratedTargets } from "./integration/check.spec.mjs";
@@ -73,6 +74,7 @@ async function runIntegrationTests(target) {
     testCommandEnvironment(context);
     testWorkingDirectories(context);
     testBuildEnvironment(context);
+    testBuildDiagnostics(context);
     console.log(`${target}: scripts, packages, args, document exports, build env, cwd, stdin EOF, stdout and large dual-stream output passed`);
 
     testDualStreams(context);

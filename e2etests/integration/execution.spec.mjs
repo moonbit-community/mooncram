@@ -37,6 +37,7 @@ function programCases(program) {
     block(`$ ${program} setup\n\n$ ${program} read\nside effect preserved\n`),
     block(`$ ${program} crlf\none\ntwo\n`),
     streamCases(program),
+    block(`$ ${program} split-utf8\n😀 (no-eol)\n`),
   ].join("");
 }
 

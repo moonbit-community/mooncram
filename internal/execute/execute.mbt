@@ -28,35 +28,50 @@ pub async fn execute_case(
   timeout_ms~ : Int32,
 ) -> @output.Captured {
   let cwd = context.cwd_for(case)
-  @async.with_timeout(
-    timeout_ms,
-    () => {
-      let commands = []
-      // Preflight every segment before any tested program can produce effects.
-      for segment in case.pipeline {
-        let extra_env = case.extra_env.copy()
-        for name, value in segment.extra_env {
-          extra_env[name] = value
-        }
-        let command = prepare_command(
-          segment.argv,
-          cwd,
-          context.resolve_target(case, segment.argv[0], warning~),
-          target~,
-          extra_env~,
-        )
-        commands.push({
-          ..command,
-          stderr_to_stdout: segment.stderr_to_stdout,
-          stdout_to_null: segment.stdout_to_null,
-        })
+  let progress = Progress::new(cwd)
+  let result = @async.with_timeout_opt(timeout_ms, () => {
+    let commands = []
+    // Every local build succeeds before any tested program starts.
+    for i, segment in case.pipeline {
+      progress.phase = "resolve"
+      progress.segment = Some(
+        segment_label(i, case.pipeline.length(), segment.argv[0]),
+      )
+      progress.tool = None
+      progress.pending = []
+      progress.logs = []
+      let extra_env = case.extra_env.copy()
+      for name, value in segment.extra_env {
+        extra_env[name] = value
       }
-      capture_pipeline(commands, cwd)
-    },
-    error=@diagnostic.failure(
-      "timed out after \{timeout_ms} ms (including build)",
-    ),
-  )
+      let resolved = context.resolve_target(case, segment.argv[0], warning~)
+      let command = prepare_command(
+        segment.argv,
+        cwd,
+        resolved,
+        target~,
+        extra_env~,
+        progress~,
+      )
+      commands.push({
+        ..command,
+        stderr_to_stdout: segment.stderr_to_stdout,
+        stdout_to_null: segment.stdout_to_null,
+      })
+    }
+    capture_pipeline(commands, cwd, progress~)
+  }) catch {
+    e => raise progress.report(e)
+  }
+  match result {
+    Some(actual) => actual
+    None =>
+      raise progress.report(
+        @diagnostic.failure(
+          "timed out after \{timeout_ms} ms (including build)",
+        ),
+      )
+  }
 }
 
 ///|
@@ -66,11 +81,13 @@ async fn prepare_command(
   resolved : @resolve.ResolvedTarget,
   target~ : String,
   extra_env~ : Map[String, String],
+  progress~ : Progress,
 ) -> Command {
   let args = argv[1:].to_owned()
   match resolved {
     Imported(binding) =>
       {
+        label: argv[0],
         program: "moonx",
         extra_env,
         args: ["--target", "wasm", binding.coordinate, "--"] + args,
@@ -85,9 +102,11 @@ async fn prepare_command(
           ["run", "--build-only", "--target", "wasm", executable],
           cwd,
           extra_env~,
+          progress~,
         ),
       )
       {
+        label: argv[0],
         program: "moonx",
         extra_env,
         imported: None,
@@ -103,9 +122,11 @@ async fn prepare_command(
         ],
         cwd,
         extra_env~,
+        progress~,
       )
       if target == "wasm" {
         {
+          label: argv[0],
           program: "moonrun",
           extra_env,
           imported: None,
@@ -115,6 +136,7 @@ async fn prepare_command(
         }
       } else {
         {
+          label: argv[0],
           program: artifact,
           extra_env,
           imported: None,
@@ -132,10 +154,14 @@ async fn build_artifact(
   args : Array[String],
   cwd : String,
   extra_env~ : Map[String, String],
+  progress~ : Progress,
 ) -> String {
+  progress.phase = "build"
+  progress.tool = Some("moon")
   let build = capture_pipeline(
     [
       {
+        label: "moon",
         program: "moon",
         extra_env,
         args,
@@ -145,18 +171,16 @@ async fn build_artifact(
       },
     ],
     cwd,
+    progress~,
+    building=true,
   )
   if build.exit_code != 0 {
-    raise @diagnostic.failure(
-      "build failed (exit \{build.exit_code})\n\{build.output}\{build.diagnostic}",
-    )
+    raise @diagnostic.failure("build failed (exit \{build.exit_code})")
   }
   let artifact = parse_artifact(build.output) catch {
-    e =>
-      raise @diagnostic.failure(
-        "\{@diagnostic.error_text(e)}\n\{build.output}\{build.diagnostic}",
-      )
+    e => raise progress.remember(e)
   }
+  progress.logs = []
   @files.resolve_from(cwd, artifact)
 }
 

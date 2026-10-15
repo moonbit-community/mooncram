@@ -21,10 +21,25 @@ async fn imported_args() -> Array[String] {
       println(raw[1:].to_owned().to_json().stringify())
       @sys.exit(0)
     }
+    "held-stderr" | "held-success" => {
+      let pid = @process.spawn_orphan(
+        @env.get_env_var("MOONCRAM_TEST_NODE").unwrap(),
+        ["-e", "setTimeout(() => {}, 10000)"],
+        stdout=@stdio.stdout, stderr=@stdio.stderr,
+      )
+      @stdio.stderr.write("held-pid=\{pid}\nheld diagnostic\n")
+      @sys.exit(if args[1] == "held-stderr" { 255 } else { 0 })
+    }
+    "reserved-output" => {
+      @stdio.stdout.write("stdout before failure\n")
+      @stdio.stderr.write("stderr-begin\n" + "e".repeat(70000) + "\nstderr-end\n")
+      @sys.exit(@string.parse_int(args[2]))
+    }
     "reserved-after" => {
       while !@fs.exists(args[3] + ".started") {
         @async.sleep(10)
       }
+      @stdio.stderr.write("failure after sibling started\n")
       @sys.exit(@string.parse_int(args[2]))
     }
     "signal" | "signal-after" => {
@@ -35,6 +50,7 @@ async fn imported_args() -> Array[String] {
       } else {
         @async.sleep(100)
       }
+      @stdio.stderr.write("stderr before signal\n")
       @process.run(
         @env.get_env_var("MOONCRAM_TEST_NODE").unwrap(),
         ["-e", "process.kill(process.ppid, 'SIGHUP')"],
