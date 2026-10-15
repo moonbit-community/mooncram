@@ -34,7 +34,7 @@ moon run . -- test README_CN.md
 最后一条命令会运行下面的示例，使用的是 [examples/hello.mbtx](examples/hello.mbtx)：
 
 ```mooncram
-$ ./examples/hello.mbtx "Moon Bit"
+$ moonx ./examples/hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 
@@ -80,7 +80,7 @@ fn main {
 脚本向使用者打招呼。
 
 ```mooncram
-$ ./hello.mbtx
+$ moonx ./hello.mbtx
 Hello, MoonBit!
 ```
 ````
@@ -102,12 +102,12 @@ mooncram test tests/hello.md
 
 ### 本地脚本
 
-使用 `.mbtx` 文件的相对或绝对路径。参数支持单引号、双引号和反斜杠转义。
+显式写出 `moonx`，再跟 `.mbtx` 文件的相对或绝对路径。参数支持单引号、双引号和反斜杠转义。
 对于支持传入名字的脚本，例如本仓库的 `examples/hello.mbtx`：
 
 ````markdown
 ```mooncram
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
@@ -119,39 +119,38 @@ Hello, Moon Bit!
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme 1.0.0
 ```
 ````
 
 请从包含该 `moon.mod` 的目录启动 mooncram。模块声明必须与配置中的名称完全一致，
 且只作用于当前代码块。包必须是可执行包，例如在 `moon.pkg` 中声明
-`pkgtype(kind: "executable")`。对于可执行的根包，使用模块的短名称，此处为 `acme`。
+`pkgtype(kind: "executable")`。命令必须写出 `moonx` 和包含模块名的完整包名。
+对于可执行的根包，使用 `moonx user/acme`。
 
 mooncram 会先构建本地包，再运行程序，构建诊断不会混入待匹配的程序输出。
 本地包默认使用 Wasm；运行 `mooncram test tests --target native` 可以测试原生后端，
 这需要 C 工具链。独立脚本始终使用 Wasm。
 
+目标后的所有参数直接传给程序，包括字面量 `--`。目标之前不解析 moonx 选项。
+
 ### Mooncakes 上的工具
 
-用 `mooncram-import` 代码块声明别名和固定版本：
+直接使用 `moonx`、完整坐标和精确版本运行：
 
 ````markdown
-```mooncram-import
-mbtcram : moonbit-community/mooncram@0.0.3
-```
-
 ```mooncram
-$ mbtcram --version
+$ moonx moonbit-community/mooncram@0.0.3 --version
 0.0.3
 ```
 ````
 
-一个导入块可以声明多个工具。别名在整篇文档中可用，包括导入块之前的用例。
-坐标格式为 `user/module[/package]@version`，必须指定精确版本，不接受版本范围或 `latest`。
-请避免别名与本地可执行包冲突。
+坐标格式为 `user/module[/package]@version`，必须指定精确 SemVer 版本，
+不接受省略版本、版本范围或 `latest`。无需导入块或别名；旧 `mooncram-import`
+代码块按普通 Markdown 忽略。
 
-`moonx` 负责下载和缓存导入的工具。导入工具始终使用 Wasm，
+`moonx` 负责下载和缓存远程工具。远程工具始终使用 Wasm，
 即使本地包选择了 `--target native`。
 
 ## 描述预期结果
@@ -162,7 +161,7 @@ $ mbtcram --version
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --unknown
+$ moonx user/acme/cmd/acme --unknown
 @STDOUT (empty)
 @STDERR
 error: unknown option --unknown
@@ -184,10 +183,10 @@ error: unknown option --unknown
 
 ````markdown
 ```mooncram user/acme
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme * (glob)
 
-$ cmd/acme --version
+$ moonx user/acme/cmd/acme --version
 acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 ```
 ````
@@ -227,10 +226,10 @@ fn main {
 ````markdown
 ```mooncram
 $ export NAME='Moon Bit'
-$ ./environment.mbtx
+$ moonx ./environment.mbtx
 Hello, Moon Bit!
 
-$ NAME=World ./environment.mbtx
+$ NAME=World moonx ./environment.mbtx
 Hello, World!
 ```
 ````
@@ -238,9 +237,9 @@ Hello, World!
 export 会延续到后续代码块，在下一篇文档中重置。
 临时赋值只作用于当前管道段及其构建过程。mooncram 不展开环境变量：参数、赋值值、
 可执行路径、工作目录及预期输出中的 `${NAME}` 和 `$NAME` 都是普通文本，
-仍遵循通常的分词、引号和转义规则。例如，`NAME=World ./hello.mbtx "${NAME}"`
+仍遵循通常的分词、引号和转义规则。例如，`NAME=World moonx ./hello.mbtx "${NAME}"`
 传入字面参数 `${NAME}`，同时子进程的环境变量 `NAME` 为 `World`。
-若要将名字作为参数传入，请显式写出值，如 `./hello.mbtx World`。
+若要将名字作为参数传入，请显式写出值，如 `moonx ./hello.mbtx World`。
 
 ### 工作目录与 fixture
 
@@ -250,7 +249,7 @@ export 会延续到后续代码块，在下一篇文档中重置。
 ````markdown
 ```mooncram
 $ set-current-working-directory ../examples
-$ ./hello.mbtx "Moon Bit"
+$ moonx ./hello.mbtx "Moon Bit"
 Hello, Moon Bit!
 ```
 ````
@@ -262,11 +261,11 @@ mooncram 不会创建隔离的临时工作区。
 
 ### 管道
 
-用 `|` 连接脚本、本地包或导入的工具：
+用 `|` 连接脚本、本地包或远程工具；每一段都必须显式写出 `moonx`：
 
 ````markdown
 ```mooncram user/acme
-$ ./input.mbtx | cmd/acme --uppercase
+$ moonx ./input.mbtx | moonx user/acme/cmd/acme --uppercase
 HELLO, MOONBIT!
 ```
 ````
@@ -275,11 +274,12 @@ HELLO, MOONBIT!
 退出码采用 **pipefail** 规则：取最右侧的非零退出码，全部成功时为 `0`。
 第一段的 stdin 会立即收到 EOF。
 
-非最后一段可以使用 `2>&1` 将 stderr 送入管道，或用 `1>/dev/null` 丢弃 stdout。
-最后一段不支持这两个标记，请使用 `@STDOUT` 和 `@STDERR` 检查输出。
+各段 stderr 分别捕获，并按管道段顺序拼接。使用 `@STDOUT` 和 `@STDERR`
+检查两个输出流。所有段均拒绝输出重定向，包括 `2>&1` 和 `1>/dev/null`；
+通过引号或转义可以将这些文本作为普通参数传入。
 
 命令由 mooncram 自己解析，不经过 Shell。不支持 `echo`、`cat` 等 Shell 命令，
-也不支持 `&&`、`;`、命令替换、通用重定向或多行 Shell 表达式。
+也不支持 `&&`、`;`、命令替换、输出重定向或多行 Shell 表达式。
 需要准备数据等逻辑时，可以写进 MoonBit 脚本。
 
 ## 维护测试
