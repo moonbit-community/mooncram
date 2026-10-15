@@ -3,7 +3,7 @@
 ///
 /// `args` contains arguments after the executable name. Paths default to `.`;
 /// test/update default to Wasm and a 60000 ms deadline per case. Reports and
-/// summaries go to stdout; warnings and errors go to stderr.
+/// summaries go to stdout; errors go to stderr.
 ///
 /// Returns 0 on success (including updates and dry runs), 1 when `test` has
 /// assertion failures, or 2 on parsing, validation, execution or filesystem

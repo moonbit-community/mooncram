@@ -5,7 +5,7 @@ fn parse_example(body : String) -> @markdown.Document raise {
 
 ///|
 test "quoted list Unicode CRLF source positions and local replacement" {
-  let source = "😀\r\n\r\n> - ```mooncram\r\n>   $ ./hello.mbtx\r\n>   旧值\r\n>\r\n>   ```\r\nAfter\r\n"
+  let source = "😀\r\n\r\n> - ```mooncram\r\n>   $ moonx ./hello.mbtx\r\n>   旧值\r\n>\r\n>   ```\r\nAfter\r\n"
   let doc = @markdown.parse_document("unicode.md", source)
   let case = doc.cases[0]
   assert_eq(case.line, 4)
@@ -23,7 +23,7 @@ test "quoted list Unicode CRLF source positions and local replacement" {
 
 ///|
 test "update special output round trips and is idempotent" {
-  let source = "Intro\n\n```mooncram\n$ ./a.mbtx\nold\n\n$ ./b.mbtx\nkeep * (glob)\n```\nTail"
+  let source = "Intro\n\n```mooncram\n$ moonx ./a.mbtx\nold\n\n$ moonx ./b.mbtx\nkeep * (glob)\n```\nTail"
   let doc = @markdown.parse_document("test.md", source)
   let other : @output.Captured = {
     output: "keep me\n",
@@ -32,7 +32,7 @@ test "update special output round trips and is idempotent" {
   }
   for
     output in [
-      "", "\n", "\n\n", "😀  \n", "$ ./other.mbtx\n[2]\n```\n", "x (regex)\n",
+      "", "\n", "\n\n", "😀  \n", "$ moonx ./other.mbtx\n[2]\n```\n", "x (regex)\n",
       "\u0000\u001b\t\r\\\"", "final", "\nlast",
     ] {
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 4, }
@@ -42,14 +42,14 @@ test "update special output round trips and is idempotent" {
     assert_true(parsed.cases[0].expected.matches(actual), msg=updated)
     assert_true(parsed.cases[1].expected.matches(other), msg=updated)
     assert_eq(@update.generate(parsed, [actual, other]).source, updated)
-    assert_true(updated.contains("\n\n$ ./b.mbtx\nkeep * (glob)\n"))
+    assert_true(updated.contains("\n\n$ moonx ./b.mbtx\nkeep * (glob)\n"))
     assert_true(updated.has_suffix("\nTail"))
   }
 }
 
 ///|
 test "updates keep ordinary parentheses literal and escape known suffixes" {
-  let doc = parse_example("$ ./a.mbtx\nold\n")
+  let doc = parse_example("$ moonx ./a.mbtx\nold\n")
   for
     (line, rendered) in [
       ("hello (foo)", "hello (foo)"),
@@ -91,7 +91,7 @@ test "updates keep ordinary parentheses literal and escape known suffixes" {
 ///|
 test "matching patterns survive while exact spellings normalize" {
   let doc = parse_example(
-    "$ ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
+    "$ moonx ./a.mbtx\nversion * (glob)\n[0-9]+ (regex)\nold\n\"\" (escaped)\nhello (equal)\n\"hello (foo)\" (escaped)\nhello (foo)\n",
   )
   let actual : @output.Captured = {
     output: "version 9\n123\nnew\n\nhello (equal)\nhello (foo)\nhello (foo)\n",
@@ -113,17 +113,19 @@ test "matching patterns survive while exact spellings normalize" {
 
 ///|
 test "exit-only updates and multiple replacements preserve source text" {
-  let doc = parse_example("$ ./a.mbtx\n\n$ ./b.mbtx\n[2]\n")
+  let doc = parse_example("$ moonx ./a.mbtx\n\n$ moonx ./b.mbtx\n[2]\n")
   let one : @output.Captured = { output: "", diagnostic: "", exit_code: 3, }
   let two : @output.Captured = { output: "", diagnostic: "", exit_code: 0, }
   let updated = @update.generate(doc, [one, two]).source
-  assert_eq(updated, "```mooncram\n$ ./a.mbtx\n[3]\n\n$ ./b.mbtx\n```\n")
+  assert_eq(
+    updated, "```mooncram\n$ moonx ./a.mbtx\n[3]\n\n$ moonx ./b.mbtx\n```\n",
+  )
 }
 
 ///|
 test "retained blank and status-looking output is safe when it becomes final" {
   for (body, output) in [("a\n\nb\n", "a\n\n"), ("[2]\nb\n", "[2]\n")] {
-    let doc = parse_example("$ ./a.mbtx\n" + body)
+    let doc = parse_example("$ moonx ./a.mbtx\n" + body)
     let actual : @output.Captured = { output, diagnostic: "", exit_code: 0, }
     let updated = @update.generate(doc, [actual]).source
     assert_true(
@@ -136,7 +138,7 @@ test "retained blank and status-looking output is safe when it becomes final" {
 
 ///|
 test "existing container spelling and mixed line endings survive an update" {
-  let source = "> ```mooncram\r\n>$ ./a.mbtx\n>keep * (glob)\r\n> old\n> ```\r\n"
+  let source = "> ```mooncram\r\n>$ moonx ./a.mbtx\n>keep * (glob)\r\n> old\n> ```\r\n"
   let doc = @markdown.parse_document("mixed.md", source)
   let actual : @output.Captured = {
     output: "keep me\nnew\n",
@@ -156,8 +158,8 @@ test "existing container spelling and mixed line endings survive an update" {
 test "leading output spaces survive optional Markdown fence indentation" {
   for
     source in [
-      "  ```mooncram\n$ ./a.mbtx\nold\n  ```\n", "  ```mooncram\n  $ ./a.mbtx\n  old\n  ```\n",
-      ">   ```mooncram\n> $ ./a.mbtx\n> old\n>   ```\n", "1. ```mooncram\n   $ ./a.mbtx\n   old\n   ```\n",
+      "  ```mooncram\n$ moonx ./a.mbtx\nold\n  ```\n", "  ```mooncram\n  $ moonx ./a.mbtx\n  old\n  ```\n",
+      ">   ```mooncram\n> $ moonx ./a.mbtx\n> old\n>   ```\n", "1. ```mooncram\n   $ moonx ./a.mbtx\n   old\n   ```\n",
     ] {
     let doc = @markdown.parse_document("indent.md", source)
     let actual : @output.Captured = {
@@ -197,7 +199,7 @@ fn assert_update(
 
 ///|
 test "stream updates preserve order separators patterns and ignored sections" {
-  let source = "```mooncram\n$ ./a.mbtx\n\n@STDERR\nerr [0-9]+ (regex)\nold\n\n@STDOUT (ignore)\n[2]\n\n```\n"
+  let source = "```mooncram\n$ moonx ./a.mbtx\n\n@STDERR\nerr [0-9]+ (regex)\nold\n\n@STDOUT (ignore)\n[2]\n\n```\n"
   let actual : @output.Captured = {
     output: "unasserted\n",
     diagnostic: "err 42\nnew",
@@ -208,7 +210,7 @@ test "stream updates preserve order separators patterns and ignored sections" {
     [actual],
     source.replace(old="old\n", new="new (no-eol)\n"),
   )
-  let patterns = "```mooncram\n$ ./a.mbtx\n@STDOUT\nv* (glob) (no-eol)\n@STDERR\nerror [0-9]+ (regex)\n[0]\n```\n"
+  let patterns = "```mooncram\n$ moonx ./a.mbtx\n@STDOUT\nv* (glob) (no-eol)\n@STDERR\nerror [0-9]+ (regex)\n[0]\n```\n"
   assert_update(
     patterns,
     [{ output: "version", diagnostic: "error 12\n", exit_code: 3, }],
@@ -223,7 +225,7 @@ test "stream updates preserve order separators patterns and ignored sections" {
 
 ///|
 test "empty stream constraints convert only when nonempty and literal markers escape" {
-  let source = "```mooncram\n$ ./a.mbtx\n@STDOUT (empty)\n@STDERR (empty)\n```\n"
+  let source = "```mooncram\n$ moonx ./a.mbtx\n@STDOUT (empty)\n@STDERR (empty)\n```\n"
   for
     stdout in [
       "\n", "@STDOUT\n@STDERR (empty)\n", "@STDOUT (unknown)", "@STDERR\tbad\n",
@@ -249,13 +251,13 @@ test "empty stream constraints convert only when nonempty and literal markers es
 
 ///|
 test "growing sections preserve other section prefixes and mixed newlines" {
-  let source = "> ```mooncram\r\n>$ ./a.mbtx\n> @STDOUT\r\n> old\n>\r\n>@STDERR\n> keep * (glob)\r\n> ```\r\n"
+  let source = "> ```mooncram\r\n>$ moonx ./a.mbtx\n> @STDOUT\r\n> old\n>\r\n>@STDERR\n> keep * (glob)\r\n> ```\r\n"
   assert_update(
     source,
     [{ output: "first\nsecond\n", diagnostic: "keep me\n", exit_code: 0, }],
     source.replace(old="> old\n", new="> first\n>second\n"),
   )
-  let source = "> - ```mooncram\r\n>   $ ./a.mbtx\r\n>   @STDERR (ignore)\r\n>\r\n>   @STDOUT (empty)\r\n>   ```\r\n"
+  let source = "> - ```mooncram\r\n>   $ moonx ./a.mbtx\r\n>   @STDERR (ignore)\r\n>\r\n>   @STDOUT (empty)\r\n>   ```\r\n"
   assert_update(
     source,
     [{ output: "new\n", diagnostic: "ignored", exit_code: 2, }],
@@ -268,7 +270,7 @@ test "growing sections preserve other section prefixes and mixed newlines" {
 
 ///|
 test "legacy updates escape marker-looking output before it can select dual mode" {
-  let source = "```mooncram\n$ ./a.mbtx\nold\n```\n"
+  let source = "```mooncram\n$ moonx ./a.mbtx\nold\n```\n"
   assert_update(
     source,
     [{ output: "@STDOUT\n@STDERR (ignore)\n", diagnostic: "", exit_code: 0, }],

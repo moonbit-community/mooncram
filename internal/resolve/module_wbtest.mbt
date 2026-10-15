@@ -58,7 +58,7 @@ test "package configurations determine callability" {
 }
 
 ///|
-async test "root and same-name subpackage selection matrix with source directory" {
+async test "root and same-name subpackage resolution matrix with source directory" {
   // Use canonical paths consistently, including Windows temporary paths.
   let dir = @fs.realpath(@fs.tmpdir(prefix="mooncram-module"))
   defer @fs.rmdir(dir, recursive=true)
@@ -74,8 +74,6 @@ async test "root and same-name subpackage selection matrix with source directory
   assert_eq(context.name, "user/foo")
   assert_eq(context.root, @fs.realpath(dir))
   assert_eq(context.source_root, src)
-  let warnings = []
-  let warning : async (String) -> Unit = message => warnings.push(message)
   for root_main in [false, true] {
     for sub_main in [false, true] {
       @fs.write_file(
@@ -94,35 +92,31 @@ async test "root and same-name subpackage selection matrix with source directory
           ""
         },
       )
-      assert_eq(has_local_candidate(context, "foo"), root_main || sub_main)
-      if root_main || sub_main {
-        assert_eq(
-          resolve_package(context, "foo", warning~),
-          if root_main {
-            src
-          } else {
-            sub
-          },
-        )
-      } else {
+      for
+        (name, path, callable) in [
+          ("user/foo", src, root_main),
+          ("user/foo/foo", sub, sub_main),
+        ] {
+        if callable {
+          assert_eq(resolve_package(context, name), path)
+        } else {
+          assert_async_error_contains(
+            () => ignore(resolve_package(context, name)),
+            "no executable package",
+          )
+        }
+      }
+      for name in ["foo", "foo/foo", "user/foobar", "other/foo"] {
         assert_async_error_contains(
-          () => ignore(resolve_package(context, "foo", warning~)),
-          "no executable package",
+          () => ignore(resolve_package(context, name)),
+          "expected a full package name",
         )
       }
     }
   }
-  assert_eq(warnings.length(), 1)
-  assert_true(
-    warnings[0].contains("user/foo and user/foo/foo; selected user/foo"),
-  )
   @fs.write_file(@files.resolve_from(sub, "moon.pkg"), "pkgtype(kind: false)")
   assert_async_error_contains(
-    () => ignore(has_local_candidate(context, "foo")),
-    "invalid configuration",
-  )
-  assert_async_error_contains(
-    () => ignore(resolve_package(context, "foo", warning~)),
+    () => ignore(resolve_package(context, "user/foo/foo")),
     "invalid configuration",
   )
 }
@@ -139,15 +133,15 @@ async test "deep packages and nested modules including symlinks stay within modu
     @files.resolve_from(deep, "moon.pkg"),
     "pkgtype(kind: \"executable\")",
   )
-  assert_eq(resolve_package(context, "cmd/deep/boo", warning=_ => ()), deep)
+  assert_eq(resolve_package(context, "user/foo/cmd/deep/boo"), deep)
   @fs.write_file(@files.resolve_from(dir, "cmd/moon.mod"), "")
   assert_async_error_contains(
-    () => ignore(resolve_package(context, "cmd/deep/boo", warning=_ => ())),
+    () => ignore(resolve_package(context, "user/foo/cmd/deep/boo")),
     "nested modules",
   )
   @fs.symlink(target=deep, @files.resolve_from(dir, "alias"))
   assert_async_error_contains(
-    () => ignore(resolve_package(context, "alias", warning=_ => ())),
+    () => ignore(resolve_package(context, "user/foo/alias")),
     "nested modules",
   )
   let outside = @fs.realpath(@fs.tmpdir(prefix="mooncram-outside"))
@@ -158,7 +152,7 @@ async test "deep packages and nested modules including symlinks stay within modu
   )
   @fs.symlink(target=outside, @files.resolve_from(dir, "outside"))
   assert_async_error_contains(
-    () => ignore(resolve_package(context, "outside", warning=_ => ())),
+    () => ignore(resolve_package(context, "user/foo/outside")),
     "no executable package",
   )
   // Being inside the module is insufficient when source selects a subdirectory.
@@ -177,7 +171,7 @@ async test "deep packages and nested modules including symlinks stay within modu
   @fs.symlink(target=sibling, @files.resolve_from(src, "sibling"))
   let context = load_module(dir)
   assert_async_error_contains(
-    () => ignore(resolve_package(context, "sibling", warning=_ => ())),
+    () => ignore(resolve_package(context, "user/foo/sibling")),
     "no executable package",
   )
 }
@@ -187,7 +181,7 @@ async test "module declarations validate export-only fences before execution" {
   let dir = @fs.realpath(@fs.tmpdir(prefix="mooncram-declaration"))
   defer @fs.rmdir(dir, recursive=true)
   let doc = @markdown.parse_document(
-    "test.md", "```mooncram\n$ ./a.mbtx\n```\n```mooncram user/foo\n$ export A=x\n```\n",
+    "test.md", "```mooncram\n$ moonx ./a.mbtx\n```\n```mooncram user/foo\n$ export A=x\n```\n",
   )
   assert_async_error_contains(
     () => ignore(validate_document_modules(doc, dir)),

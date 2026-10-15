@@ -26,7 +26,7 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
         "```mooncram" +
         newline +
         prefix +
-        "$ ./a.mbtx" +
+        "$ moonx ./a.mbtx" +
         newline +
         (if streams {
           separator + blank_newline + prefix + "@STDOUT" + newline
@@ -48,7 +48,7 @@ fn assert_container_blank_updates(streams : Bool) -> Unit raise {
         separator +
         blank_newline +
         prefix +
-        "$ ./b.mbtx" +
+        "$ moonx ./b.mbtx" +
         newline +
         prefix +
         "untouched" +
@@ -104,7 +104,7 @@ test "stream updates fill underindented blanks and preserve unchanged sections" 
 
 ///|
 test "unchanged stream whitespace keeps its original container layout" {
-  let source = "- ```mooncram\n  $ ./a.mbtx\n  @STDOUT\n  old\n\n  @STDERR\n \n  keep\n  ```\n"
+  let source = "- ```mooncram\n  $ moonx ./a.mbtx\n  @STDOUT\n  old\n\n  @STDERR\n \n  keep\n  ```\n"
   assert_update(
     source,
     [{ output: "new\n", diagnostic: " \nkeep\n", exit_code: 0, }],
@@ -116,7 +116,7 @@ test "unchanged stream whitespace keeps its original container layout" {
 test "retained status-looking output gains a newline without becoming exit status" {
   for streams in [false, true] {
     for line in ["[2]", "[-2]", "[2147483648]", "[-2147483649]", "[literal]"] {
-      let before = "```mooncram\n$ ./a.mbtx\n" +
+      let before = "```mooncram\n$ moonx ./a.mbtx\n" +
         (if streams { "@STDERR (empty)\n\n@STDOUT\n" } else { "" })
       let source = before + line + " (no-eol)\n[7]\n```\n"
       for exit_code in [0, 7, 3] {
@@ -148,7 +148,7 @@ test "matching annotations survive changes to the final output newline" {
         ("[0-9]+ (regex)", "123"),
         ("\"[2]\" (escaped)", "[2]"),
       ] {
-      let before = "```mooncram\n$ ./a.mbtx\n" +
+      let before = "```mooncram\n$ moonx ./a.mbtx\n" +
         (if streams { "@STDERR (empty)\n@STDOUT\n" } else { "" })
       for no_eol in [false, true] {
         let old_suffix = if no_eol { "" } else { " (no-eol)" }

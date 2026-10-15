@@ -2,12 +2,7 @@
 fn plain_pipeline(
   argvs : Array[Array[String]],
 ) -> Array[@command.PipelineSegment] {
-  argvs.map(argv => {
-    argv,
-    extra_env: Map([]),
-    stderr_to_stdout: false,
-    stdout_to_null: false,
-  })
+  argvs.map(argv => { argv: ["moonx"] + argv, extra_env: Map([]), })
 }
 
 ///|
@@ -30,7 +25,7 @@ fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise 
 
 ///|
 test "mixed Markdown skips other languages tilde fences and enclosing examples" {
-  let source = "# Heading\n\n```text\n$ ignored\n```\n\n~~~~mooncram\n$ ignored\n~~~~\n\n````markdown\n```mooncram\n$ ignored\n```\n````\n\n```mooncram\n$ ./a.mbtx\nhello\n\n$ ./b.mbtx\n[2]\n```\n"
+  let source = "# Heading\n\n```text\n$ moonx ignored\n```\n\n~~~~mooncram\n$ moonx ignored\n~~~~\n\n````markdown\n```mooncram\n$ moonx ignored\n```\n````\n\n```mooncram\n$ moonx ./a.mbtx\nhello\n\n$ moonx ./b.mbtx\n[2]\n```\n"
   let doc = parse_document("mixed.md", source)
   assert_eq(doc.cases.length(), 2)
   assert_eq(doc.cases[0].line, 18)
@@ -46,7 +41,9 @@ test "empty and unclosed test blocks have accurate errors" {
     "example.md:1: empty",
   )
   assert_error_contains(
-    () => ignore(parse_document("x.md", "text\n\n```mooncram\n$ ./a.mbtx\n")),
+    () => {
+      ignore(parse_document("x.md", "text\n\n```mooncram\n$ moonx ./a.mbtx\n"))
+    },
     "x.md:3: unclosed",
   )
   assert_error_contains(
@@ -54,7 +51,7 @@ test "empty and unclosed test blocks have accurate errors" {
     "example.md:2: expected a command",
   )
   assert_error_contains(
-    () => ignore(parse_example("$ ./a.mbtx |\n")),
+    () => ignore(parse_example("$ moonx ./a.mbtx |\n")),
     "example.md:2: empty pipeline segment",
   )
   assert_error_contains(() => ignore(parse_example("$\n")), "example.md:2:")
@@ -62,7 +59,7 @@ test "empty and unclosed test blocks have accurate errors" {
 
 ///|
 test "pipeline arguments and original command text are preserved" {
-  let command = "$ ./a.mbtx 'x|y'|./cmd/filter|./b.mbtx \\|"
+  let command = "$ moonx ./a.mbtx 'x|y'|moonx ./cmd/filter|moonx ./b.mbtx \\|"
   let doc = parse_example(command + "\nresult\n[3]\n")
   assert_eq(doc.cases[0].command, command)
   assert_eq(
@@ -81,7 +78,7 @@ test "pipeline arguments and original command text are preserved" {
 ///|
 test "module declarations are scoped to each fence and preserve opening lines" {
   let doc = parse_document(
-    "modules.md", "```mooncram user/foo\n$ foo\n```\n\n> - ```mooncram\n>   $ ./a.mbtx\n>   ```\n\n- ```mooncram user/bar\n  $ export A=x\n  ```\n\n```mooncram user/baz\n$ cmd/boo\n```\n",
+    "modules.md", "```mooncram user/foo\n$ moonx foo\n```\n\n> - ```mooncram\n>   $ moonx ./a.mbtx\n>   ```\n\n- ```mooncram user/bar\n  $ export A=x\n  ```\n\n```mooncram user/baz\n$ moonx cmd/boo\n```\n",
   )
   assert_eq(doc.cases.length(), 3)
   assert_eq(doc.cases[0].module_name, Some("user/foo"))
@@ -94,7 +91,7 @@ test "module declarations are scoped to each fence and preserve opening lines" {
   ])
   assert_eq(doc.cases[1].line, 6)
   assert_eq(
-    parse_document("spaces.md", "```mooncram   \n$ ./a.mbtx\n```\n").cases[0].module_name,
+    parse_document("spaces.md", "```mooncram   \n$ moonx ./a.mbtx\n```\n").cases[0].module_name,
     None,
   )
 }
@@ -124,7 +121,7 @@ test "invalid declarations fail at the opening fence including containers" {
 
 ///|
 test "exports apply in document order across blocks with independent snapshots" {
-  let source = "```mooncram\n$ export MOONCRAM_TEST_VALUE=first\n```\n\n```mooncram\n$ ./a.mbtx ${MOONCRAM_TEST_VALUE}\n$ export MOONCRAM_TEST_VALUE=${MOONCRAM_TEST_VALUE}-second\n$ ./b.mbtx \"${MOONCRAM_TEST_VALUE}\"\n$ export MOONCRAM_TEST_VALUE=\n$ ./c.mbtx ${MOONCRAM_TEST_VALUE}\n```\n"
+  let source = "```mooncram\n$ export MOONCRAM_TEST_VALUE=first\n```\n\n```mooncram\n$ moonx ./a.mbtx ${MOONCRAM_TEST_VALUE}\n$ export MOONCRAM_TEST_VALUE=${MOONCRAM_TEST_VALUE}-second\n$ moonx ./b.mbtx \"${MOONCRAM_TEST_VALUE}\"\n$ export MOONCRAM_TEST_VALUE=\n$ moonx ./c.mbtx ${MOONCRAM_TEST_VALUE}\n```\n"
   let doc = parse_document("exports.md", source)
   assert_eq(doc.cases.length(), 3)
   assert_eq(
@@ -145,15 +142,15 @@ test "exports apply in document order across blocks with independent snapshots" 
     Some("${MOONCRAM_TEST_VALUE}-second"),
   )
   assert_eq(doc.cases[2].extra_env.get("MOONCRAM_TEST_VALUE"), Some(""))
-  assert_eq(doc.cases[0].command, "$ ./a.mbtx ${MOONCRAM_TEST_VALUE}")
+  assert_eq(doc.cases[0].command, "$ moonx ./a.mbtx ${MOONCRAM_TEST_VALUE}")
   // Mutating one saved map must not affect any other case.
   doc.cases[0].extra_env["MOONCRAM_TEST_VALUE"] = "changed"
   assert_eq(
     doc.cases[1].extra_env.get("MOONCRAM_TEST_VALUE"),
     Some("${MOONCRAM_TEST_VALUE}-second"),
   )
-  assert_true(parse_example("$ ./a.mbtx\n").cases[0].extra_env.is_empty())
-  let isolated = parse_example("$ ./a.mbtx ${MOONCRAM_TEST_VALUE}\n")
+  assert_true(parse_example("$ moonx ./a.mbtx\n").cases[0].extra_env.is_empty())
+  let isolated = parse_example("$ moonx ./a.mbtx ${MOONCRAM_TEST_VALUE}\n")
   assert_eq(isolated.cases[0].pipeline, doc.cases[0].pipeline)
   assert_true(isolated.cases[0].extra_env.is_empty())
 }
@@ -178,7 +175,7 @@ test "export-only blocks are legal and exports have no expectations" {
 ///|
 test "arguments remain literal independently of exports" {
   let doc = parse_example(
-    "$ ./a.mbtx ${PATH}\n$ export PATH=${PATH}-suffix\n$ ./a.mbtx ${PATH}\n$ export PATH=\n$ ./a.mbtx ${PATH}\n",
+    "$ moonx ./a.mbtx ${PATH}\n$ export PATH=${PATH}-suffix\n$ moonx ./a.mbtx ${PATH}\n$ export PATH=\n$ moonx ./a.mbtx ${PATH}\n",
   )
   for case in doc.cases {
     assert_eq(case.pipeline, plain_pipeline([["./a.mbtx", "${PATH}"]]))
@@ -192,15 +189,15 @@ test "arguments remain literal independently of exports" {
 test "Windows exports replace mixed-case names and preserve independent snapshots" {
   let source =
     #|```mooncram
-    #|$ ./a.mbtx ${mOdE}
+    #|$ moonx ./a.mbtx ${mOdE}
     #|$ export MoDe=${mode}-doc
-    #|$ ./a.mbtx "${mODE}" ${MODE}
+    #|$ moonx ./a.mbtx "${mODE}" ${MODE}
     #|```
     #|```mooncram
     #|$ export mode=${Mode}-next
-    #|$ ./a.mbtx ${mode}
+    #|$ moonx ./a.mbtx ${mode}
     #|$ export MODE=
-    #|$ ./a.mbtx ${Mode}
+    #|$ moonx ./a.mbtx ${Mode}
     #|```
     #|
   let doc = parse_document_with_env("windows.md", source, case_insensitive=true)
@@ -216,7 +213,7 @@ test "Windows exports replace mixed-case names and preserve independent snapshot
   assert_eq(doc.cases[2].extra_env, { "MODE": "${Mode}-next" })
   assert_eq(doc.cases[3].pipeline, plain_pipeline([["./a.mbtx", "${Mode}"]]))
   assert_eq(doc.cases[3].extra_env, { "MODE": "" })
-  assert_eq(doc.cases[1].command, "$ ./a.mbtx \"${mODE}\" ${MODE}")
+  assert_eq(doc.cases[1].command, "$ moonx ./a.mbtx \"${mODE}\" ${MODE}")
   doc.cases[2].extra_env["MODE"] = "changed"
   assert_eq(doc.cases[1].extra_env, { "MODE": "${mode}-doc" })
   assert_eq(doc.cases[3].extra_env, { "MODE": "" })
@@ -226,7 +223,7 @@ test "Windows exports replace mixed-case names and preserve independent snapshot
 test "Unix export names remain distinct across casing" {
   let doc = parse_document_with_env(
     "unix.md",
-    "```mooncram\n$ ./a.mbtx ${MODE} ${mode}\n$ export Mode=mixed\n$ export mode=${mode}-doc\n$ ./a.mbtx ${MODE} ${mode} ${Mode}\n$ export MODE=\n$ ./a.mbtx ${MODE} ${mode} ${Mode}\n```\n",
+    "```mooncram\n$ moonx ./a.mbtx ${MODE} ${mode}\n$ export Mode=mixed\n$ export mode=${mode}-doc\n$ moonx ./a.mbtx ${MODE} ${mode} ${Mode}\n$ export MODE=\n$ moonx ./a.mbtx ${MODE} ${mode} ${Mode}\n```\n",
     case_insensitive=false,
   )
   assert_eq(
@@ -248,49 +245,27 @@ test "Unix export names remain distinct across casing" {
 }
 
 ///|
-test "redirection keeps source command text and located errors" {
-  let command = "$ ./a.mbtx arg\t1>/dev/null 2>&1|./b.mbtx"
-  let doc = parse_example(command + "\nresult\n")
-  assert_eq(doc.cases[0].command, command)
-  assert_eq(doc.cases[0].pipeline, [
-    {
-      argv: ["./a.mbtx", "arg"],
-      extra_env: Map([]),
-      stderr_to_stdout: true,
-      stdout_to_null: true,
-    },
-    {
-      argv: ["./b.mbtx"],
-      extra_env: Map([]),
-      stderr_to_stdout: false,
-      stdout_to_null: false,
-    },
-  ])
-  for
-    invalid in [
-      "2>&1", "1>/dev/null", "./a.mbtx 1>/dev/null 1>/dev/null", "./a.mbtx 2>&1 2>&1",
-      "./a.mbtx 2> &1", "./a.mbtx 1> /dev/null", "./a.mbtx2>&1", "./a.mbtx1>/dev/null",
-      "./a.mbtx 2>&1 arg", "export A=x 1>/dev/null", "export A=x 2>&1", "./a.mbtx stderr>/stdout",
-      "./a.mbtx stdout>/null",
-    ] {
-    assert_error_contains(
-      () => ignore(parse_example("$ " + invalid + "\n")),
-      "example.md:2:",
-    )
-  }
-}
-
-///|
-test "final redirection errors retain the document command position" {
-  for prefix in ["", "./a.mbtx|", "./a.mbtx|./b.mbtx|"] {
+test "redirection errors retain the document command position" {
+  for prefix in ["", "moonx ./a.mbtx|", "moonx ./a.mbtx|moonx ./b.mbtx|"] {
     for
       suffix in ["2>&1", "1>/dev/null", "2>&1 1>/dev/null", "1>/dev/null 2>&1"] {
       assert_error_contains(
-        () => ignore(parse_example("$ " + prefix + "./c.mbtx " + suffix + "\n")),
-        "example.md:2: redirection is not allowed in the final pipeline segment",
+        () => {
+          ignore(
+            parse_example("$ " + prefix + "moonx ./c.mbtx " + suffix + "\n"),
+          )
+        },
+        "example.md:2: unquoted shell operator",
       )
     }
   }
+  let command = "$ moonx ./a.mbtx '2>&1' \"1>/dev/null\"|moonx ./b.mbtx"
+  let doc = parse_example(command + "\nresult\n")
+  assert_eq(doc.cases[0].command, command)
+  assert_eq(
+    doc.cases[0].pipeline,
+    plain_pipeline([["./a.mbtx", "2>&1", "1>/dev/null"], ["./b.mbtx"]]),
+  )
 }
 
 ///|
@@ -300,18 +275,18 @@ test "working directories stay literal and reset between blocks" {
     #|$ export DIR=../fixtures
     #|$ set-current-working-directory "${DIR}"
     #|$ export DIR=elsewhere
-    #|$ ./a.mbtx ${DIR}
-    #|$ ./b.mbtx
+    #|$ moonx ./a.mbtx ${DIR}
+    #|$ moonx ./b.mbtx
     #|```
     #|```mooncram
-    #|$ ./c.mbtx ${DIR}
+    #|$ moonx ./c.mbtx ${DIR}
     #|```
     #|> - ```mooncram
     #|>   $ set-current-working-directory '${DIR}'
     #|>   ```
     #|```mooncram
     #|$ set-current-working-directory "${PARENT}"
-    #|$ ./d.mbtx
+    #|$ moonx ./d.mbtx
     #|```
     #|
   let doc = parse_document_with_env("cwd.md", source, case_insensitive=false)
@@ -352,7 +327,7 @@ test "working directory rejects duplicate late and expectation declarations with
     },
     "example.md:4: duplicate set-current-working-directory",
   )
-  for command in ["./a.mbtx", "./a.mbtx|./b.mbtx"] {
+  for command in ["moonx ./a.mbtx", "moonx ./a.mbtx|moonx ./b.mbtx"] {
     assert_error_contains(
       () => {
         ignore(

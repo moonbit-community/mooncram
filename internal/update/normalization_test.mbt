@@ -4,7 +4,7 @@ test "passing exact expectations normalize to readable text" {
     "[INFO] ready", "$HOME", "[literal]", "inline `code` and ``ticks``", "  leading",
     "   ", "", "after blank", "hello (foo)",
   ]
-  let source = "``````mooncram\n$ ./a.mbtx\n" +
+  let source = "``````mooncram\n$ moonx ./a.mbtx\n" +
     lines.map(s => "\{Json::string(s).stringify()} (escaped)\n").join("") +
     "[000]\n```````   "
   let output = lines.join("\n") + "\n"
@@ -15,7 +15,7 @@ test "passing exact expectations normalize to readable text" {
   assert_update(
     source,
     [actual],
-    "```mooncram\n$ ./a.mbtx\n" + output + "```   ",
+    "```mooncram\n$ moonx ./a.mbtx\n" + output + "```   ",
   )
 }
 
@@ -24,9 +24,9 @@ test "only ambiguous exact syntax is escaped" {
   for
     (line, rendered) in [
       ("$", "\"$\" (escaped)"),
-      ("$ command", "\"$ command\" (escaped)"),
+      ("$ moonx command", "\"$ moonx command\" (escaped)"),
       ("$HOME", "$HOME"),
-      (" $ command", " $ command"),
+      (" $ moonx command", " $ moonx command"),
       ("@STDOUT", "\"@STDOUT\" (escaped)"),
       ("@STDERR (unknown)", "\"@STDERR (unknown)\" (escaped)"),
       ("@STDOUTish", "@STDOUTish"),
@@ -37,9 +37,9 @@ test "only ambiguous exact syntax is escaped" {
       ("\u0000\t\r\u001b\u007f", "\"\\u0000\\t\\r\\u001b\\u007f\" (escaped)"),
     ] {
     assert_update(
-      "```mooncram\n$ ./a.mbtx\nold\n```\n",
+      "```mooncram\n$ moonx ./a.mbtx\nold\n```\n",
       [{ output: line + "\n", diagnostic: "", exit_code: 0, }],
-      "```mooncram\n$ ./a.mbtx\n" + rendered + "\n```\n",
+      "```mooncram\n$ moonx ./a.mbtx\n" + rendered + "\n```\n",
     )
   }
 }
@@ -55,7 +55,7 @@ test "only the last trailing blank needs protection where separators are trimmed
           ("\n\n\n", "\n\n\n"),
           ("a\n\nb\n\n\n", "a\n\nb\n\n\n"),
         ] {
-        let prefix = "```mooncram\n$ ./a.mbtx\n" +
+        let prefix = "```mooncram\n$ moonx ./a.mbtx\n" +
           (if streams { "@STDERR (ignore)\n@STDOUT\n" } else { "" })
         let content = if output != "" && (streams || code == 0) {
           body[:body.length() - 1].to_owned() + "\"\" (escaped)\n"
@@ -86,15 +86,15 @@ test "numeric brackets are protected only in final case status position" {
       ),
     ] {
     assert_update(
-      "```mooncram\n$ ./a.mbtx\n" + body + "```\n",
+      "```mooncram\n$ moonx ./a.mbtx\n" + body + "```\n",
       [{ output, diagnostic, exit_code: 0, }],
-      "```mooncram\n$ ./a.mbtx\n" + expected + "```\n",
+      "```mooncram\n$ moonx ./a.mbtx\n" + expected + "```\n",
     )
   }
   assert_update(
-    "```mooncram\n$ ./a.mbtx\n[0002]\n```\n",
+    "```mooncram\n$ moonx ./a.mbtx\n[0002]\n```\n",
     [{ output: "", diagnostic: "", exit_code: 2, }],
-    "```mooncram\n$ ./a.mbtx\n[2]\n```\n",
+    "```mooncram\n$ moonx ./a.mbtx\n[2]\n```\n",
   )
 }
 
@@ -133,7 +133,7 @@ test "fences use shortest safe length including source indentation and no-eol" {
             let source = opening +
               "````````mooncram\n" +
               prefix +
-              "$ ./a.mbtx\n" +
+              "$ moonx ./a.mbtx\n" +
               prefix +
               "old\n" +
               close +
@@ -152,7 +152,7 @@ test "fences use shortest safe length including source indentation and no-eol" {
               marker +
               "mooncram\n" +
               prefix +
-              "$ ./a.mbtx\n" +
+              "$ moonx ./a.mbtx\n" +
               prefix +
               extra +
               line +
@@ -170,7 +170,7 @@ test "fences use shortest safe length including source indentation and no-eol" {
 
 ///|
 test "whole document updates normalize every case fence and count each case once" {
-  let source = "``````mooncram\n$ ./a.mbtx\nold\n$ ./b.mbtx\nkeep\n```````\n\n`````mooncram\n$ ./c.mbtx\nkeep\n`````\n"
+  let source = "``````mooncram\n$ moonx ./a.mbtx\nold\n$ moonx ./b.mbtx\nkeep\n```````\n\n`````mooncram\n$ moonx ./c.mbtx\nkeep\n`````\n"
   let doc = @markdown.parse_document("shared.md", source)
   let a : @output.Captured = { output: "```\n", diagnostic: "", exit_code: 0, }
   let b : @output.Captured = { output: "keep\n", diagnostic: "", exit_code: 0, }
@@ -180,7 +180,7 @@ test "whole document updates normalize every case fence and count each case once
   assert_eq(result.changed_cases, 3)
   assert_eq(
     result.source,
-    "````mooncram\n$ ./a.mbtx\n```\n$ ./b.mbtx\nkeep\n````\n\n```mooncram\n$ ./c.mbtx\nkeep\n```\n",
+    "````mooncram\n$ moonx ./a.mbtx\n```\n$ moonx ./b.mbtx\nkeep\n````\n\n```mooncram\n$ moonx ./c.mbtx\nkeep\n```\n",
   )
   let parsed = @markdown.parse_document("shared.md", result.source)
   let again = @update.generate(parsed, captures)
@@ -190,7 +190,7 @@ test "whole document updates normalize every case fence and count each case once
 
 ///|
 test "lookahead keeps shifted patterns and their own source layouts" {
-  let prefix = "> ```mooncram\r\n>$ ./a.mbtx\n"
+  let prefix = "> ```mooncram\r\n>$ moonx ./a.mbtx\n"
   for
     (old, actual, rendered) in [
       (
@@ -217,7 +217,7 @@ test "lookahead keeps shifted patterns and their own source layouts" {
 
 ///|
 test "dual streams normalize independently and retain ignored and empty constraints" {
-  let source = "```mooncram\n$ ./a.mbtx\n\n@STDERR\nold\nerror [0-9]+ (regex)\n\n@STDOUT\nv* (glob)\n\"[INFO] ready\" (escaped)\n[00]\n```\n"
+  let source = "```mooncram\n$ moonx ./a.mbtx\n\n@STDERR\nold\nerror [0-9]+ (regex)\n\n@STDOUT\nv* (glob)\n\"[INFO] ready\" (escaped)\n[00]\n```\n"
   assert_update(
     source,
     [
@@ -227,12 +227,12 @@ test "dual streams normalize independently and retain ignored and empty constrai
         exit_code: 0,
       },
     ],
-    "```mooncram\n$ ./a.mbtx\n\n@STDERR\nerror [0-9]+ (regex) (no-eol)\n\n@STDOUT\ninsert\nv* (glob)\n[INFO] ready\n```\n",
+    "```mooncram\n$ moonx ./a.mbtx\n\n@STDERR\nerror [0-9]+ (regex) (no-eol)\n\n@STDOUT\ninsert\nv* (glob)\n[INFO] ready\n```\n",
   )
   assert_update(
-    "````mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n[0]\n````\n",
+    "````mooncram\n$ moonx ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n[0]\n````\n",
     [{ output: "", diagnostic: "anything", exit_code: 0, }],
-    "```mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n```\n",
+    "```mooncram\n$ moonx ./a.mbtx\n@STDERR (ignore)\n@STDOUT (empty)\n```\n",
   )
 }
 
@@ -251,12 +251,12 @@ test "leading spaces round trip across nested containers and tab prefixes" {
     ] {
     for
       output in [
-        " \n", "  leading\n   \nnext\n", "    ````\n", "  $ command\n", "   \n\n\n",
+        " \n", "  leading\n   \nnext\n", "    ````\n", "  $ moonx command\n", "   \n\n\n",
       ] {
       let source = opening +
         "``````mooncram\r\n" +
         prefix +
-        "$ ./a.mbtx\n" +
+        "$ moonx ./a.mbtx\n" +
         prefix +
         "old\r\n" +
         closing +
@@ -286,7 +286,7 @@ test "leading spaces round trip across nested containers and tab prefixes" {
 
 ///|
 test "partially consumed tabs keep unchanged rows and do not duplicate virtual spaces" {
-  let source = "- ```mooncram\n  $ ./a.mbtx\n\told\r\n  ```"
+  let source = "- ```mooncram\n  $ moonx ./a.mbtx\n\told\r\n  ```"
   for
     (output, row) in [
       ("  old\n", "\told"),
@@ -297,14 +297,14 @@ test "partially consumed tabs keep unchanged rows and do not duplicate virtual s
     assert_update(
       source,
       [{ output, diagnostic: "", exit_code: 0, }],
-      "- ```mooncram\n  $ ./a.mbtx\n" + row + "\r\n  ```",
+      "- ```mooncram\n  $ moonx ./a.mbtx\n" + row + "\r\n  ```",
     )
   }
 }
 
 ///|
 test "a shared fence considers every capture in document order" {
-  let source = "````````mooncram\n$ ./a.mbtx\nold\n\n$ ./b.mbtx\nold\n````````\n"
+  let source = "````````mooncram\n$ moonx ./a.mbtx\nold\n\n$ moonx ./b.mbtx\nold\n````````\n"
   let a : @output.Captured = { output: "```\n", diagnostic: "", exit_code: 0, }
   let b : @output.Captured = {
     output: "`````\n",
@@ -316,7 +316,7 @@ test "a shared fence considers every capture in document order" {
   assert_eq(generated.changed_cases, 2)
   assert_eq(
     generated.source,
-    "``````mooncram\n$ ./a.mbtx\n```\n\n$ ./b.mbtx\n`````\n``````\n",
+    "``````mooncram\n$ moonx ./a.mbtx\n```\n\n$ moonx ./b.mbtx\n`````\n``````\n",
   )
   let parsed = @markdown.parse_document("shared.md", generated.source)
   assert_eq(@update.generate(parsed, [a, b]).changed_cases, 0)
@@ -332,7 +332,7 @@ test "a tab before backticks cannot close the fence even when partially consumed
     let source = opening +
       "``````mooncram\n" +
       command_prefix +
-      "$ ./a.mbtx\n" +
+      "$ moonx ./a.mbtx\n" +
       output_prefix +
       "````\n" +
       closing +
@@ -351,10 +351,11 @@ test "internal bare LF after CR is protected without changing either newline" {
   for
     (source, wanted) in [
       (
-        "```mooncram\n$ ./a.mbtx\rold\nend\r```", "```mooncram\n$ ./a.mbtx\r\"\" (escaped)\nend\r```",
+        "```mooncram\n$ moonx ./a.mbtx\rold\nend\r```", "```mooncram\n$ moonx ./a.mbtx\r\"\" (escaped)\nend\r```",
       ),
       (
-        "```mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT\rold\nend\r```", "```mooncram\n$ ./a.mbtx\n@STDERR (ignore)\n@STDOUT\r\"\" (escaped)\nend\r```",
+        "```mooncram\n$ moonx ./a.mbtx\n@STDERR (ignore)\n@STDOUT\rold\nend\r```",
+        "```mooncram\n$ moonx ./a.mbtx\n@STDERR (ignore)\n@STDOUT\r\"\" (escaped)\nend\r```",
       ),
     ] {
     assert_update(
@@ -365,8 +366,8 @@ test "internal bare LF after CR is protected without changing either newline" {
   }
   // An inserted blank can also follow an aligned row with a different newline.
   assert_update(
-    "```mooncram\n$ ./a.mbtx\nhead\rend\n```",
+    "```mooncram\n$ moonx ./a.mbtx\nhead\rend\n```",
     [{ output: "head\n\nend\n", diagnostic: "", exit_code: 0, }],
-    "```mooncram\n$ ./a.mbtx\nhead\r\"\" (escaped)\nend\n```",
+    "```mooncram\n$ moonx ./a.mbtx\nhead\r\"\" (escaped)\nend\n```",
   )
 }

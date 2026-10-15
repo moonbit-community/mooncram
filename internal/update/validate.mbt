@@ -12,17 +12,10 @@ fn validate_generated(
     before.module_declarations.map(d => d.0) ==
     after.module_declarations.map(d => d.0) &&
     before.working_directory_declarations.map(d => d.directory) ==
-    after.working_directory_declarations.map(d => d.directory) &&
-    before.imports.length() == after.imports.length() else {
+    after.working_directory_declarations.map(d => d.directory) else {
     raise @diagnostic.failure(
       "generated document changed cases or configuration",
     )
-  }
-  for name, import_ in before.imports {
-    guard after.imports.get(name) is Some(other) &&
-      other.coordinate == import_.coordinate else {
-      raise @diagnostic.failure("generated document changed imports")
-    }
   }
   for i, old in before.cases {
     let new = after.cases[i]

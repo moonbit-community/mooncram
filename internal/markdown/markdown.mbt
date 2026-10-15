@@ -59,27 +59,26 @@ fn collect_blocks(
 }
 
 ///|
-/// Parse all `mooncram` test fences and the optional `mooncram-import` fence.
+/// Parse all `mooncram` test fences; other code block languages are ignored.
 ///
 /// `source` is the complete Markdown text; `path` supplies diagnostic locations
 /// and later filesystem resolution (use an absolute path for execution).
 /// Recognizes backtick fences, including those in lists and blockquotes, and
-/// ignores unrelated Markdown. Imports apply file-wide, even before their
-/// declaration. Exports apply to later commands across fences; block-local
-/// directory settings must precede that block's first executable command.
+/// ignores unrelated Markdown. Exports apply to later commands across fences;
+/// block-local directory settings must precede that block's first executable command.
 ///
 /// Export names are case-insensitive on Windows. Each case stores its own
 /// export snapshot. Arguments and assignment values remain literal. Configuration
 /// commands are not cases. A document with no test fences returns an empty case list.
 ///
 /// Parses the entire document before returning. Invalid fence configuration,
-/// commands, imports or expectations raise `@diagnostic.Failure` with file and
+/// commands or expectations raise `@diagnostic.Failure` with file and
 /// one-based line locations. Does not validate paths, build or execute commands.
 ///
 /// ```mbt check
 /// test {
 ///   let doc = @markdown.parse_document(
-///     "README.md", "```mooncram\n$ ./hello.mbtx\nhello\n```\n",
+///     "README.md", "```mooncram\n$ moonx ./hello.mbtx\nhello\n```\n",
 ///   )
 ///   assert_eq(doc.cases.length(), 1)
 ///   assert_eq(doc.cases[0].line, 2)
@@ -118,7 +117,6 @@ fn parse_document_with_env(
   )
   let blocks = []
   collect_blocks(markdown.block, blocks, [])
-  let imports = collect_imports(path, blocks.map(b => b.0))
   let lines = source_lines(source)
   let cases = []
   let fences = []
@@ -176,7 +174,7 @@ fn parse_document_with_env(
       }
       if !node.v.has_prefix("$ ") && node.v != "$" {
         raise @diagnostic.located(
-          path, line, "expected a command starting with '$ '",
+          path, line, "expected a command starting with '$ moonx '",
         )
       }
       let command = @command.parse(node.v[1:].to_owned(), case_insensitive~) catch {
@@ -274,7 +272,6 @@ fn parse_document_with_env(
     fences,
     module_declarations,
     working_directory_declarations,
-    imports,
   }
 }
 

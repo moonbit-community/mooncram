@@ -1,17 +1,13 @@
 ///|
-/// One command's parsed arguments, temporary environment and output routes.
+/// One command's parsed arguments and temporary environment.
 ///
-/// Produced by `parse` inside a `Command::Pipeline`. Each segment has at least
-/// one argument. Redirection flags may be set only on non-final segments.
+/// Produced by `parse` inside a `Command::Pipeline`. Each segment begins with
+/// `moonx`, followed by a nonempty target and optional program arguments.
 pub(all) struct PipelineSegment {
-  /// Executable followed by arguments, with quotes and escapes processed.
+  /// `moonx`, target and program arguments, with quotes and escapes processed.
   argv : Array[String]
   /// Segment-only assignments; values override document/inherited variables.
   extra_env : Map[String, String]
-  /// Route this segment's stderr into the pipe feeding the next segment.
-  stderr_to_stdout : Bool
-  /// Discard stdout while draining it; independently merged stderr still flows on.
-  stdout_to_null : Bool
 } derive(Debug, Eq)
 
 ///|
@@ -19,7 +15,7 @@ pub(all) struct PipelineSegment {
 pub extend PipelineSegment with @debug.Debug::{to_repr}
 
 ///|
-/// Expose structural equality over arguments, assignments and redirection flags.
+/// Expose structural equality over arguments and assignments.
 pub extend PipelineSegment with Eq::{equal, not_equal}
 
 ///|
@@ -45,13 +41,6 @@ pub extend Command with @debug.Debug::{to_repr}
 pub extend Command with Eq::{equal, not_equal}
 
 ///|
-priv enum Token {
-  Argument(String, String?)
-  StderrToStdout
-  StdoutToNull
-}
-
-///|
 fn valid_name(name : String) -> Bool {
   let mut first = true
   for c in name {
@@ -72,24 +61,23 @@ fn valid_name(name : String) -> Bool {
 /// Variable-like text such as ${NAME} is literal, with normal quoting and escaping.
 /// Leading NAME=value assignments affect only their segment's environment.
 /// case_insensitive normalizes temporary names to uppercase; enable it on Windows.
-/// Output redirection is allowed only before the final pipeline segment.
 ///
 /// `command` omits the Markdown `$` prompt. Spaces/tabs split arguments, quotes
 /// preserve spaces, and backslashes escape the following character except in
-/// single quotes. Unquoted `|` separates segments. The only supported routes
-/// are raw trailing tokens `2>&1` and `1>/dev/null`. Parsing does not invoke a
-/// shell, resolve targets or mutate the environment.
+/// single quotes. Unquoted `|` separates segments; each segment must explicitly
+/// name `moonx` and its target. Redirection is unsupported. Parsing does not invoke
+/// a shell, resolve targets or mutate the environment.
 ///
 /// Raises `@diagnostic.Failure` for malformed quotes, empty segments, unsupported
-/// shell operators, invalid assignments or redirection/configuration placement.
+/// shell operators, missing moonx/targets, invalid assignments or configuration placement.
 ///
 /// ```mbt check
 /// test {
-///   let parsed = @command.parse("NAME='Moon Bit' ./hello.mbtx \"${NAME}\"")
+///   let parsed = @command.parse("NAME='Moon Bit' moonx ./hello.mbtx \"${NAME}\"")
 ///   guard parsed is @command.Pipeline(segments) else {
 ///     fail("expected a pipeline")
 ///   }
-///   assert_eq(segments[0].argv, ["./hello.mbtx", "${NAME}"])
+///   assert_eq(segments[0].argv, ["moonx", "./hello.mbtx", "${NAME}"])
 ///   assert_eq(segments[0].extra_env.get("NAME"), Some("Moon Bit"))
 /// }
 /// ```
@@ -109,34 +97,11 @@ pub fn parse(
         name
       }
     }
-    let mut stderr_to_stdout = false
-    let mut stdout_to_null = false
-    for token in tokens {
-      match token {
-        Argument(word, assignment) => {
-          if stderr_to_stdout || stdout_to_null {
-            raise @diagnostic.failure(
-              "ordinary arguments cannot follow redirection",
-            )
-          }
-          if segment.is_empty() && assignment is Some(name) {
-            extra_env[env_key(name)] = word[name.length() + 1:].to_owned()
-          } else {
-            segment.push(word)
-          }
-        }
-        StderrToStdout => {
-          if stderr_to_stdout {
-            raise @diagnostic.failure("duplicate 2>&1 redirection")
-          }
-          stderr_to_stdout = true
-        }
-        StdoutToNull => {
-          if stdout_to_null {
-            raise @diagnostic.failure("duplicate 1>/dev/null redirection")
-          }
-          stdout_to_null = true
-        }
+    for (word, assignment) in tokens {
+      if segment.is_empty() && assignment is Some(name) {
+        extra_env[env_key(name)] = word[name.length() + 1:].to_owned()
+      } else {
+        segment.push(word)
       }
     }
     if segment.is_empty() {
@@ -144,24 +109,17 @@ pub fn parse(
         raise @diagnostic.failure("environment assignments require a command")
       }
       raise @diagnostic.failure(
-        "empty pipeline segment; expected a local .mbtx file or executable package path",
+        "empty pipeline segment; expected moonx and a target",
       )
     }
     let executable = segment[0]
     if executable == "" {
-      raise @diagnostic.failure(
-        "expected a local .mbtx file or executable package path",
-      )
+      raise @diagnostic.failure("expected moonx and a nonempty target")
     }
     if executable == "set-current-working-directory" {
       if !extra_env.is_empty() {
         raise @diagnostic.failure(
           "set-current-working-directory does not accept temporary environment assignments",
-        )
-      }
-      if stderr_to_stdout || stdout_to_null {
-        raise @diagnostic.failure(
-          "set-current-working-directory does not accept redirection",
         )
       }
       if words.length() != 1 {
@@ -188,9 +146,6 @@ pub fn parse(
           "export does not accept temporary environment assignments",
         )
       }
-      if stderr_to_stdout || stdout_to_null {
-        raise @diagnostic.failure("export does not accept redirection")
-      }
       if words.length() != 1 {
         raise @diagnostic.failure("export is not allowed in a pipeline")
       }
@@ -209,24 +164,20 @@ pub fn parse(
       }
       return Export(name~, value=prefix[eq + 1:].to_owned())
     }
-    pipeline.push({
-      argv: segment,
-      extra_env,
-      stderr_to_stdout,
-      stdout_to_null,
-    })
-  }
-  if pipeline is [.., last] && (last.stderr_to_stdout || last.stdout_to_null) {
-    raise @diagnostic.failure(
-      "redirection is not allowed in the final pipeline segment",
-    )
+    if executable != "moonx" {
+      raise @diagnostic.failure("command must start with moonx: " + executable)
+    }
+    if segment.length() < 2 || segment[1].is_empty() {
+      raise @diagnostic.failure("moonx requires a nonempty target")
+    }
+    pipeline.push({ argv: segment, extra_env, })
   }
   Pipeline(pipeline)
 }
 
 ///|
-/// Preserve raw assignment prefixes and redirection markers while decoding words.
-fn tokenize(command : String) -> Array[Array[Token]] raise {
+/// Preserve raw assignment prefixes while decoding words.
+fn tokenize(command : String) -> Array[Array[(String, String?)]] raise {
   let pipeline = []
   let mut args = []
   let word = StringBuilder()
@@ -242,8 +193,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
   }
   for i = 0; i < chars.length(); {
     let c = chars[i]
-    // Recognize only complete raw tokens, before quoting/escaping
-    // can turn ordinary argument text into something that resembles a marker.
+    // Recognize raw assignment prefixes before decoding quotes and escapes.
     if !started && quote is None && !escaped && !(c is (' ' | '\t' | '|')) {
       let raw = StringBuilder()
       let mut end = i
@@ -259,17 +209,6 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
         if valid_name(name) {
           assignment = Some(name)
         }
-      }
-      match raw {
-        "2>&1" => {
-          args.push(StderrToStdout)
-          continue end
-        }
-        "1>/dev/null" => {
-          args.push(StdoutToNull)
-          continue end
-        }
-        _ => ()
       }
     }
     if escaped {
@@ -299,14 +238,14 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
         }
         ' ' | '\t' =>
           if started {
-            args.push(Argument(word.to_string(), assignment))
+            args.push((word.to_string(), assignment))
             assignment = None
             word.reset()
             started = false
           }
         '|' => {
           if started {
-            args.push(Argument(word.to_string(), assignment))
+            args.push((word.to_string(), assignment))
             assignment = None
             word.reset()
             started = false
@@ -333,7 +272,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
     raise @diagnostic.failure("unclosed quote in command")
   }
   if started {
-    args.push(Argument(word.to_string(), assignment))
+    args.push((word.to_string(), assignment))
   }
   pipeline.push(args)
   pipeline

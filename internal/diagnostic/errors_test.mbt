@@ -9,14 +9,14 @@ test "locations and inner execution context survive outer enrichment" {
     error,
     file="outer.md",
     line=20,
-    command="$ tool",
+    command="$ moonx tool",
     phase="run",
     segment="1/1 (other)",
     cwd="/repo",
   )
   assert_eq(
     @diagnostic.render(error),
-    "ERROR inner.md:7: invalid command\n  $ tool\n  phase: resolve\n  segment: 2/3 (tool)\n  cwd: /repo\n",
+    "ERROR inner.md:7: invalid command\n  $ moonx tool\n  phase: resolve\n  segment: 2/3 (tool)\n  cwd: /repo\n",
   )
   assert_eq(
     @diagnostic.error_text(@diagnostic.located("test.md", 3, "bad")),
@@ -43,16 +43,16 @@ test "operation causes and hints render in stable order" {
     ),
     file="test.md",
     line=2,
-    command="$ remote",
+    command="$ moonx user/tool@1.2.3",
     phase="start",
-    segment="1/1 (remote)",
+    segment="1/1 (user/tool@1.2.3)",
     tool="moonx",
     cwd="/repo",
     hint="check PATH",
   )
   assert_eq(
     @diagnostic.render(error),
-    "ERROR test.md:2: failed to start 'moonx'\n  $ remote\n  phase: start\n  segment: 1/1 (remote)\n  tool: moonx\n  cwd: /repo\n  cause: permission denied\n    extra detail\n  hint: check PATH\n",
+    "ERROR test.md:2: failed to start 'moonx'\n  $ moonx user/tool@1.2.3\n  phase: start\n  segment: 1/1 (user/tool@1.2.3)\n  tool: moonx\n  cwd: /repo\n  cause: permission denied\n    extra detail\n  hint: check PATH\n",
   )
 }
 

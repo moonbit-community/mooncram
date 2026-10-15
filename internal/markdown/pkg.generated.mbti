@@ -36,7 +36,6 @@ pub struct Document {
   fences : Array[Fence]
   module_declarations : Array[(String, Int)]
   working_directory_declarations : Array[WorkingDirectoryDeclaration]
-  imports : Map[String, ToolImport]
 }
 
 pub struct Fence {
@@ -55,15 +54,6 @@ pub struct LineLayout {
   original_fence_start : Int
   original : String
 }
-
-pub struct ToolImport {
-  name : String
-  coordinate : String
-  line : Int
-} derive(Eq, @debug.Debug)
-pub fn ToolImport::equal(Self, Self) -> Bool
-pub fn ToolImport::not_equal(Self, Self) -> Bool
-pub fn ToolImport::to_repr(Self) -> @debug.Repr
 
 pub struct WorkingDirectoryDeclaration {
   directory : String
