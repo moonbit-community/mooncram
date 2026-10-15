@@ -128,7 +128,7 @@ fn apply_edits(source : String, edits : Array[Edit]) -> String {
 /// Re-parses the generated text and checks that commands/configuration remain
 /// unchanged and every expectation matches its capture. Validation failures
 /// raise errors instead of returning an update.
-/// Re-parsing uses the current environment for expansion. No commands execute
+/// Re-parsing preserves literal arguments and assignments. No commands execute
 /// and no files are written; commit with `@files.write_document` if desired.
 /// Documents without cases still validate and return unchanged source with zero
 /// changed cases.

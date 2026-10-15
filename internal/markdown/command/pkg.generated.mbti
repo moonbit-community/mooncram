@@ -6,7 +6,7 @@ import {
 }
 
 // Values
-pub fn parse(String, lookup? : (String) -> String?, case_insensitive? : Bool) -> Command raise
+pub fn parse(String, case_insensitive? : Bool) -> Command raise
 
 // Errors
 

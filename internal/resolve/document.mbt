@@ -70,7 +70,7 @@ pub fn DocumentContext::cwd_for(
 ///|
 /// Resolve against the current filesystem without building or running tools.
 ///
-/// `executable` is the expanded first argument of one case pipeline segment.
+/// `executable` is the parsed first argument of one case pipeline segment.
 /// Document import aliases take precedence; an alias that also names a local
 /// executable in a module-declared case raises an ambiguity error. Other names
 /// resolve to existing `.mbtx` scripts relative to the case directory, or to
