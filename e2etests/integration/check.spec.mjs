@@ -102,7 +102,6 @@ export function testCheck({ executable, target, directory, docs, project }) {
     ["markdown", "```mooncram\n$ ./check-invalid.mbtx\n", "unclosed"],
     ["command", block("$ ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
     ["expectation", block("$ ./check-invalid.mbtx\n[ (regex)\n", ""), "invalid regex"],
-    ["environment", block('$ ./check-invalid.mbtx ${MOONCRAM_CHECK_UNDEFINED}\n', ""), "undefined variable"],
     ["import", "```mooncram-import\nremote : invalid\n```\n", "invalid import coordinate"],
     ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ export A=x\n", "user/other"), "does not match"],
     ["directory-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory missing-check-cwd\n", ""), "invalid working directory"],
@@ -115,9 +114,15 @@ export function testCheck({ executable, target, directory, docs, project }) {
     assert(!fs.existsSync(sideEffect));
   }
   const inherited = write("inherited", block('$ ./check-invalid.mbtx "${MOONCRAM_CHECK_ARG}"\n', ""));
-  assert.equal(invoke(["check", inherited], {
-    env: { ...env, MOONCRAM_CHECK_ARG: "parent" },
-  }).stdout, "1 cases, 0 errors\n");
+  for (const defined of [false, true]) {
+    const checkEnv = { ...env };
+    delete checkEnv.MOONCRAM_CHECK_ARG;
+    if (defined) checkEnv.MOONCRAM_CHECK_ARG = "parent";
+    assert.equal(invoke(["check", inherited], { env: checkEnv }).stdout, "1 cases, 0 errors\n");
+  }
+  const literalSyntax = write("literal-syntax", block(
+    '$ ./check-invalid.mbtx ${} ${A-B} ${UNCLOSED\n', ""));
+  assert.equal(invoke(["check", literalSyntax]).stdout, "1 cases, 0 errors\n");
 
   const work = join(directory, "check-work");
   fs.mkdirSync(work);

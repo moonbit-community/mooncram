@@ -18,20 +18,20 @@ import {
 
 export function testExports({ cli, docs, target }) {
   const value = 'Moon Bit|\'"=value';
-  const args = '${MODE} ${VALUE} ${EMPTY} pre${VALUE}post ${NESTED} \\${UNDEFINED} $MODE';
-  const expected = JSON.stringify(["parent-doc", value, "", `pre${value}post`, "${UNDEFINED}", "${UNDEFINED}", "$MODE"]);
+  const args = '${MODE} "${VALUE}" \'${EMPTY}\' pre${VALUE}post ${NESTED} \\${UNDEFINED} $MODE ${} ${A-B} ${UNCLOSED';
+  const expected = JSON.stringify(['${MODE}', '${VALUE}', '${EMPTY}', 'pre${VALUE}post', '${NESTED}', '${UNDEFINED}', '$MODE', '${}', '${A-B}', '${UNCLOSED']);
   const source = [
-    block(`$ ${LOCAL_PACKAGE} args \${MODE}\n["parent"]\n`),
+    block(`$ ${LOCAL_PACKAGE} args \${MODE}\n["\${MODE}"]\n`),
     block('$ export MODE=${MODE}-doc\n' +
       `$ export VALUE=${quoteArgument(value)}\n` +
       "$ export EMPTY=\n$ export FILE=relative.txt\n$ export NESTED='${UNDEFINED}'\n"),
     ...[SCRIPT_COMMAND, LOCAL_PACKAGE].map(program => block(
       `$ ${program} args ${args}\n${expected}\n` +
-      `$ ${program} context\nparent-doc\nyes\ncwd contents\n` +
-      `$ ${program} read-file \${FILE}\ncwd contents\n`,
+      `$ ${program} context\n\${MODE}-doc\nyes\ncwd contents\n` +
+      `$ ${program} read-file relative.txt\ncwd contents\n`,
     )),
-    block(`$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-env-echo \${MODE}|${SCRIPT_COMMAND} check-env-echo \${MODE}\nparent-doc\nyes\ncwd contents\n`),
-    block(`$ ${LOCAL_PACKAGE} context|${SCRIPT_COMMAND} check-env-echo \${MODE}|${LOCAL_PACKAGE} check-env-echo \${MODE}\nparent-doc\nyes\ncwd contents\n`),
+    block(`$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-env-echo '\${MODE}-doc'|${SCRIPT_COMMAND} check-env-echo '\${MODE}-doc'\n\${MODE}-doc\nyes\ncwd contents\n`),
+    block(`$ ${LOCAL_PACKAGE} context|${SCRIPT_COMMAND} check-env-echo '\${MODE}-doc'|${LOCAL_PACKAGE} check-env-echo '\${MODE}-doc'\n\${MODE}-doc\nyes\ncwd contents\n`),
     block('$ export MODE=\n' + [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
       `$ ${program} context\n\nyes\ncwd contents\n`).join("")),
     block(`$ export MODE=final\n$ ${LOCAL_PACKAGE} context\nfinal\nyes\ncwd contents\n`),
@@ -54,15 +54,24 @@ export function testExports({ cli, docs, target }) {
   assert(dryRun.stdout.includes("1 cases, would update 1, 0 errors"));
   assert.equal(fs.readFileSync(update, "utf8"), original);
   cli(["update", update, "--target", target]);
-  assert.equal(fs.readFileSync(update, "utf8"), prefix + block(`${command}\n["parent-updated"]\n`));
+  assert.equal(fs.readFileSync(update, "utf8"), prefix + block(`${command}\n["\${MODE}"]\n`));
   cli(["test", update, "--target", target]);
+
+  // The same command text parses and runs identically with a defined or absent variable.
+  const literal = writeDocument(docs, "exports-literal.md", block(
+    `$ ${LOCAL_PACKAGE} args \${MOONCRAM_LITERAL} "\${MOONCRAM_LITERAL}"\n["\${MOONCRAM_LITERAL}","\${MOONCRAM_LITERAL}"]\n`));
+  for (const defined of [false, true]) {
+    const env = createEnvironment();
+    delete env.MOONCRAM_LITERAL;
+    if (defined) env.MOONCRAM_LITERAL = 'different | "value"';
+    cli(["check", literal], { env });
+    cli(["test", literal, "--target", target], { env });
+  }
 
   const sideEffect = join(docs, "side-effect.txt");
   for (const invalid of [
-    "export INVALID", "export A=x B=y", "export 1A=x",
+    "export INVALID", "export A=x B=y", "export 1A=x", "export ${NAME}=x",
     `export A=x|${LOCAL_PACKAGE} hello`, `${LOCAL_PACKAGE} hello|export A=x`,
-    `${LOCAL_PACKAGE} args \${UNDEFINED}`, `${LOCAL_PACKAGE} args \${}`,
-    `${LOCAL_PACKAGE} args \${UNCLOSED`, `\${MODE}`, `${LOCAL_PACKAGE}|\${MODE}`,
     "export A=x\noutput", "export A=x\n[0]",
   ]) {
     fs.rmSync(sideEffect, { force: true });
@@ -70,54 +79,53 @@ export function testExports({ cli, docs, target }) {
     const before = fs.readFileSync(bad);
     const result = cli(["update", bad, "--target", target], { expected: EXIT_CODE.ERROR });
     assert(result.stderr.includes("exports-error.md:"));
-    assert(!fs.existsSync(sideEffect), "a case ran before the complete document was parsed");
+    assert(!fs.existsSync(sideEffect), "a case ran before document validation completed");
     assert.deepEqual(fs.readFileSync(bad), before);
   }
 }
 
 export function testCommandEnvironment({ cli, docs, target }) {
   const source = block(
-    `$ MODE=temporary ${LOCAL_PACKAGE} check-env MODE "\${MODE}"\ntemporary\n` +
-    `$ ${LOCAL_PACKAGE} check-env MODE \${MODE}\nparent\n` +
+    `$ MODE=temporary ${LOCAL_PACKAGE} check-env MODE temporary\ntemporary\n` +
+    `$ ${LOCAL_PACKAGE} check-env MODE parent\nparent\n` +
     '$ export MODE=document\n' +
     [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
-      `$ MODE=\${MODE}-first VALUE="\${MODE}" MODE=\${MODE}-last ${program} check-env MODE "\${MODE}"\ndocument-first-last\n` +
-      `$ MODE=temporary VALUE="\${MODE}" ${program} check-env VALUE "\${VALUE}"\ntemporary\n` +
-      `$ MODE= ${program} check-env MODE "\${MODE}"\n"" (escaped)\n` +
+      `$ MODE=\${MODE}-first VALUE="\${MODE}" MODE=\${MODE}-last ${program} check-env MODE '\${MODE}-last'\n\${MODE}-last\n` +
+      `$ MODE=temporary VALUE="\${MODE}" ${program} check-env VALUE '\${MODE}'\n\${MODE}\n` +
+      `$ A=new B="\${A}" ${program} check-env B '\${A}'\n\${A}\n` +
+      `$ A=\${B} B=later ${program} check-env A '\${B}'\n\${B}\n` +
+      `$ MODE= ${program} check-env MODE ''\n"" (escaped)\n` +
       `$ VALUE='Moon Bit|x=y' NESTED='\${UNDEFINED}' ${program} args "\${VALUE}" \${NESTED} MODE=argument\n` +
-      JSON.stringify(["Moon Bit|x=y", "${UNDEFINED}", "MODE=argument"]) + '\n' +
-      `$ ${program} check-env MODE \${MODE}\ndocument\n` +
-      `$ mOdE=mixed ${program} check-env ${process.platform === "win32" ? "MODE" : "mOdE"} \${mOdE}\nmixed\n`
+      JSON.stringify(['${VALUE}', '${NESTED}', "MODE=argument"]) + '\n' +
+      `$ ${program} check-env MODE document\ndocument\n` +
+      `$ mOdE=mixed ${program} check-env ${process.platform === "win32" ? "MODE" : "mOdE"} mixed\nmixed\n`
     ).join("") +
     [
       [SCRIPT_COMMAND, LOCAL_PACKAGE, SCRIPT_COMMAND],
       [LOCAL_PACKAGE, SCRIPT_COMMAND, LOCAL_PACKAGE],
     ].map(([first, second, third]) =>
-      `$ MODE=first ${first} check-env MODE \${MODE}|${second} check-env-echo \${MODE}|MODE=\${MODE}-third ${third} check-env-echo \${MODE}\nfirst\n` +
-      `$ ${first} check-env MODE \${MODE}|MODE=second ${second} check-env-echo \${MODE}|${third} check-env-echo \${MODE}\ndocument\n`
+      `$ MODE=first ${first} check-env MODE first|${second} check-env-echo document|MODE=\${MODE}-third ${third} check-env-echo '\${MODE}-third'\nfirst\n` +
+      `$ ${first} check-env MODE document|MODE=second ${second} check-env-echo second|${third} check-env-echo document\ndocument\n`
     ).join("") +
-    `$ ${LOCAL_PACKAGE} check-env MODE \${MODE}\ndocument\n`,
+    `$ ${LOCAL_PACKAGE} check-env MODE document\ndocument\n`,
   );
   const document = writeDocument(docs, "command-env.md", source);
   cli(["test", document, "--target", target]);
 
-  const command = `$ MODE='Moon Bit' VALUE="\${MODE}"\t${SCRIPT_COMMAND} check-env MODE "\${MODE}"|MODE=last ${LOCAL_PACKAGE} check-env-echo "\${MODE}"`;
+  const command = `$ MODE='Moon Bit' VALUE="\${MODE}"\t${SCRIPT_COMMAND} check-env VALUE '\${MODE}'|MODE=last ${LOCAL_PACKAGE} check-env-echo last`;
   const original = block(`${command}\nwrong\n`);
   const update = writeDocument(docs, "command-env-update.md", original);
   const dry = cli(["update", update, "--target", target, "--dry-run"]);
   assert(dry.stdout.includes(command));
   assert.equal(fs.readFileSync(update, "utf8"), original);
   cli(["update", update, "--target", target]);
-  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\nMoon Bit\n`));
+  assert.equal(fs.readFileSync(update, "utf8"), block(`${command}\n\${MODE}\n`));
   cli(["test", update, "--target", target]);
 
   const sideEffect = join(docs, "side-effect.txt");
   for (const invalid of [
     "A=x", `A=x|${LOCAL_PACKAGE} hello`, `${LOCAL_PACKAGE} hello|A=x`,
     "A=x export B=y", "A=x set-current-working-directory .",
-    `A=\${UNDEFINED} ${LOCAL_PACKAGE} hello`,
-    `A=\${B} B=later ${LOCAL_PACKAGE} hello`,
-    "A=cmd ${A}", `A=x ${LOCAL_PACKAGE} hello|${SCRIPT_COMMAND} args \${A}`,
     `A=x ${LOCAL_PACKAGE} hello 2>&1`,
   ]) {
     const before = block(`$ ${LOCAL_PACKAGE} setup\n$ ${invalid}\n`);
@@ -127,7 +135,7 @@ export function testCommandEnvironment({ cli, docs, target }) {
       const result = cli([...operation, bad, "--target", target], { expected: EXIT_CODE.ERROR });
       assert(result.stderr.includes("command-env-error.md:3:"), result.stderr);
       assert(result.stdout.includes("0 cases"), result.stdout);
-      assert(!fs.existsSync(sideEffect), "a case ran before the complete document was parsed");
+      assert(!fs.existsSync(sideEffect), "a case ran before document validation completed");
       assert.equal(fs.readFileSync(bad, "utf8"), before);
     }
   }
@@ -135,32 +143,32 @@ export function testCommandEnvironment({ cli, docs, target }) {
 
 export function testExportCasing({ cli, docs, target }) {
   const windows = process.platform === "win32";
-  const checkBoth = (name, reference, value) => [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
-    `$ ${program} check-env ${name} \${${reference}}\n${value || '"" (escaped)'}\n`).join("");
+  const checkBoth = (name, value) => [SCRIPT_COMMAND, LOCAL_PACKAGE].map(program =>
+    `$ ${program} check-env ${name} ${quoteArgument(value)}\n${value || '"" (escaped)'}\n`).join("");
   const modeKey = windows ? "MODE" : "mode";
   const newKey = windows ? "MOONCRAM_CASE_VALUE" : "Mooncram_Case_Value";
   const source = block(
-    checkBoth("MODE", windows ? "mOdE" : "MODE", "parent") +
-    "$ export MoDe=${MODE}-doc\n" +
-    checkBoth(windows ? "MODE" : "MoDe", "MoDe", "parent-doc") +
-    "$ export mode=${MoDe}-next\n" +
-    checkBoth(modeKey, windows ? "mODE" : "mode", "parent-doc-next") +
+    checkBoth("MODE", "parent") +
+    "$ export MoDe=doc\n" +
+    checkBoth(windows ? "MODE" : "MoDe", "doc") +
+    "$ export mode=next\n" +
+    checkBoth(modeKey, "next") +
     "$ export Mooncram_Case_Value=first\n" +
-    checkBoth(newKey, "Mooncram_Case_Value", "first") +
+    checkBoth(newKey, "first") +
     "$ export mooncram_case_value=second\n" +
-    checkBoth(newKey, "Mooncram_Case_Value", windows ? "second" : "first") +
-    checkBoth(windows ? newKey : "mooncram_case_value", "mooncram_case_value", "second") +
+    checkBoth(newKey, windows ? "second" : "first") +
+    checkBoth(windows ? newKey : "mooncram_case_value", "second") +
     [
       [SCRIPT_COMMAND, LOCAL_PACKAGE, SCRIPT_COMMAND],
       [LOCAL_PACKAGE, SCRIPT_COMMAND, LOCAL_PACKAGE],
     ].map(([first, second, third]) =>
-      `$ ${first} check-env MODE \${MODE}|` +
-      `${second} check-env-echo \${mode} ${modeKey}|` +
-      `${third} check-env-echo \${Mooncram_Case_Value} ${newKey}\n` +
-      `${windows ? "parent-doc-next" : "parent"}\n`).join("") +
+      `$ ${first} check-env MODE ${windows ? "next" : "parent"}|` +
+      `${second} check-env-echo next ${modeKey}|` +
+      `${third} check-env-echo ${windows ? "second" : "first"} ${newKey}\n` +
+      `${windows ? "next" : "parent"}\n`).join("") +
     "$ export mode=\n" +
-    checkBoth(modeKey, windows ? "Mode" : "mode", "") +
-    (windows ? "" : checkBoth("MODE", "MODE", "parent")),
+    checkBoth(modeKey, "") +
+    (windows ? "" : checkBoth("MODE", "parent")),
   );
   const document = writeDocument(docs, "exports-casing.md", source);
   const cases = windows ? 16 : 18;
@@ -179,7 +187,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   fs.symlinkSync(workspace, link, DIRECTORY_LINK_TYPE);
   const source = [
     block('$ export WORKSPACE="../cwd fixture"\n'),
-    block('$ set-current-working-directory "${WORKSPACE}"\n' +
+    block('$ set-current-working-directory "../cwd fixture"\n' +
       '$ export WORKSPACE=unused\n$ ./selected.mbtx\nworkspace script\n' +
       `$ ${SCRIPT_COMMAND} read-file relative.txt\nconfigured contents\n` +
       `$ ${LOCAL_PACKAGE} context\nparent\nyes\nconfigured contents\n` +
@@ -199,6 +207,19 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   cli(["test", alias, "--target", target]);
   const only = writeDocument(docs, "cwd-only.md", block('$ set-current-working-directory cwd-link\n'));
   assert(cli(["test", only], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases found"));
+
+  // Both directory and executable names use their literal spelling on disk.
+  const literalDirectory = join(docs, '${WORKSPACE}');
+  fs.mkdirSync(literalDirectory);
+  fs.writeFileSync(join(literalDirectory, '${SCRIPT}.mbtx'), 'fn main { println("literal path") }\n');
+  const literalCommand = '$ ./${SCRIPT}.mbtx';
+  const literalPrefix = '$ export WORKSPACE="../cwd fixture"\n$ export SCRIPT=selected\n' +
+    '$ set-current-working-directory "${WORKSPACE}"\n';
+  const literalDocument = writeDocument(docs, "cwd-literal.md", block(literalPrefix + literalCommand + '\nwrong\n'));
+  cli(["check", literalDocument]);
+  cli(["update", literalDocument, "--target", target]);
+  assert.equal(fs.readFileSync(literalDocument, "utf8"), block(literalPrefix + literalCommand + '\nliteral path\n'));
+  cli(["test", literalDocument, "--target", target]);
 
   const directive = '$ set-current-working-directory "../cwd fixture"';
   const before = ("Intro\n\n> - ```mooncram\n>   " + directive +
@@ -221,7 +242,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   assert.equal(fs.readFileSync(workspaceEffect, "utf8"), "side effect preserved\n");
 
   const sideEffect = join(docs, "side-effect.txt");
-  for (const name of ["cwd-missing", "relative.txt", "cwd-not-created-yet"]) {
+  for (const name of ["cwd-missing", "relative.txt", "cwd-not-created-yet", "${UNDEFINED_CWD}"]) {
     const original = block(`$ ${LOCAL_PACKAGE} setup\n$ ${LOCAL_PACKAGE} hello\nwrong\n` +
       (name === "cwd-not-created-yet" ? `$ ${LOCAL_PACKAGE} make-directory ${name}\n` : "")) +
       block(`$ set-current-working-directory ${name}\n`);
@@ -263,9 +284,9 @@ export function testBuildEnvironment({ cli, docs, directory, target }) {
   const document = writeDocument(docs, "exports-build.md", block(
     `$ export MODE=first\n$ set-current-working-directory "../cwd fixture"\n$ ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n` +
     `$ export MODE=second\n$ ${SCRIPT_COMMAND} hello|${LOCAL_PACKAGE} echo\nHello, Moon Bit!\n` +
-    `$ MODE=package-temp ${LOCAL_PACKAGE} check-env MODE \${MODE}\npackage-temp\n` +
-    `$ MODE=script-temp ${SCRIPT_COMMAND} check-env MODE \${MODE}|MODE=pipeline-temp ${LOCAL_PACKAGE} check-env-echo \${MODE}\nscript-temp\n` +
-    `$ ${LOCAL_PACKAGE} check-env MODE \${MODE}\nsecond\n`,
+    `$ MODE=package-temp ${LOCAL_PACKAGE} check-env MODE package-temp\npackage-temp\n` +
+    `$ MODE=script-temp ${SCRIPT_COMMAND} check-env MODE script-temp|MODE=pipeline-temp ${LOCAL_PACKAGE} check-env-echo pipeline-temp\nscript-temp\n` +
+    `$ ${LOCAL_PACKAGE} check-env MODE second\nsecond\n`,
   ));
   const env = createEnvironment();
   env.PATH = [tools, env.PATH].join(delimiter);
