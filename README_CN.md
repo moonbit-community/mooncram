@@ -213,23 +213,34 @@ acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 ### 环境变量
 
 命令继承启动 mooncram 时的环境。用 `export` 为同一文档中的后续用例设置变量，
-或在命令前赋值，只影响这一条命令：
+或在命令前赋值，只影响这一条命令。由被测程序自行读取环境，例如 `environment.mbtx`：
+
+```mbt
+import { "moonbitlang/core/env" }
+
+fn main {
+  let name = @env.get_env_var("NAME").unwrap_or("World")
+  println("Hello, \{name}!")
+}
+```
 
 ````markdown
 ```mooncram
 $ export NAME='Moon Bit'
-$ ./hello.mbtx "${NAME}"
+$ ./environment.mbtx
 Hello, Moon Bit!
 
-$ NAME=World ./hello.mbtx "${NAME}"
+$ NAME=World ./environment.mbtx
 Hello, World!
 ```
 ````
 
 export 会延续到后续代码块，在下一篇文档中重置。
-临时赋值只作用于当前管道段及其构建过程。
-`${NAME}` 在未加引号或使用双引号的参数中展开，在单引号中保持原样。
-引用未定义变量会报错。`$NAME` 是普通文本，预期输出也不会展开变量。
+临时赋值只作用于当前管道段及其构建过程。mooncram 不展开环境变量：参数、赋值值、
+可执行路径、工作目录及预期输出中的 `${NAME}` 和 `$NAME` 都是普通文本，
+仍遵循通常的分词、引号和转义规则。例如，`NAME=World ./hello.mbtx "${NAME}"`
+传入字面参数 `${NAME}`，同时子进程的环境变量 `NAME` 为 `World`。
+若要将名字作为参数传入，请显式写出值，如 `./hello.mbtx World`。
 
 ### 工作目录与 fixture
 
