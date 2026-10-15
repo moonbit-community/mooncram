@@ -42,7 +42,7 @@ export function testTimeouts({ cli, docs }) {
       fs.rmSync(join(docs, `slow-${segment}.txt.started`), { force: true });
     }
     const pipeline = writeDocument(docs, "slow-pipeline.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt 2>&1 | ${LOCAL_PACKAGE} slow slow-middle.txt 1>/dev/null 2>&1 | ${LOCAL_PACKAGE} slow slow-last.txt\nwrong\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} slow slow-last.txt\nwrong\n`,
     ));
     const original = fs.readFileSync(pipeline);
     const pipelineStart = performance.now();
@@ -52,7 +52,7 @@ export function testTimeouts({ cli, docs }) {
     assert(performance.now() - pipelineStart < CANCELLATION_LIMIT_MS);
     assert(cancelled.stderr.includes("timed out after 1500 ms"));
     assert(cancelled.stderr.includes("phase: run"));
-    for (const index of [1, 2, 3]) assert(cancelled.stderr.includes(`${index}/3 (${LOCAL_PACKAGE})`));
+    for (const index of [1, 2, 3]) assert(cancelled.stderr.includes(`${index}/3 (${LOCAL_PACKAGE.slice(6)})`));
     assert.deepEqual(fs.readFileSync(pipeline), original);
     for (const segment of ["first", "middle", "last"]) {
       assert(fs.existsSync(join(docs, `slow-${segment}.txt.started`)),
@@ -61,7 +61,7 @@ export function testTimeouts({ cli, docs }) {
     // Even when the final segment has exited, upstream processes must be
     // awaited and cancelled when the shared deadline expires.
     const early = writeDocument(docs, "slow-upstream.md", block(
-      `$ ${LOCAL_PACKAGE} slow slow-first.txt 1>/dev/null | ${LOCAL_PACKAGE} slow slow-middle.txt 2>&1 | ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`,
+      `$ ${LOCAL_PACKAGE} slow slow-first.txt | ${LOCAL_PACKAGE} slow slow-middle.txt | ${LOCAL_PACKAGE} hello\nHello, Moon Bit!\n`,
     ));
     assert(cli([
       "test", early, "--target", backend, "--timeout-ms", "1500",

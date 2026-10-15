@@ -17,20 +17,18 @@ import {
 } from "./basic.mjs";
 
 const UPDATE_ERROR_CASES = [
-  { command: "bad", diagnostic: "build failed" },
-  { command: `bad 1>/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
-  { command: `./bad.mbtx 2>&1 1>/dev/null | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
-  { command: "./bad.mbtx", diagnostic: "build failed" },
-  { command: "library" },
-  { command: "./missing.mbtx" },
-  { command: `${quoteArgument(process.execPath)} hello` },
+  { command: "moonx mooncram/integration/bad", diagnostic: "build failed" },
+  { command: `moonx mooncram/integration/bad | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
+  { command: `moonx ./bad.mbtx | ${LOCAL_PACKAGE} echo`, diagnostic: "build failed" },
+  { command: "moonx ./bad.mbtx", diagnostic: "build failed" },
+  { command: "moonx mooncram/integration/library" },
+  { command: "moonx ./missing.mbtx" },
+  { command: `moonx ${quoteArgument(process.execPath)} hello` },
   { command: `${LOCAL_PACKAGE} invalid-utf8` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr 2>&1 | ${LOCAL_PACKAGE} echo` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr 1>/dev/null | ${LOCAL_PACKAGE} echo` },
-  { command: `${LOCAL_PACKAGE} invalid-stderr 1>/dev/null 2>&1 | ${LOCAL_PACKAGE} echo` },
-  { command: `${LOCAL_PACKAGE} hello | bad`, diagnostic: "build failed" },
-  { command: `${LOCAL_PACKAGE} hello | ./bad.mbtx`, diagnostic: "build failed" },
-  { command: `${LOCAL_PACKAGE} hello | ./missing.mbtx` },
+  { command: `${LOCAL_PACKAGE} invalid-stderr | ${LOCAL_PACKAGE} echo` },
+  { command: `${LOCAL_PACKAGE} hello | moonx mooncram/integration/bad`, diagnostic: "build failed" },
+  { command: `${LOCAL_PACKAGE} hello | moonx ./bad.mbtx`, diagnostic: "build failed" },
+  { command: `${LOCAL_PACKAGE} hello | moonx ./missing.mbtx` },
   { command: `${LOCAL_PACKAGE} hello | ${LOCAL_PACKAGE} invalid-utf8` },
   { command: `${LOCAL_PACKAGE} invalid-utf8 | ${LOCAL_PACKAGE} echo` },
 ];
@@ -159,7 +157,7 @@ export function testUpdateErrors({ cli, docs, project, target }) {
     }
   }
   for (const dry of [[], ["--dry-run"]]) {
-    for (const badCase of ["$ ./missing.mbtx\n", "@STDOUT\n"]) {
+    for (const badCase of ["$ moonx ./missing.mbtx\n", "@STDOUT\n"]) {
       const original = block(`$ ${LOCAL_PACKAGE} hello\n"Hello, Moon Bit!" (escaped)\n[0]\n\n${badCase}`);
       const document = writeDocument(docs, "normalize-error.md", original);
       const result = cli(["update", document, "--target", target, ...dry], { expected: EXIT_CODE.ERROR });
