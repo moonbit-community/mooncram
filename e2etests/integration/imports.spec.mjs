@@ -58,12 +58,12 @@ export async function testImports({ executable, docs, project, directory, target
       `$ remote read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'|Remote check-file-echo 'configured contents'\nconfigured contents\n`),
     imports,
     block('$ export MODE=imported\n$ remote args "${MODE}" \'a|b\' \'\' --target native\n' +
-      '["imported","a|b","","--target","native"]\n' +
+      '["${MODE}","a|b","","--target","native"]\n' +
       '$ remote context\nimported\nyes\ncwd contents\n', ""),
-    block('$ MODE=${MODE}-temporary remote check-env MODE "${MODE}"\nimported-temporary\n' +
-      '$ remote check-env MODE ${MODE}\nimported\n', ""),
-    block(`$ MODE=first remote check-env MODE \${MODE}|${LOCAL_PACKAGE} check-env-echo \${MODE}|MODE=last Remote check-env-echo \${MODE}|${SCRIPT_COMMAND} check-env-echo \${MODE}\nfirst\n`),
-    block(`$ ${LOCAL_PACKAGE} check-env MODE \${MODE}|MODE=middle remote check-env-echo \${MODE}|Remote check-env-echo \${MODE}\nimported\n`),
+    block("$ MODE=${MODE}-temporary remote check-env MODE '${MODE}-temporary'\n${MODE}-temporary\n" +
+      '$ remote check-env MODE imported\nimported\n', ""),
+    block(`$ MODE=first remote check-env MODE first|${LOCAL_PACKAGE} check-env-echo imported|MODE=last Remote check-env-echo last|${SCRIPT_COMMAND} check-env-echo imported\nfirst\n`),
+    block(`$ ${LOCAL_PACKAGE} check-env MODE imported|MODE=middle remote check-env-echo middle|Remote check-env-echo imported\nimported\n`),
     block("$ Remote invocation --version\n" +
       '["--target","wasm","fixture/tool/cmd@2.0.0-rc.1+build.007","--","invocation","--version"]\n'),
     block(`$ remote hello|${LOCAL_PACKAGE} echo|Remote echo\nHello, Moon Bit!\n`),
@@ -124,7 +124,7 @@ export async function testImports({ executable, docs, project, directory, target
   const before = (quotedListItem(imports) + "\n\n" + quotedListItem(block(
     "$ export MODE='Moon Bit'\n" + command + "\nwrong\n", "")) + "\nTail").replaceAll("\n", CRLF);
   const update = write("update", before);
-  const expectedUpdate = before.replace("wrong", '["Moon Bit-temporary"]');
+  const expectedUpdate = before.replace("wrong", '["${MODE}"]');
   const dryRun = invoke(["update", update, "--dry-run"]);
   assert(dryRun.stdout.includes("would update 1"));
   assert.equal(fs.readFileSync(update, "utf8"), before);

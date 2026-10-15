@@ -121,7 +121,7 @@ export function testRedirections({ cli, docs, target }) {
   const passing = writeDocument(docs, "redirections.md",
     block("$ export MARKER='2>&1'\n") +
     cases.map(([command, output]) => block(`$ ${command}\n${output}`)).join("\n") +
-    block(`$ ${LOCAL_PACKAGE} args \${MARKER} "\${MARKER}" after\n["2>&1","2>&1","after"]\n`));
+    block(`$ ${LOCAL_PACKAGE} args \${MARKER} "\${MARKER}" after\n["\${MARKER}","\${MARKER}","after"]\n`));
   cli(["test", passing, "--target", target]);
 
   // Only unredirected stderr belongs to diagnostics, in segment order.
