@@ -1,10 +1,10 @@
 ///|
-/// One command's expanded arguments, temporary environment and output routes.
+/// One command's parsed arguments, temporary environment and output routes.
 ///
 /// Produced by `parse` inside a `Command::Pipeline`. Each segment has at least
 /// one argument. Redirection flags may be set only on non-final segments.
 pub(all) struct PipelineSegment {
-  /// Executable followed by arguments, with quoting removed and references expanded.
+  /// Executable followed by arguments, with quotes and escapes processed.
   argv : Array[String]
   /// Segment-only assignments; values override document/inherited variables.
   extra_env : Map[String, String]
@@ -30,9 +30,9 @@ pub extend PipelineSegment with Eq::{equal, not_equal}
 pub(all) enum Command {
   /// Nonempty list of executable segments in pipeline order.
   Pipeline(Array[PipelineSegment])
-  /// One document-scoped environment assignment with an expanded value.
+  /// One document-scoped environment assignment with a literal value.
   Export(name~ : String, value~ : String)
-  /// Nonempty expanded block-local directory path, not yet filesystem-validated.
+  /// Nonempty block-local directory path, not yet filesystem-validated.
   SetCurrentWorkingDirectory(directory~ : String)
 } derive(Debug, Eq)
 
@@ -45,14 +45,8 @@ pub extend Command with @debug.Debug::{to_repr}
 pub extend Command with Eq::{equal, not_equal}
 
 ///|
-priv enum Part {
-  Text(String)
-  Variable(String)
-}
-
-///|
 priv enum Token {
-  Argument(Array[Part], String?)
+  Argument(String, String?)
   StderrToStdout
   StdoutToNull
 }
@@ -74,38 +68,10 @@ fn valid_name(name : String) -> Bool {
 }
 
 ///|
-fn expand(
-  parts : Array[Part],
-  lookup : (String) -> String?,
-  executable~ : Bool = false,
-) -> String raise {
-  let result = StringBuilder()
-  for part in parts {
-    match part {
-      Text(text) => result.write_string(text)
-      Variable(name) => {
-        if executable {
-          raise @diagnostic.failure(
-            "variable expansion is not allowed in executable paths",
-          )
-        }
-        guard lookup(name) is Some(value) else {
-          raise @diagnostic.failure("undefined variable: \{name}")
-        }
-        result.write_string(value)
-      }
-    }
-  }
-  result.to_string()
-}
-
-///|
 /// Parse a pipeline, environment assignment or working directory configuration.
-/// Only unescaped ${NAME} outside single quotes expands, once, without splitting.
-/// References require lookup; by default all variables are undefined.
-/// Leading NAME=value assignments expand left to right and affect only their
-/// segment, including its arguments. case_insensitive normalizes temporary names
-/// and lookup keys to uppercase; enable it on Windows.
+/// Variable-like text such as ${NAME} is literal, with normal quoting and escaping.
+/// Leading NAME=value assignments affect only their segment's environment.
+/// case_insensitive normalizes temporary names to uppercase; enable it on Windows.
 /// Output redirection is allowed only before the final pipeline segment.
 ///
 /// `command` omits the Markdown `$` prompt. Spaces/tabs split arguments, quotes
@@ -114,10 +80,8 @@ fn expand(
 /// are raw trailing tokens `2>&1` and `1>/dev/null`. Parsing does not invoke a
 /// shell, resolve targets or mutate the environment.
 ///
-/// Raises `@diagnostic.Failure` for malformed quotes/references, undefined
-/// variables, empty segments, unsupported shell operators, invalid assignments
-/// or redirection/configuration placement. Variable references are forbidden
-/// in executable names.
+/// Raises `@diagnostic.Failure` for malformed quotes, empty segments, unsupported
+/// shell operators, invalid assignments or redirection/configuration placement.
 ///
 /// ```mbt check
 /// test {
@@ -125,13 +89,12 @@ fn expand(
 ///   guard parsed is @command.Pipeline(segments) else {
 ///     fail("expected a pipeline")
 ///   }
-///   assert_eq(segments[0].argv, ["./hello.mbtx", "Moon Bit"])
+///   assert_eq(segments[0].argv, ["./hello.mbtx", "${NAME}"])
 ///   assert_eq(segments[0].extra_env.get("NAME"), Some("Moon Bit"))
 /// }
 /// ```
 pub fn parse(
   command : String,
-  lookup~ : (String) -> String? = _ => None,
   case_insensitive~ : Bool = false,
 ) -> Command raise {
   let words = tokenize(command)
@@ -146,35 +109,20 @@ pub fn parse(
         name
       }
     }
-    let segment_lookup = fn(name : String) {
-      let key = env_key(name)
-      if extra_env.get(key) is Some(value) {
-        Some(value)
-      } else {
-        lookup(key)
-      }
-    }
     let mut stderr_to_stdout = false
     let mut stdout_to_null = false
     for token in tokens {
       match token {
-        Argument(parts, assignment) => {
+        Argument(word, assignment) => {
           if stderr_to_stdout || stdout_to_null {
             raise @diagnostic.failure(
               "ordinary arguments cannot follow redirection",
             )
           }
           if segment.is_empty() && assignment is Some(name) {
-            // Tokenization guarantees that NAME= is the literal first part.
-            guard parts[0] is Text(prefix) else {
-              abort("invalid assignment token")
-            }
-            let value_parts = [Text(prefix[name.length() + 1:].to_owned())] +
-              parts[1:].to_owned()
-            // Expand before replacing the key, so self references see its old value.
-            extra_env[env_key(name)] = expand(value_parts, segment_lookup)
+            extra_env[env_key(name)] = word[name.length() + 1:].to_owned()
           } else {
-            segment.push(parts)
+            segment.push(word)
           }
         }
         StderrToStdout => {
@@ -199,7 +147,7 @@ pub fn parse(
         "empty pipeline segment; expected a local .mbtx file or executable package path",
       )
     }
-    let executable = expand(segment[0], segment_lookup, executable=true)
+    let executable = segment[0]
     if executable == "" {
       raise @diagnostic.failure(
         "expected a local .mbtx file or executable package path",
@@ -226,7 +174,7 @@ pub fn parse(
           "set-current-working-directory requires exactly one nonempty directory argument",
         )
       }
-      let directory = expand(segment[1], segment_lookup)
+      let directory = segment[1]
       if directory.is_empty() {
         raise @diagnostic.failure(
           "set-current-working-directory requires exactly one nonempty directory argument",
@@ -251,11 +199,7 @@ pub fn parse(
           "export requires exactly one NAME=value assignment",
         )
       }
-      // The name and '=' must be literal; only the value may contain references.
-      let assignment = segment[1]
-      guard assignment[0] is Text(prefix) else {
-        raise @diagnostic.failure("export requires a NAME=value assignment")
-      }
+      let prefix = segment[1]
       guard prefix.find("=") is Some(eq) else {
         raise @diagnostic.failure("export requires a NAME=value assignment")
       }
@@ -263,15 +207,14 @@ pub fn parse(
       if !valid_name(name) {
         raise @diagnostic.failure("invalid export variable name: \{name}")
       }
-      let value_parts = [Text(prefix[eq + 1:].to_owned())] +
-        assignment[1:].to_owned()
-      return Export(name~, value=expand(value_parts, segment_lookup))
+      return Export(name~, value=prefix[eq + 1:].to_owned())
     }
-    let args = [executable]
-    for parts in segment[1:] {
-      args.push(expand(parts, segment_lookup))
-    }
-    pipeline.push({ argv: args, extra_env, stderr_to_stdout, stdout_to_null, })
+    pipeline.push({
+      argv: segment,
+      extra_env,
+      stderr_to_stdout,
+      stdout_to_null,
+    })
   }
   if pipeline is [.., last] && (last.stderr_to_stdout || last.stdout_to_null) {
     raise @diagnostic.failure(
@@ -282,11 +225,10 @@ pub fn parse(
 }
 
 ///|
-/// Keep references separate until executable paths and export names are checked.
+/// Preserve raw assignment prefixes and redirection markers while decoding words.
 fn tokenize(command : String) -> Array[Array[Token]] raise {
   let pipeline = []
   let mut args = []
-  let mut parts = []
   let word = StringBuilder()
   let mut quote : Char? = None
   let mut escaped = false
@@ -300,7 +242,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
   }
   for i = 0; i < chars.length(); {
     let c = chars[i]
-    // Recognize only complete raw tokens, before quoting/escaping or expansion
+    // Recognize only complete raw tokens, before quoting/escaping
     // can turn ordinary argument text into something that resembles a marker.
     if !started && quote is None && !escaped && !(c is (' ' | '\t' | '|')) {
       let raw = StringBuilder()
@@ -343,26 +285,6 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
     } else if c == '\\' {
       escaped = true
       started = true
-    } else if c == '$' && i + 1 < chars.length() && chars[i + 1] == '{' {
-      let name = StringBuilder()
-      let mut end = i + 2
-      while end < chars.length() && chars[end] != '}' {
-        name.write_char(chars[end])
-        end += 1
-      }
-      if end == chars.length() {
-        raise @diagnostic.failure("unclosed variable reference")
-      }
-      if !valid_name(name.to_string()) {
-        raise @diagnostic.failure(
-          "invalid variable reference: \{name.to_string()}",
-        )
-      }
-      parts.push(Text(word.to_string()))
-      word.reset()
-      parts.push(Variable(name.to_string()))
-      started = true
-      continue end + 1
     } else if quote == Some('"') {
       if c == '"' {
         quote = None
@@ -377,19 +299,15 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
         }
         ' ' | '\t' =>
           if started {
-            parts.push(Text(word.to_string()))
-            args.push(Argument(parts, assignment))
+            args.push(Argument(word.to_string(), assignment))
             assignment = None
-            parts = []
             word.reset()
             started = false
           }
         '|' => {
           if started {
-            parts.push(Text(word.to_string()))
-            args.push(Argument(parts, assignment))
+            args.push(Argument(word.to_string(), assignment))
             assignment = None
-            parts = []
             word.reset()
             started = false
           }
@@ -415,8 +333,7 @@ fn tokenize(command : String) -> Array[Array[Token]] raise {
     raise @diagnostic.failure("unclosed quote in command")
   }
   if started {
-    parts.push(Text(word.to_string()))
-    args.push(Argument(parts, assignment))
+    args.push(Argument(word.to_string(), assignment))
   }
   pipeline.push(args)
   pipeline

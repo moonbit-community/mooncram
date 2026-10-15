@@ -68,10 +68,9 @@ fn collect_blocks(
 /// declaration. Exports apply to later commands across fences; block-local
 /// directory settings must precede that block's first executable command.
 ///
-/// Variable expansion reads document exports before the current process
-/// environment, using case-insensitive names on Windows. Each case stores its
-/// own export snapshot. Configuration commands are not cases. A document with
-/// no test fences returns an empty case list.
+/// Export names are case-insensitive on Windows. Each case stores its own
+/// export snapshot. Arguments and assignment values remain literal. Configuration
+/// commands are not cases. A document with no test fences returns an empty case list.
 ///
 /// Parses the entire document before returning. Invalid fence configuration,
 /// commands, imports or expectations raise `@diagnostic.Failure` with file and
@@ -91,7 +90,6 @@ pub fn parse_document(path : String, source : String) -> Document raise {
   parse_document_with_env(
     path,
     source,
-    parent_lookup=@env.get_env_var,
     case_insensitive=@async.platform is Windows,
   )
 }
@@ -100,10 +98,9 @@ pub fn parse_document(path : String, source : String) -> Document raise {
 fn parse_document_with_env(
   path : String,
   source : String,
-  parent_lookup~ : (String) -> String?,
   case_insensitive~ : Bool,
 ) -> Document raise {
-  // Export names are ASCII. Normalize both storage and lookup so each Windows
+  // Export names are ASCII. Normalize storage so each Windows
   // variable has one entry in every child-process environment snapshot.
   let env_key = fn(name : String) {
     if case_insensitive {
@@ -182,14 +179,7 @@ fn parse_document_with_env(
           path, line, "expected a command starting with '$ '",
         )
       }
-      let command = @command.parse(node.v[1:].to_owned(), case_insensitive~, lookup=name => {
-        let key = env_key(name)
-        if extra_env.get(key) is Some(value) {
-          Some(value)
-        } else {
-          parent_lookup(key)
-        }
-      }) catch {
+      let command = @command.parse(node.v[1:].to_owned(), case_insensitive~) catch {
         e => raise @diagnostic.context(e, file=path, line~)
       }
       has_command = true

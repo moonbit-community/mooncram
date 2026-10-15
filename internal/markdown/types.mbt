@@ -11,7 +11,7 @@ pub struct Case {
   working_directory : WorkingDirectoryDeclaration?
   /// Original logical command line, including its leading `$` marker.
   command : String
-  /// Nonempty pipeline of expanded commands in execution order.
+  /// Nonempty pipeline of parsed commands in execution order.
   pipeline : Array[@command.PipelineSegment]
   /// Snapshot of document exports at this command; excludes temporary segment
   /// assignments and inherited process variables.
@@ -104,10 +104,10 @@ priv enum Container {
 ///|
 /// A block-local `set-current-working-directory` declaration.
 ///
-/// The parser stores the expanded path without checking the filesystem; document
+/// The parser stores the literal path without checking the filesystem; document
 /// validation resolves it against the Markdown file's parent directory.
 pub struct WorkingDirectoryDeclaration {
-  /// Nonempty, expanded absolute or document-relative directory spelling.
+  /// Nonempty absolute or document-relative directory spelling.
   directory : String
   /// One-based line of the configuration command.
   line : Int32

@@ -125,83 +125,79 @@ test "export assigns one valid name and preserves empty values and equals" {
 }
 
 ///|
-test "references expand once without splitting and concatenate with literal fragments" {
-  let env = Map::from_array([
-    ("VALUE", "Moon Bit|'\""),
-    ("EMPTY", ""),
-    ("NESTED", "${UNDEFINED}"),
-    ("NAME", "before"),
-  ])
+test "variable-like text stays literal through quoting escaping and concatenation" {
   assert_eq(
     @command.parse(
-      "./a.mbtx ${VALUE} \"${VALUE}\" pre${VALUE}post ${EMPTY} \"${EMPTY}\" a${EMPTY}b ${NESTED} '$VAR' $VAR '${MISSING}' \\${MISSING} \"\\${MISSING}\"",
-      lookup=name => env.get(name),
+      "./a.mbtx ${VALUE} \"${VALUE}\" '${VALUE}' \\${VALUE} \"\\${VALUE}\" pre${VALUE}post a\"${EMPTY}\"b '$VAR' $VAR",
     ),
     plain_pipeline([
       [
-        "./a.mbtx", "Moon Bit|'\"", "Moon Bit|'\"", "preMoon Bit|'\"post", "", "",
-        "ab", "${UNDEFINED}", "$VAR", "$VAR", "${MISSING}", "${MISSING}", "${MISSING}",
+        "./a.mbtx", "${VALUE}", "${VALUE}", "${VALUE}", "${VALUE}", "${VALUE}", "pre${VALUE}post",
+        "a${EMPTY}b", "$VAR", "$VAR",
       ],
     ]),
   )
   assert_eq(
-    @command.parse("export NAME=${NAME}-after", lookup=name => env.get(name)),
-    @command.Export(name="NAME", value="before-after"),
+    @command.parse("export NAME=${NAME}-after"),
+    @command.Export(name="NAME", value="${NAME}-after"),
   )
   assert_eq(
-    @command.parse("export NAME=${EMPTY}", lookup=name => env.get(name)),
-    @command.Export(name="NAME", value=""),
-  )
-  assert_eq(
-    @command.parse("./a.mbtx ${VALUE}|./b.mbtx ${EMPTY}", lookup=name => {
-      env.get(name)
-    }),
-    plain_pipeline([["./a.mbtx", "Moon Bit|'\""], ["./b.mbtx", ""]]),
+    @command.parse("./a.mbtx ${VALUE}|./b.mbtx ${EMPTY}"),
+    plain_pipeline([["./a.mbtx", "${VALUE}"], ["./b.mbtx", "${EMPTY}"]]),
   )
 }
 
 ///|
-test "references reject undefined invalid and incomplete syntax" {
+test "variable-like text has no reference validation and uses ordinary token rules" {
   for
-    command in [
-      "./a.mbtx ${MISSING}", "./a.mbtx \"${MISSING}\"", "export NAME=${MISSING}",
+    text in [
+      "${}", "${1A}", "${A-B}", "${名}", "${${A}}", "${A=B}", "${UNCLOSED",
     ] {
-    assert_error_contains(
-      () => ignore(@command.parse(command)),
-      "undefined variable: MISSING",
-    )
+    for argument in [text, "'" + text + "'", "\"" + text + "\""] {
+      assert_eq(
+        @command.parse("./a.mbtx " + argument),
+        plain_pipeline([["./a.mbtx", text]]),
+      )
+      assert_eq(
+        @command.parse("export A=" + argument),
+        @command.Export(name="A", value=text),
+      )
+      assert_eq(segments("A=" + argument + " ./a.mbtx")[0].extra_env, {
+        "A": text,
+      })
+    }
   }
-  for
-    reference in [
-      "${}", "${1A}", "${A-B}", "${A B}", "${名}", "${${A}}", "${A|B}", "${A=B}",
-    ] {
-    assert_error_contains(
-      () => ignore(@command.parse("./a.mbtx " + reference)),
-      "invalid variable reference",
-    )
-  }
-  for command in ["./a.mbtx ${A", "./a.mbtx \"${A", "export A=${A"] {
-    assert_error_contains(
-      () => ignore(@command.parse(command)),
-      "unclosed variable reference",
-    )
-  }
+  assert_eq(
+    @command.parse("./a.mbtx ${A B} ${A|B}"),
+    plain_pipeline([["./a.mbtx", "${A", "B}", "${A"], ["B}"]]),
+  )
+  assert_eq(
+    @command.parse("./a.mbtx '${A B}' \"${A|B}\""),
+    plain_pipeline([["./a.mbtx", "${A B}", "${A|B}"]]),
+  )
+  assert_error_contains(
+    () => ignore(@command.parse("./a.mbtx \"${A")),
+    "unclosed quote",
+  )
+  assert_error_contains(
+    () => ignore(@command.parse("./a.mbtx ${A>B}")),
+    "shell operator",
+  )
 }
 
 ///|
-test "every executable path rejects expansion but accepts protected references" {
-  for
-    command in [
-      "${PATH}", "./${PATH}.mbtx arg", "./a.mbtx|${PATH}", "./a.mbtx|./b.mbtx|\"${PATH}\"",
-    ] {
-    assert_error_contains(
-      () => ignore(@command.parse(command, lookup=_ => Some("./b.mbtx"))),
-      "executable paths",
-    )
-  }
+test "executable paths retain variable-like text and exports reject pipelines" {
   assert_eq(
-    @command.parse("'${PATH}'|./\\${PATH}.mbtx|\"\\${PATH}\""),
-    plain_pipeline([["${PATH}"], ["./${PATH}.mbtx"], ["${PATH}"]]),
+    @command.parse(
+      "${PATH}|./${PATH}.mbtx arg|\"${PATH}\"|'${PATH}'|./\\${PATH}.mbtx",
+    ),
+    plain_pipeline([
+      ["${PATH}"],
+      ["./${PATH}.mbtx", "arg"],
+      ["${PATH}"],
+      ["${PATH}"],
+      ["./${PATH}.mbtx"],
+    ]),
   )
   for
     command in [
@@ -253,7 +249,7 @@ test "redirection routes nonfinal segments and rejects final segments" {
 }
 
 ///|
-test "quoted escaped and expanded markers remain ordinary arguments" {
+test "quoted escaped and variable-like markers remain ordinary arguments" {
   for marker in ["2>&1", "1>/dev/null"] {
     for
       literal in [
@@ -266,18 +262,12 @@ test "quoted escaped and expanded markers remain ordinary arguments" {
         plain_pipeline([["./a.mbtx", marker, "after"]]),
       )
     }
-    assert_eq(
-      @command.parse("./a.mbtx ${MARKER} \"${MARKER}\" after", lookup=_ => {
-        Some(marker)
-      }),
-      plain_pipeline([["./a.mbtx", marker, marker, "after"]]),
-    )
   }
   assert_eq(
-    @command.parse("./a.mbtx '${MARKER}' \\${MARKER} 2>&1|./b.mbtx"),
+    @command.parse("./a.mbtx ${MARKER} '${MARKER}' \\${MARKER} 2>&1|./b.mbtx"),
     @command.Pipeline([
       {
-        argv: ["./a.mbtx", "${MARKER}", "${MARKER}"],
+        argv: ["./a.mbtx", "${MARKER}", "${MARKER}", "${MARKER}"],
         stderr_to_stdout: true,
         extra_env: Map([]),
         stdout_to_null: false,
@@ -356,41 +346,29 @@ test "redirection requires exact raw tokens and whitespace boundaries" {
 }
 
 ///|
-test "working directory takes one nonempty expanded argument with normal quoting" {
+test "working directory takes one nonempty literal argument with normal quoting" {
   for
     (argument, directory) in [
       ("../fixtures", "../fixtures"),
       ("'/absolute path'", "/absolute path"),
       ("a\\ b", "a b"),
-      ("\"pre${DIR}/post\"", "prea b|${LITERAL}/post"),
-      ("${DIR}", "a b|${LITERAL}"),
+      ("\"pre${DIR}/post\"", "pre${DIR}/post"),
+      ("${DIR}", "${DIR}"),
       ("'${MISSING}'", "${MISSING}"),
       ("\\${MISSING}", "${MISSING}"),
       ("'2>&1'", "2>&1"),
     ] {
     assert_eq(
-      @command.parse("set-current-working-directory " + argument, lookup=_ => {
-        Some("a b|${LITERAL}")
-      }),
+      @command.parse("set-current-working-directory " + argument),
       @command.SetCurrentWorkingDirectory(directory~),
     )
   }
-  for argument in ["", "''", "\"\"", "a b", "${EMPTY}", "\"${EMPTY}\""] {
+  for argument in ["", "''", "\"\"", "a b"] {
     assert_error_contains(
-      () => {
-        ignore(
-          @command.parse("set-current-working-directory " + argument, lookup=_ => {
-            Some("")
-          }),
-        )
-      },
+      () => ignore(@command.parse("set-current-working-directory " + argument)),
       "exactly one nonempty directory argument",
     )
   }
-  assert_error_contains(
-    () => ignore(@command.parse("set-current-working-directory ${MISSING}")),
-    "undefined variable: MISSING",
-  )
   for
     command in [
       "set-current-working-directory dir|./a.mbtx", "./a.mbtx|set-current-working-directory dir",

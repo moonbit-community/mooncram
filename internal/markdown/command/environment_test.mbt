@@ -1,36 +1,30 @@
 ///|
 fn segments(
   command : String,
-  lookup~ : (String) -> String? = _ => None,
   case_insensitive~ : Bool = false,
 ) -> Array[@command.PipelineSegment] raise {
-  guard @command.parse(command, lookup~, case_insensitive~)
-    is Pipeline(segments) else {
+  guard @command.parse(command, case_insensitive~) is Pipeline(segments) else {
     fail("expected pipeline")
   }
   segments
 }
 
 ///|
-test "temporary assignments expand left to right before arguments" {
-  let env = { "A": "old", "B": "parent", "NESTED": "${MISSING}" }
+test "temporary assignments keep literal values and repeated names keep the last value" {
   let pipeline = segments(
     "A=${A}-first B=\"${A}\" A=${A}-last EMPTY= EQUALS=a=b=c SPACES='Moon Bit|quoted' NESTED=${NESTED} ./a.mbtx ${A} \"${B}\" ${EMPTY} ${SPACES} ${NESTED} A=argument",
-    lookup=name => env.get(name),
   )
   assert_eq(pipeline[0].argv, [
-    "./a.mbtx", "old-first-last", "old-first", "", "Moon Bit|quoted", "${MISSING}",
-    "A=argument",
+    "./a.mbtx", "${A}", "${B}", "${EMPTY}", "${SPACES}", "${NESTED}", "A=argument",
   ])
   assert_eq(pipeline[0].extra_env, {
-    "A": "old-first-last",
-    "B": "old-first",
+    "A": "${A}-last",
+    "B": "${A}",
     "EMPTY": "",
     "EQUALS": "a=b=c",
     "SPACES": "Moon Bit|quoted",
-    "NESTED": "${MISSING}",
+    "NESTED": "${NESTED}",
   })
-  assert_eq(env, { "A": "old", "B": "parent", "NESTED": "${MISSING}" })
   for name in ["A", "_", "_a9", "Camel_case12"] {
     assert_eq(
       segments(name + "= ./a.mbtx")[0].extra_env,
@@ -40,12 +34,12 @@ test "temporary assignments expand left to right before arguments" {
 }
 
 ///|
-test "temporary assignment values reuse quoting escaping and single expansion" {
+test "temporary assignment values reuse quoting and escaping" {
   let pipeline = segments(
     "A='${MISSING}' B=\\${MISSING} C=\"\\${MISSING}\" D=x\\ y E=\"a b\" F=a\"b\"c ./a.mbtx ${A} ${B} ${C} ${D} ${E} ${F}",
   )
   assert_eq(pipeline[0].argv, [
-    "./a.mbtx", "${MISSING}", "${MISSING}", "${MISSING}", "x y", "a b", "abc",
+    "./a.mbtx", "${A}", "${B}", "${C}", "${D}", "${E}", "${F}",
   ])
   assert_eq(pipeline[0].extra_env, {
     "A": "${MISSING}",
@@ -58,83 +52,60 @@ test "temporary assignment values reuse quoting escaping and single expansion" {
 }
 
 ///|
-test "quoted escaped expanded and invalid names are ordinary words" {
+test "quoted escaped variable-like and invalid names are ordinary words" {
   for
     word in [
       "'A=x'", "\"A=x\"", "'A'=x", "A'='x", "A\\=x", "\\A=x", "A\"\"=x", "''A=x",
       "9A=x", "A-B=x", "名=x", "=x",
     ] {
-    let pipeline = segments(word + " B=y ./a.mbtx", lookup=_ => Some("A=x"))
+    let pipeline = segments(word + " B=y ./a.mbtx")
     assert_true(pipeline[0].extra_env.is_empty())
     assert_eq(pipeline[0].argv[1:], ["B=y", "./a.mbtx"])
   }
-  let expanded = segments("./a.mbtx ${PREFIX} B=y", lookup=_ => Some("A=x"))[0]
-  assert_eq(expanded.argv, ["./a.mbtx", "A=x", "B=y"])
-  assert_true(expanded.extra_env.is_empty())
+  let literal = segments("./a.mbtx ${PREFIX} B=y")[0]
+  assert_eq(literal.argv, ["./a.mbtx", "${PREFIX}", "B=y"])
+  assert_true(literal.extra_env.is_empty())
   let pipeline = segments("A=x 'B'=y C=z ./a.mbtx")
   assert_eq(pipeline[0].extra_env, { "A": "x" })
   assert_eq(pipeline[0].argv, ["B=y", "C=z", "./a.mbtx"])
-  assert_eq(segments("A=x ./a.mbtx B=${A}")[0].argv, ["./a.mbtx", "B=x"])
+  assert_eq(segments("A=x ./a.mbtx B=${A}")[0].argv, ["./a.mbtx", "B=${A}"])
 }
 
 ///|
 test "temporary assignments stay within one pipeline segment and retain routes" {
   let pipeline = segments(
     "A=first ./a.mbtx ${A} 1>/dev/null 2>&1|A=${A}-second ./b.mbtx ${A}|./c.mbtx ${A}",
-    lookup=_ => Some("parent"),
   )
   assert_eq(pipeline.map(segment => segment.argv), [
-    ["./a.mbtx", "first"],
-    ["./b.mbtx", "parent-second"],
-    ["./c.mbtx", "parent"],
+    ["./a.mbtx", "${A}"],
+    ["./b.mbtx", "${A}"],
+    ["./c.mbtx", "${A}"],
   ])
   assert_eq(pipeline.map(segment => segment.extra_env), [
     { "A": "first" },
-    { "A": "parent-second" },
+    { "A": "${A}-second" },
     Map([]),
   ])
   assert_true(pipeline[0].stderr_to_stdout && pipeline[0].stdout_to_null)
-  assert_error_contains(
-    () => ignore(segments("A=x ./a.mbtx|./b.mbtx ${A}")),
-    "undefined variable: A",
-  )
-  assert_error_contains(
-    () => ignore(segments("./a.mbtx ${A}|A=x ./b.mbtx")),
-    "undefined variable: A",
-  )
+  assert_eq(segments("A=x ./a.mbtx|./b.mbtx ${A}")[1].extra_env, Map([]))
+  assert_eq(segments("./a.mbtx ${A}|A=x ./b.mbtx")[0].extra_env, Map([]))
 }
 
 ///|
 test "temporary assignments obey platform name matching" {
-  let lookup = fn(name : String) {
-    if name == "MODE" {
-      Some("parent")
-    } else {
-      None
-    }
-  }
   let windows = segments(
       "MoDe=${mode}-first mode=${Mode}-second B=${mODE} ./a.mbtx ${Mode} ${b}",
-      lookup~,
       case_insensitive=true,
     )[0]
-  assert_eq(windows.extra_env, {
-    "MODE": "parent-first-second",
-    "B": "parent-first-second",
-  })
-  assert_eq(windows.argv, [
-    "./a.mbtx", "parent-first-second", "parent-first-second",
-  ])
-  let unix = segments(
-      "Mode=first mode=second ./a.mbtx ${Mode} ${mode} ${MODE}",
-      lookup~,
-    )[0]
+  assert_eq(windows.extra_env, { "MODE": "${Mode}-second", "B": "${mODE}" })
+  assert_eq(windows.argv, ["./a.mbtx", "${Mode}", "${b}"])
+  let unix = segments("Mode=first mode=second ./a.mbtx ${Mode} ${mode} ${MODE}")[0]
   assert_eq(unix.extra_env, { "Mode": "first", "mode": "second" })
-  assert_eq(unix.argv, ["./a.mbtx", "first", "second", "parent"])
+  assert_eq(unix.argv, ["./a.mbtx", "${Mode}", "${mode}", "${MODE}"])
 }
 
 ///|
-test "temporary assignment errors and actual executable expansion are rejected" {
+test "temporary assignment errors retain existing syntax restrictions" {
   for command in ["A=x", "A=x B=y", "./a.mbtx|A=x", "A=x|./a.mbtx"] {
     assert_error_contains(
       () => ignore(segments(command)),
@@ -147,13 +118,16 @@ test "temporary assignment errors and actual executable expansion are rejected" 
       "does not accept temporary environment assignments",
     )
   }
-  for command in ["A=x ${A}", "A=x ./\"${A}\".mbtx", "./a.mbtx|A=x ${A}"] {
-    assert_error_contains(() => ignore(segments(command)), "executable paths")
-  }
-  for command in ["A=${A} ./a.mbtx", "A=${B} B=later ./a.mbtx"] {
-    assert_error_contains(() => ignore(segments(command)), "undefined variable")
-  }
-  assert_eq(segments("A=x '${A}'")[0].argv, ["${A}"])
+  assert_eq(segments("A=x ${A}")[0].argv, ["${A}"])
+  assert_eq(segments("A=x ./\"${A}\".mbtx")[0].argv, ["./${A}.mbtx"])
+  assert_eq(segments("A=new B=\"${A}\" ./a.mbtx")[0].extra_env, {
+    "A": "new",
+    "B": "${A}",
+  })
+  assert_eq(segments("A=${B} B=later ./a.mbtx")[0].extra_env, {
+    "A": "${B}",
+    "B": "later",
+  })
   for command in ["A=x ./a.mbtx 1>/dev/null", "A=x ./a.mbtx 2>&1"] {
     assert_error_contains(
       () => ignore(segments(command)),
