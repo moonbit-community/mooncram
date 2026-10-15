@@ -57,15 +57,20 @@ export function testCliArguments({ cli, docs }) {
       assert(result.stderr.includes(option) && result.stderr.includes(`'${value}'`), result.stderr);
     }
   }
-  const parsePath = writeDocument(docs, "parse-location.md", block("$ ./missing.mbtx '\n", ""));
+  const parsePath = writeDocument(docs, "parse-location.md", block("$ moonx ./missing.mbtx '\n", ""));
   const parseResult = cli(["check", parsePath], { expected: EXIT_CODE.ERROR });
   assert(parseResult.stderr.startsWith(`ERROR ${fs.realpathSync(parsePath)}:2: unclosed quote`), parseResult.stderr);
   assert.equal(parseResult.stderr.split(fs.realpathSync(parsePath)).length, 2);
-  const missingScript = writeDocument(docs, "missing-script.md", block("$ ./missing.mbtx\n", ""));
+  const missingScript = writeDocument(docs, "missing-script.md", block("$ moonx ./missing.mbtx\n", ""));
   const missingResult = cli(["check", missingScript], { expected: EXIT_CODE.ERROR });
   assert(missingResult.stderr.includes("cannot access script './missing.mbtx'"), missingResult.stderr);
   assert(missingResult.stderr.includes("phase: resolve"), missingResult.stderr);
   assert(missingResult.stderr.includes("segment: 1/1 (./missing.mbtx)"), missingResult.stderr);
+  for (const command of ["./missing.mbtx", "cmd", "mooncram/integration/cmd", "remote", "moonx", "moonx ''"]) {
+    const old = writeDocument(docs, "old-syntax.md", block(`$ ${command}\n`));
+    const result = cli(["check", old], { expected: EXIT_CODE.ERROR });
+    assert(result.stderr.includes(command.startsWith("moonx") ? "requires a nonempty target" : "must start with moonx"), result.stderr);
+  }
   const empty = writeDocument(docs, "empty.md", "No test blocks.\n");
   assert(cli(["test", empty], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
   const legacy = writeDocument(
@@ -97,41 +102,38 @@ export function testModuleResolution({ cli, docs, directory, target }) {
   writePackage(sourceRoot, executable, print("root"));
   writePackage(sub, 'options("is-main": true)\n', print("child"));
   writePackage(join(sourceRoot, "cmd", "deep", "boo"), executable, print("deep"));
-  invoke("$ cmd/deep/boo\ndeep\n");
-  let result = invoke("$ foo | foo\nroot\n");
-  assert.equal(result.stderr.split("WARNING ").length - 1, 2);
-  assert(result.stderr.includes("module-resolution.md:2:"));
-  assert(result.stderr.includes("user/foo and user/foo/foo; selected user/foo"));
-  assert(result.stdout.includes("1 cases, 0 failed, 0 errors"));
-
-  const update = writeDocument(docs, "module-warning-update.md", block("$ foo\nwrong\n", declaration));
-  result = cli(["update", update, "--target", target], { cwd: moduleRoot });
-  assert.equal(result.stderr.split("WARNING ").length - 1, 1);
-  assert.equal(fs.readFileSync(update, "utf8"), block("$ foo\nroot\n", declaration));
-
-  // Root executable takes precedence even when its build or target fails.
+  invoke("$ moonx user/foo/cmd/deep/boo\ndeep\n");
+  const selected = invoke("$ moonx user/foo\nroot\n$ moonx user/foo/foo\nchild\n");
+  assert.equal(selected.stderr, "");
+  const update = writeDocument(docs, "module-update.md", block("$ moonx user/foo/foo\nwrong\n", declaration));
+  cli(["update", update, "--target", target], { cwd: moduleRoot });
+  assert.equal(fs.readFileSync(update, "utf8"), block("$ moonx user/foo/foo\nchild\n", declaration));
+  // Exact full names never fall back to another package.
   fs.writeFileSync(join(sourceRoot, "main.mbt"), INVALID_PROGRAM);
-  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
+  assert(invoke("$ moonx user/foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
+  invoke("$ moonx user/foo/foo\nchild\n");
   fs.writeFileSync(join(sourceRoot, "main.mbt"), print("root"));
   fs.writeFileSync(join(sourceRoot, "moon.pkg"), executable + 'supported_targets = "js"\n');
-  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
+  assert(invoke("$ moonx user/foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("build failed"));
   writePackage(sourceRoot, 'pkgtype(kind: "library")\n', LIBRARY_PROGRAM);
-  assert.equal(invoke("$ foo\nchild\n").stderr, "");
-  fs.writeFileSync(join(sub, "moon.pkg"), executable);
-  invoke("$ foo\nchild\n");
+  assert(invoke("$ moonx user/foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("no executable package"));
+  invoke("$ moonx user/foo/foo\nchild\n");
   fs.writeFileSync(join(sub, "moon.pkg"), 'options("is-main": false)\n');
-  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("no executable package"));
+  assert(invoke("$ moonx user/foo/foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("no executable package"));
   fs.writeFileSync(join(sub, "moon.pkg"), 'pkgtype(kind: true)\n');
-  assert(invoke("$ foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
+  assert(invoke("$ moonx user/foo/foo\n", { expected: EXIT_CODE.ERROR }).stderr.includes("invalid configuration"));
   fs.writeFileSync(join(sub, "moon.pkg"), executable);
-
-  for (const name of [quoteArgument(sub), "./foo", "../foo", "cmd/../foo"]) {
-    assert(invoke(`$ ${name}\n`, { expected: EXIT_CODE.ERROR }).stderr.includes("invalid module package name"));
+  for (const name of ["foo", "cmd/deep/boo", "user/foobar", "other/foo"]) {
+    assert(invoke(`$ moonx ${name}\n`, { expected: EXIT_CODE.ERROR }).stderr.includes("expected a full package name"));
+  }
+  for (const name of [quoteArgument(sub), "./foo", "../foo", "user/foo/cmd/../foo", "user/foo//foo", "user/foo/"]) {
+    assert(invoke(`$ moonx ${name}\n`, { expected: EXIT_CODE.ERROR }).stderr.includes("invalid module package name"));
   }
   const nested = join(sourceRoot, "nested");
   writePackage(join(nested, "cmd"), executable, print("nested"));
   fs.writeFileSync(join(nested, "moon.mod"), 'name = "user/nested"\n');
-  assert(invoke("$ nested/cmd\n", { expected: EXIT_CODE.ERROR }).stderr.includes("nested modules"));
+  assert(invoke("$ moonx user/foo/nested/cmd\n", { expected: EXIT_CODE.ERROR }).stderr.includes("nested modules"));
+  let result;
 
   // Validate the whole document before the first command, even export-only declarations.
   const sideEffect = join(docs, "side-effect.txt");
@@ -157,7 +159,7 @@ export function testModuleResolution({ cli, docs, directory, target }) {
   result = cli(["test", scoped, "--target", target], { expected: EXIT_CODE.ERROR });
   assert(result.stdout.includes("3 cases, 0 failed, 1 errors"));
   assert(result.stderr.includes("module-scope.md:10:"));
-  const oldPath = writeDocument(docs, "module-old-path.md", block(`$ ${quoteArgument(sub)}\n`, ""));
+  const oldPath = writeDocument(docs, "module-old-path.md", block(`$ moonx ${quoteArgument(sub)}\n`, ""));
   assert(cli(["test", oldPath], { expected: EXIT_CODE.ERROR }).stderr.includes("command requires a .mbtx file"));
 }
 

@@ -34,7 +34,7 @@ export function testBuildDiagnostics({ executable, docs, project, directory, tar
     assert(performance.now() - start < CANCELLATION_LIMIT_MS, result.stderr);
     assert(result.stderr.startsWith(`ERROR ${fs.realpathSync(doc)}:2: `), result.stderr);
     assert(result.stderr.includes("phase: build"), result.stderr);
-    assert(result.stderr.includes(`segment: 1/1 (${LOCAL_PACKAGE})`), result.stderr);
+    assert(result.stderr.includes(`segment: 1/1 (${LOCAL_PACKAGE.slice(6)})`), result.stderr);
     assert(result.stderr.includes("tool: moon"), result.stderr);
     assert.equal(fs.readFileSync(doc, "utf8"), original);
     if (mode === "fail") {

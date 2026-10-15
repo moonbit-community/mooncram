@@ -64,11 +64,10 @@ export function testCheck({ executable, target, directory, docs, project }) {
     'pkgtype(kind: "executable")\nsupported_targets = "js"\n', INVALID_PROGRAM);
   const sideEffect = join(docs, "side-effect.txt");
   fs.rmSync(sideEffect, { force: true });
-  const imports = "```mooncram-import\nremote : missing/nonexistent/cmd@1.2.3\n```\n";
   const passing = write("passing",
     block(`$ ${SCRIPT_COMMAND} setup\nincorrect output\n`, "") +
-    block('$ ./check-invalid.mbtx | remote | check-invalid\nignored assertion\n') + imports +
-    block('$ CHECK_ARG=value ./check-invalid.mbtx "${CHECK_ARG}"\n', ""));
+    block('$ moonx ./check-invalid.mbtx | moonx missing/nonexistent/cmd@1.2.3 | moonx mooncram/integration/check-invalid\nignored assertion\n') +
+    block('$ CHECK_ARG=value moonx ./check-invalid.mbtx "${CHECK_ARG}"\n', ""));
   for (const args of [
     ["check", passing], ["--color", "always", "check", passing],
     ["check", passing, "--color", "never"],
@@ -90,7 +89,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
   const onlyConfig = write("config-only", block("$ export A=x\n"));
   assert(invoke(["check", onlyConfig], { expected: EXIT_CODE.ERROR }).stderr.includes("no mooncram cases"));
   const errors = write("targets", block(
-    "$ ./missing.mbtx | nonexistent\n$ nonexistent\n$ check-invalid\n"));
+    "$ moonx ./missing.mbtx | moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/nonexistent\n$ moonx mooncram/integration/check-invalid\n"));
   let result = invoke(["check", errors, passing], { expected: EXIT_CODE.ERROR });
   assert.equal(result.stdout, "6 cases, 2 errors\n");
   assert.equal(result.stderr.split("ERROR ").length - 1, 2);
@@ -99,10 +98,10 @@ export function testCheck({ executable, target, directory, docs, project }) {
   assert(!fs.existsSync(sideEffect));
 
   for (const [name, source, diagnostic] of [
-    ["markdown", "```mooncram\n$ ./check-invalid.mbtx\n", "unclosed"],
-    ["command", block("$ ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
-    ["expectation", block("$ ./check-invalid.mbtx\n[ (regex)\n", ""), "invalid regex"],
-    ["import", "```mooncram-import\nremote : invalid\n```\n", "invalid import coordinate"],
+    ["markdown", "```mooncram\n$ moonx ./check-invalid.mbtx\n", "unclosed"],
+    ["command", block("$ moonx ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
+    ["expectation", block("$ moonx ./check-invalid.mbtx\n[ (regex)\n", ""), "invalid regex"],
+
     ["module-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ export A=x\n", "user/other"), "does not match"],
     ["directory-config", block(`$ ${SCRIPT_COMMAND} setup\n`, "") + block("$ set-current-working-directory missing-check-cwd\n", ""), "invalid working directory"],
   ]) {
@@ -113,7 +112,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
     assert(result.stderr.includes(diagnostic), result.stderr);
     assert(!fs.existsSync(sideEffect));
   }
-  const inherited = write("inherited", block('$ ./check-invalid.mbtx "${MOONCRAM_CHECK_ARG}"\n', ""));
+  const inherited = write("inherited", block('$ moonx ./check-invalid.mbtx "${MOONCRAM_CHECK_ARG}"\n', ""));
   for (const defined of [false, true]) {
     const checkEnv = { ...env };
     delete checkEnv.MOONCRAM_CHECK_ARG;
@@ -121,44 +120,45 @@ export function testCheck({ executable, target, directory, docs, project }) {
     assert.equal(invoke(["check", inherited], { env: checkEnv }).stdout, "1 cases, 0 errors\n");
   }
   const literalSyntax = write("literal-syntax", block(
-    '$ ./check-invalid.mbtx ${} ${A-B} ${UNCLOSED\n', ""));
+    '$ moonx ./check-invalid.mbtx ${} ${A-B} ${UNCLOSED\n', ""));
   assert.equal(invoke(["check", literalSyntax]).stdout, "1 cases, 0 errors\n");
 
   const work = join(directory, "check-work");
   fs.mkdirSync(work);
   fs.writeFileSync(join(work, "script.mbtx"), INVALID_PROGRAM);
   const cwd = write("cwd", block(
-    `$ set-current-working-directory ${quoteArgument(work)}\n$ ./script.mbtx\n`, ""));
+    `$ set-current-working-directory ${quoteArgument(work)}\n$ moonx ./script.mbtx\n`, ""));
   assert.equal(invoke(["check", cwd]).stdout, "1 cases, 0 errors\n");
-  const collision = write("collision", block("$ cmd | cmd\n") +
-    "```mooncram-import\ncmd : missing/module@1.2.3\n```\n");
-  result = invoke(["check", collision], { expected: EXIT_CODE.ERROR });
-  assert.equal(result.stdout, "1 cases, 1 errors\n");
-  assert.equal(result.stderr.split("ERROR ").length - 1, 1);
-  assert(result.stderr.includes("ambiguous import alias 'cmd'"));
+  for (const coordinate of ["missing/module@latest", "missing/module@^1.2.3", "missing/module@1.2"]) {
+    const invalid = write("coordinate", block(`$ moonx ${coordinate}\n`, ""));
+    assert(invoke(["check", invalid], { expected: EXIT_CODE.ERROR }).stderr.includes("exact SemVer required"));
+  }
+  const legacy = write("legacy", "```mooncram-import ignored\ninvalid declaration\n```\n" +
+    block("$ moonx missing/module@1.2.3\n", ""));
+  assert.equal(invoke(["check", legacy]).stdout, "1 cases, 0 errors\n");
 
   // Exercise default discovery, path deduplication and -- for option-like paths.
   const scan = join(directory, "check-scan");
   fs.mkdirSync(scan);
   fs.writeFileSync(join(scan, "script.mbtx"), INVALID_PROGRAM);
-  writeDocument(scan, "-example.md", block("$ ./script.mbtx\n", ""));
+  writeDocument(scan, "-example.md", block("$ moonx ./script.mbtx\n", ""));
   assert.equal(invoke(["check"], { cwd: scan }).stdout, "1 cases, 0 errors\n");
   assert.equal(invoke(["check", "--", "-example.md"], { cwd: scan }).stdout, "1 cases, 0 errors\n");
   assert.equal(invoke(["check", scan, join(scan, "-example.md")]).stdout, "1 cases, 0 errors\n");
 
-  // Root/subpackage warnings remain per segment and do not count as errors.
+  // Full root and child names are validated independently without warnings.
   const moduleRoot = join(directory, "check-module");
   fs.mkdirSync(moduleRoot);
   fs.writeFileSync(join(moduleRoot, "moon.mod"), 'name = "user/foo"\n');
   for (const path of [moduleRoot, join(moduleRoot, "foo")]) {
     writePackage(path, MAIN_PACKAGE_CONFIG, INVALID_PROGRAM);
   }
-  const warning = write("warning", block("$ foo | foo\n", "user/foo"));
-  result = invoke(["check", warning], { cwd: moduleRoot });
+  const fullNames = write("full-names", block("$ moonx user/foo | moonx user/foo/foo\n", "user/foo"));
+  result = invoke(["check", fullNames], { cwd: moduleRoot });
   assert.equal(result.stdout, "1 cases, 0 errors\n");
-  assert.equal(result.stderr.split("WARNING ").length - 1, 2);
+  assert.equal(result.stderr, "");
   fs.writeFileSync(join(moduleRoot, "moon.mod"), "name =");
-  result = invoke(["check", warning], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
+  result = invoke(["check", fullNames], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
   assert.equal(result.stdout, "0 cases, 1 errors\n");
   assert(result.stderr.includes("invalid configuration"));
 }
@@ -170,7 +170,7 @@ export function testGeneratedTargets({ cli, docs, project, target }) {
     "moonbitlang/async", "moonbitlang/async/fs",
   ]) + MAIN_PACKAGE_CONFIG,
   `async fn main { @fs.write_file("generated-target.mbtx", ${JSON.stringify(source)}) }\n`);
-  const correct = block("$ generate-target\n$ ./generated-target.mbtx\ngenerated\n");
+  const correct = block("$ moonx mooncram/integration/generate-target\n$ moonx ./generated-target.mbtx\ngenerated\n");
   const path = writeDocument(docs, "generated-target.md", correct);
   for (const command of ["test", "update"]) {
     fs.rmSync(generated, { force: true });

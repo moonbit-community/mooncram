@@ -1,7 +1,7 @@
 ///|
 /// Offline moonx double. The integration runner appends the usual fixture
 /// program after this helper and builds a native executable named moonx.
-async fn imported_args() -> Array[String] {
+async fn remote_args() -> Array[String] {
   let raw = @env.args()
   if raw.get(1) is Some(script) && script.has_suffix(".mbtx") {
     @sys.exit(@process.run(
@@ -13,7 +13,7 @@ async fn imported_args() -> Array[String] {
     ))
   }
   assert_eq(raw[1:3].to_owned(), ["--target", "wasm"])
-  assert_true(raw[3] == "fixture/tool@1.2.3" || raw[3] == "fixture/tool/cmd@2.0.0-rc.1+build.007")
+  assert_true(raw[3] == "mooncram/integration/cmd@1.2.3" || raw[3] == "fixture/tool@1.2.3" || raw[3] == "fixture/tool/cmd@2.0.0-rc.1+build.007")
   assert_eq(raw[4], "--")
   let args = [raw[0]] + raw[5:].to_owned()
   match args.get(1).unwrap_or("hello") {

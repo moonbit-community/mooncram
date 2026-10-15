@@ -22,7 +22,7 @@ function argumentCases(program) {
   ) + block(
     `$ ${program} args ${PATH_ARGUMENTS.map(quoteArgument).join(" ")}\n` +
       `${JSON.stringify(PATH_ARGUMENTS)}\n`,
-  );
+  ) + block(`$ ${program} args -- --target native\n["--","--target","native"]\n`);
 }
 
 function streamCases(program) {
@@ -34,6 +34,7 @@ function programCases(program) {
     argumentCases(program),
     contextCase(program),
     block(`$ ${program} echo\n`),
+    block(`$ ${program} check-eof\nEOF\n`),
     block(`$ ${program} setup\n\n$ ${program} read\nside effect preserved\n`),
     block(`$ ${program} crlf\none\ntwo\n`),
     streamCases(program),

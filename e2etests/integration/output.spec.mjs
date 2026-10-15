@@ -19,9 +19,6 @@ export function testDualStreams({ cli, docs, target }) {
     [`${program} streams`, "@STDOUT\none\nthree\n@STDERR\ntwo\n[2]\n"],
     [`${program} dual-tail`, "@STDERR\nerr (no-eol)\n\n@STDOUT\nout (no-eol)\n"],
     [`${program} hello`, "@STDOUT\nHello,* (glob)\n@STDERR (empty)\n"],
-    [`${program} streams 1>/dev/null | ${LOCAL_PACKAGE} echo`, "@STDOUT (empty)\n@STDERR\ntwo\n[2]\n"],
-    [`${program} streams 2>&1 | ${LOCAL_PACKAGE} echo`, "@STDOUT\none\ntwo\nthree\n@STDERR (empty)\n[2]\n"],
-    [`${program} streams 1>/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`, "@STDERR (empty)\n@STDOUT\ntwo\n[2]\n"],
     [`${program} dual-special`, '@STDOUT\n"@STDERR (ignore)" (escaped)\n@STDERR\n"@STDOUT" (escaped)\n'],
     [`${program} large`, "@STDOUT (ignore)\n@STDERR\ne+ (regex)\n"],
   ]);
@@ -30,8 +27,6 @@ export function testDualStreams({ cli, docs, target }) {
       "@STDOUT\none\nthree\n@STDERR\ntwo\nmiddle\nlast\n[2]\n"],
     [`${LOCAL_PACKAGE} hello|${SCRIPT_COMMAND} relay-tail middle|${LOCAL_PACKAGE} relay-tail last`,
       "@STDOUT\nHello, Moon Bit!\n@STDERR\nmiddlelast (no-eol)\n"],
-    [`${LOCAL_PACKAGE} streams 2>&1|${SCRIPT_COMMAND} relay middle|${LOCAL_PACKAGE} relay last 1>/dev/null 2>&1 | ${LOCAL_PACKAGE} echo`,
-      "@STDOUT\nlast\n@STDERR\nmiddle\n[2]\n"],
     [`${LOCAL_PACKAGE} large`, "@STDOUT\no* (glob)\n@STDERR\ne* (glob)\n"],
   );
   const passing = writeDocument(docs, "dual-pass.md",
@@ -102,7 +97,7 @@ export function testDualStreams({ cli, docs, target }) {
   assert(result.stderr.includes("dual-parse-error.md:4:"), result.stderr);
   assert(!fs.existsSync(sideEffect));
   assert.equal(fs.readFileSync(parseError, "utf8"), malformed);
-  console.log(`${target}: paired stdout/stderr assertions, routing, updates, ignored capture and timeout checks passed`);
+  console.log(`${target}: paired stdout/stderr assertions, updates, ignored capture and timeout checks passed`);
 }
 
 export function testDiagnostics({ cli, docs, target }) {

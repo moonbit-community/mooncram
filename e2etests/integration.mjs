@@ -29,13 +29,12 @@ import {
   testWorkingDirectories,
   testBuildEnvironment,
 } from "./integration/environment.spec.mjs";
-import { testImports } from "./integration/imports.spec.mjs";
+import { testRemotePackages } from "./integration/remote.spec.mjs";
 import { testDualStreams, testDiagnostics, testEqualLiteral } from "./integration/output.spec.mjs";
 import { testUpdates, testUpdateErrors, testConcurrentEdit } from "./integration/update.spec.mjs";
 import {
   testPipelines,
-  testRedirections,
-  testFinalRedirectionRejection,
+  testRedirectionRejection,
   testPipelinePreflight,
   testPipelineStartupFailure,
   testPipelineCaptureFailure,
@@ -84,14 +83,13 @@ async function runIntegrationTests(target) {
     console.log(`${target}: diagnostics, dry-run, local updates, escaping, pattern preservation passed`);
 
     testUpdateErrors(context);
-    await testImports(context);
+    await testRemotePackages(context);
     testPipelines(context);
-    testRedirections(context);
-    testFinalRedirectionRejection(context);
+    testRedirectionRejection(context);
     testPipelinePreflight(context);
     testPipelineStartupFailure(context);
     testPipelineCaptureFailure(context);
-    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, pipefail, redirections and updates passed`);
+    console.log(`${target}: mixed pipelines, raw bytes, large output, early exit, stderr order, pipefail, redirection rejection and updates passed`);
     testShellOperatorRejection(context);
     testTimeouts(context);
     const cancelledAt = performance.now();

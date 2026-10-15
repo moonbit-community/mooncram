@@ -40,8 +40,9 @@ export const MAIN_PACKAGE_CONFIG = 'options("is-main": true)\n';
 export const INVALID_PROGRAM = "fn main { nonexistent_function() }\n";
 export const LIBRARY_PROGRAM = "pub fn value() -> Int { 1 }\n";
 export const SCRIPT_FILENAME = "program with space.mbtx";
-export const SCRIPT_COMMAND = quoteArgument(`./${SCRIPT_FILENAME}`);
-export const LOCAL_PACKAGE = "cmd";
+export const SCRIPT_COMMAND = `moonx ${quoteArgument(`./${SCRIPT_FILENAME}`)}`;
+export const LOCAL_PACKAGE_NAME = "mooncram/integration/cmd";
+export const LOCAL_PACKAGE = `moonx ${LOCAL_PACKAGE_NAME}`;
 
 export function run(command, {
   cwd = ROOT,

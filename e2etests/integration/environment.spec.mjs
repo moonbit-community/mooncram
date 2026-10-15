@@ -188,15 +188,15 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   const source = [
     block('$ export WORKSPACE="../cwd fixture"\n'),
     block('$ set-current-working-directory "../cwd fixture"\n' +
-      '$ export WORKSPACE=unused\n$ ./selected.mbtx\nworkspace script\n' +
+      '$ export WORKSPACE=unused\n$ moonx ./selected.mbtx\nworkspace script\n' +
       `$ ${SCRIPT_COMMAND} read-file relative.txt\nconfigured contents\n` +
       `$ ${LOCAL_PACKAGE} context\nparent\nyes\nconfigured contents\n` +
       `$ ${LOCAL_PACKAGE} read-file relative.txt|${SCRIPT_COMMAND} check-file-echo 'configured contents'|${LOCAL_PACKAGE} check-file-echo 'configured contents'\nconfigured contents\n`),
     block(`$ set-current-working-directory ${quoteArgument(workspace)}\n` +
       `$ ${SCRIPT_COMMAND} context|${LOCAL_PACKAGE} check-file-echo 'configured contents'|${SCRIPT_COMMAND} check-file-echo 'configured contents'\nparent\nyes\nconfigured contents\n`),
-    block('$ set-current-working-directory cwd-link\n$ ./selected.mbtx\nworkspace script\n'),
+    block('$ set-current-working-directory cwd-link\n$ moonx ./selected.mbtx\nworkspace script\n'),
     block('$ set-current-working-directory "../cwd fixture"\n'),
-    block('$ ./selected.mbtx\ndocument script\n' +
+    block('$ moonx ./selected.mbtx\ndocument script\n' +
       `$ ${LOCAL_PACKAGE} read-file relative.txt\ncwd contents\n`),
   ].join("\n");
   const document = writeDocument(docs, "cwd-main.md", source);
@@ -212,7 +212,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   const literalDirectory = join(docs, '${WORKSPACE}');
   fs.mkdirSync(literalDirectory);
   fs.writeFileSync(join(literalDirectory, '${SCRIPT}.mbtx'), 'fn main { println("literal path") }\n');
-  const literalCommand = '$ ./${SCRIPT}.mbtx';
+  const literalCommand = '$ moonx ./${SCRIPT}.mbtx';
   const literalPrefix = '$ export WORKSPACE="../cwd fixture"\n$ export SCRIPT=selected\n' +
     '$ set-current-working-directory "${WORKSPACE}"\n';
   const literalDocument = writeDocument(docs, "cwd-literal.md", block(literalPrefix + literalCommand + '\nwrong\n'));
@@ -223,7 +223,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
 
   const directive = '$ set-current-working-directory "../cwd fixture"';
   const before = ("Intro\n\n> - ```mooncram\n>   " + directive +
-    "\n>   $ ./selected.mbtx\n>   wrong\n>   ```\n\nTail\n").replaceAll("\n", CRLF);
+    "\n>   $ moonx ./selected.mbtx\n>   wrong\n>   ```\n\nTail\n").replaceAll("\n", CRLF);
   const after = before.replace("wrong", "workspace script");
   const update = writeDocument(docs, "cwd-update.md", before);
   cli(["update", update, "--target", target, "--dry-run"]);
@@ -233,7 +233,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   cli(["test", update, "--target", target]);
 
   const drySource = block('$ set-current-working-directory "../cwd fixture"\n' +
-    `$ ${LOCAL_PACKAGE} setup\n$ ./selected.mbtx\nwrong\n`);
+    `$ ${LOCAL_PACKAGE} setup\n$ moonx ./selected.mbtx\nwrong\n`);
   const dryDocument = writeDocument(docs, "cwd-dry-side-effects.md", drySource);
   const workspaceEffect = join(workspace, "side-effect.txt");
   fs.rmSync(workspaceEffect, { force: true });
