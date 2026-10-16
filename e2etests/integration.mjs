@@ -20,6 +20,8 @@ import {
 } from "./integration/basic.mjs";
 import { testBuildDiagnostics } from "./integration/diagnostics.spec.mjs";
 import { testCliArguments, testModuleResolution, testDirectoryScanning } from "./integration/cli.spec.mjs";
+import { testDocs } from "./integration/docs.spec.mjs";
+import { testDocExamples } from "./integration/doc-examples.spec.mjs";
 import { testPassingCases } from "./integration/execution.spec.mjs";
 import { testCheck, testGeneratedTargets } from "./integration/check.spec.mjs";
 import {
@@ -63,9 +65,11 @@ async function runIntegrationTests(target) {
     const context = { ...fixtures, target, executable, cli: createCli(executable, fixtures.project) };
 
     testCliArguments(context);
+    testDocs(context);
+    testDocExamples(context);
     testCheck(context);
     testGeneratedTargets(context);
-    console.log(`${target}: check validation, tool isolation and generated target timing passed`);
+    console.log(`${target}: embedded docs, runnable doc examples, check validation, tool isolation and generated target timing passed`);
     testModuleResolution(context);
     testPassingCases(context);
     testExportRejection(context);

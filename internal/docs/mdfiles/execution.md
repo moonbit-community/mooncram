@@ -1,0 +1,87 @@
+# Build, execution, capture, and timeout
+
+## Execution scope and deadline
+
+`test`, `update`, and `update --dry-run` execute code with the invoking user's
+permissions, in the case's working directory. Mooncram provides no sandbox or
+temporary workspace isolation. Dry-run prevents writing updated Markdown;
+program side effects and build artifacts can still be created.
+
+`--timeout-ms` defaults to `60000`. One deadline wraps path inspection, builds,
+remote fetching, execution, and output capture for each case. It is not a fresh
+timeout per subprocess or a timeout for the whole run.
+
+## Tools and backends
+
+Mooncram uses external MoonBit tools. `moon` must be available to build cases;
+scripts and remote packages also require `moonx`, Wasm packages require `moonrun`, and native
+package builds require the corresponding native toolchain. The backend used
+to run mooncram itself is separate from the backend selected for a test case.
+
+| Case kind | Backend | Build behavior |
+| --- | --- | --- |
+| `.mbtx` script | Always Wasm | Compilation is checked before running the script with `moonx`. |
+| Local package | Wasm by default; `--target native` selects native | Built from the local module before execution. |
+| Remote package | Always Wasm | Fetched, built, and cached by `moonx` when its pipeline segment starts. |
+
+Scripts always use Wasm, including when the CLI specifies `native`.
+Mooncram requests a build for every local segment of every case, in segment order.
+All local segments must pass preflight before any tested program starts; build
+reuse is performed by the underlying tools. Script preflight checks compilation
+before `moonx` runs so that preflight compiler failures cannot be accepted as
+expected program exits.
+
+Build failures and unusable build results are tool execution errors, not program
+results that can satisfy an expected `[N]` exit status. Build-error diagnostics
+include the build's stdout and stderr. Successful build output is kept separate
+from the program output being tested.
+
+Pipeline segments run concurrently. OS pipes pass intermediate stdout to the
+next stdin as raw bytes, without decoding or newline normalization. Only the
+final stdout is captured for stdout assertions. Every segment's stderr is
+captured concurrently and concatenated in pipeline order without separator
+bytes for diagnostics and `@STDERR` assertions. Unmarked cases do not match stderr.
+All captured streams must decode successfully. Pipefail returns the rightmost
+nonzero exit status in pipeline order, or `0` if all segments succeed; completion
+order does not affect the result. Ordinary nonzero statuses remain assertable
+and do not stop later cases. Reserved remote statuses follow the rules below.
+There is no configurable output-size limit or live relay of program output.
+
+Builds and every tested pipeline segment inherit mooncram's environment and
+override names using that segment's temporary assignments. The same environment
+is used for its build and execution, including script preflight and remote moonx
+tools. Their working directory is the
+validated block directory, or the canonical document's parent by default.
+Build processes and the first pipeline segment receive immediate EOF on stdin rather than
+mooncram's interactive input. Later segments receive the preceding stdout.
+
+Captured output must be valid UTF-8. Invalid UTF-8 in either captured stream
+is an execution error. Intermediate stdout bytes remain undecoded. Every CRLF pair is normalized to LF before
+comparison and reporting. Standalone CR, NUL, ANSI escapes, trailing spaces, blank lines,
+and the presence or absence of a final newline otherwise remain significant.
+
+## Timeout and execution errors
+
+On expiry the case reports
+`timed out after N ms (including build)` as an execution error. Directly managed
+processes use hard cancellation. A startup or capture error also cancels every
+started segment, and all unconsumed pipe handles are closed on exit. The
+implementation does not promise cleanup of detached descendants or rollback of
+their effects. Discovery, document parsing, declaration validation, reporting,
+and document replacement are outside this per-case deadline.
+
+Only remote commands reserve statuses `255` and `-1` as execution errors,
+even if the remote program itself returns them. Statuses are monitored
+concurrently for all segments. Any remote segment returning either reserved
+status raises an error naming the coordinate, one-based pipeline segment
+and status; remaining processes are immediately cancelled and reaped. A final
+success cannot hide an earlier reserved status, and waiting on a slow upstream
+must not delay detection of a later one. Other statuses follow the pipefail
+rule above. Reserved statuses, startup/capture
+failures and timeouts cancel all document updates and dry-run document diffs.
+
+mooncram adds no remote dependency installation or cache mechanism. moonx owns
+fetching/building/caching, which begins after its process starts. Other segments
+may run and produce effects before remote fetching fails; no pre-fetch guarantee
+is provided. Remote fetching shares the case deadline with local builds
+and execution. `test`, `update` and `update --dry-run` use the same flow.

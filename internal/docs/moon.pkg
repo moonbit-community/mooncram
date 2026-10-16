@@ -1,0 +1,46 @@
+rule(
+  name: "embed",
+  command: "moonx moonbit-community/embed@0.1.1 $input -o $output",
+)
+
+dev_build(
+  rule: "embed",
+  input: "mdfiles/quickstart.md",
+  output: "quickstart.mbt",
+)
+
+dev_build(rule: "embed", input: "mdfiles/recipes.md", output: "recipes.mbt")
+
+dev_build(
+  rule: "embed",
+  input: "mdfiles/troubleshooting.md",
+  output: "troubleshooting.mbt",
+)
+
+dev_build(
+  rule: "embed",
+  input: "mdfiles/invocation.md",
+  output: "invocation.mbt",
+)
+
+dev_build(rule: "embed", input: "mdfiles/discovery.md", output: "discovery.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/markdown.md", output: "markdown.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/commands.md", output: "commands.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/execution.md", output: "execution.mbt")
+
+dev_build(
+  rule: "embed",
+  input: "mdfiles/expectations.md",
+  output: "expectations.mbt",
+)
+
+dev_build(rule: "embed", input: "mdfiles/reports.md", output: "reports.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/updates.md", output: "updates.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/errors.md", output: "errors.mbt")
+
+dev_build(rule: "embed", input: "mdfiles/summaries.md", output: "summaries.mbt")

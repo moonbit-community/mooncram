@@ -1,0 +1,39 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/mooncram/internal/docs"
+
+// Values
+pub let commands_md : String
+
+pub let discovery_md : String
+
+pub let docs : ReadOnlyArray[(String, String, String)]
+
+pub let errors_md : String
+
+pub let execution_md : String
+
+pub let expectations_md : String
+
+pub let invocation_md : String
+
+pub let markdown_md : String
+
+pub let quickstart_md : String
+
+pub let recipes_md : String
+
+pub let reports_md : String
+
+pub let summaries_md : String
+
+pub let troubleshooting_md : String
+
+pub let updates_md : String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

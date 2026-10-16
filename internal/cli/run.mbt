@@ -1,5 +1,5 @@
 ///|
-/// Parse and run the `check`, `test` or `update` command.
+/// Parse and run the `docs`, `check`, `test` or `update` command.
 ///
 /// `args` contains arguments after the executable name. Paths default to `.`;
 /// test/update default to Wasm and a 60000 ms deadline per case. Reports and
@@ -15,8 +15,22 @@
 /// `check` resolves targets without running tools. `test` and `update` build and
 /// execute commands; `update` also writes changed documents unless `--dry-run`
 /// is supplied. Dry runs still execute commands and can have their side effects.
+/// `docs` lists or prints embedded documentation without discovering files or
+/// executing cases, and returns 0 on success or 2 for an invalid request.
 pub async fn run(args : Array[String]) -> Int32 {
-  run_cli(parse_cli(args)) catch {
+  try {
+    match parse_cli(args) {
+      Run(cli) => run_cli(cli)
+      DocsList => {
+        @stdio.stdout.write(render_docs_list() + "\n")
+        0
+      }
+      DocsShow(name) => {
+        @stdio.stdout.write(render_doc_body(name))
+        0
+      }
+    }
+  } catch {
     e => {
       @stdio.stderr.write(@diagnostic.render(e))
       2

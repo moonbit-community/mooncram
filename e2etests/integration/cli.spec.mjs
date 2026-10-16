@@ -41,7 +41,30 @@ function createScanFixtures(directory) {
 }
 
 export function testCliArguments({ cli, docs }) {
-  assert(cli(["--help"]).stdout.includes("Usage: mooncram"));
+  for (const args of [["--help"], ["-h"], ["help"], ["help", "--help"]]) {
+    const result = cli(args);
+    assert(result.stdout.includes("Usage: mooncram"), result.stdout);
+    assert.equal(result.stderr, "");
+    for (const option of ["--target", "--timeout-ms", "--color"]) {
+      assert(!result.stdout.includes(option), result.stdout);
+    }
+  }
+  const testHelp = cli(["test", "--help"]).stdout;
+  const updateHelp = cli(["update", "--help"]).stdout;
+  const checkHelp = cli(["check", "--help"]).stdout;
+  for (const option of ["--target", "--timeout-ms", "--color"]) {
+    assert(testHelp.includes(option), testHelp);
+    assert(updateHelp.includes(option), updateHelp);
+  }
+  assert(checkHelp.includes("--color"), checkHelp);
+  assert(!checkHelp.includes("--target"), checkHelp);
+  assert(!checkHelp.includes("--timeout-ms"), checkHelp);
+  for (const [option, value] of [["--target", "wasm"], ["--timeout-ms", "60000"], ["--color", "auto"]]) {
+    for (const command of ["check", "test", "update", "help"]) {
+      cli([option, value, command], { expected: EXIT_CODE.ERROR });
+    }
+    cli(["help", option, value], { expected: EXIT_CODE.ERROR });
+  }
   assert(cli(["update", "--help"]).stdout.includes("dry-run"));
   assert(cli(["--version"]).stdout.includes(CLI_VERSION));
   for (const args of INVALID_CLI_ARGUMENTS) {
