@@ -157,8 +157,7 @@ $ moonx moonbit-community/mooncram@0.0.3 --version
 ````
 
 Coordinates use `user/module[/package]@version`. Versions must be exact SemVer;
-ranges, omitted versions and `latest` are rejected. No import block or alias is
-needed. Old `mooncram-import` blocks are ignored as ordinary Markdown.
+ranges, omitted versions and `latest` are rejected.
 
 `moonx` downloads and caches remote tools. They always use Wasm, including
 when local packages use `--target native`.
@@ -278,7 +277,6 @@ parentheses remain part of the path: `#cwd(../fixtures with spaces)` needs no
 quotes, and `#cwd("foo")` includes the double quotes in the directory name.
 Empty paths, a missing closing `)`, duplicate or late declarations are errors.
 Use `(escaped)` for output beginning with `#cwd(`; updates escape it automatically.
-The old `$ set-current-working-directory` syntax is no longer accepted.
 
 The directory is relative to the document, must already exist, and applies only
 to that block. Local module lookup still uses the directory where you launched

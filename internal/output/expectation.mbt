@@ -115,7 +115,7 @@ fn stream_marker(text : String) -> (Stream, StreamConstraint)? raise {
 /// pipeline exit code (default 0). Without stream markers all rows constrain
 /// stdout. With markers, `@STDOUT` and `@STDERR` must each occur exactly once;
 /// optional `(ignore)`/`(empty)` sections accept no output rows. Trailing bare
-/// blanks within paired sections are separators; legacy rows are not trimmed
+/// blanks within paired sections are separators; stdout-only rows are not trimmed
 /// here, so callers should remove their outer separator blanks first.
 ///
 /// Line suffixes support whole-line `(glob)`, `(regex)` and JSON `(escaped)`
@@ -321,7 +321,7 @@ pub fn Stream::select(self : Stream, actual : Captured) -> String {
 ///|
 /// Check both the pipeline exit code and all requested stream constraints.
 ///
-/// Legacy expectations compare only stdout; paired expectations compare each
+/// Unmarked expectations compare only stdout; paired expectations compare each
 /// section using its policy. `actual` should contain normalized text as returned
 /// by execution; this method does not normalize it or render diagnostics.
 pub fn Expectation::matches(self : Expectation, actual : Captured) -> Bool {

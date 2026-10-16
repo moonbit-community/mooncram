@@ -2,11 +2,10 @@
 
 [中文版本](CLI_SPEC_CN.md)
 
-This document describes the CLI behavior of the current `0.0.7` module.
+This document describes the CLI behavior of the `0.0.7` module.
 It covers the command line, Markdown input format, process execution, matching,
-reporting, and updates. It is a description of the current implementation, not
-a proposal for additional features. The English and Chinese versions have the
-same section structure and should be maintained together.
+reporting, and updates. The English and Chinese versions have the same section
+structure and should be maintained together.
 
 Examples containing `mooncram` fences are enclosed in larger Markdown example
 fences so that this specification does not itself introduce executable cases.
@@ -106,7 +105,7 @@ A document parse or declaration-validation failure counts as one error and
 prevents checking its cases. A target-resolution failure counts as one error for
 that case, skips its remaining segments, and continues with later cases and files.
 The summary is `N cases, E errors`; a run with no cases and no other errors uses
-the existing no-cases error instead.
+the no-cases error described in section 2.
 
 Command parsing does not query the environment. Arguments and assignment values
 remain literal after quoting and escaping. Check results depend on the current
@@ -161,14 +160,13 @@ Fenced code blocks with a backtick opening fence and the exact, case-sensitive
 language `mooncram` contain tests. The info string accepts
 optional whitespace and a single module name, such as `mooncram user/foo`.
 The declaration is scoped to that fence; ordinary fences have no module name.
-Multiple words, JSON settings, or invalid module names are document parsing
-errors at the opening line. Module/package names use nonempty slash-separated
+Multiple words or invalid module names are document parsing errors at the
+opening line. Module/package names use nonempty slash-separated
 components with ASCII letters, digits, `_`, `-`, or `.`; `.` and `..` components
 are prohibited. Valid longer backtick fences work as well as triple backticks.
 
 Other languages, indented code blocks, tilde fences, and apparent fences inside
-larger code examples are silently ignored. Legacy `mooncram-import` fences
-are also ignored, without validating their contents or settings. Cases inside block quotes and lists
+larger code examples are silently ignored. Cases inside block quotes and lists
 are supported; the Markdown container prefix is not part of the command or
 output. Normal Markdown indentation rules apply before parsing lines.
 
@@ -223,8 +221,8 @@ prerelease identifiers have no leading zeros; build identifiers may have them.
 Identifiers contain ASCII letters, digits and hyphens, separated by dots, with
 no empty identifiers. `latest`, ranges, wildcards and malformed versions are
 rejected during target resolution. Unversioned targets are local and require a
-matching module declaration. Coordinates do not need declarations or aliases,
-and their registry existence is not checked by `check`.
+matching module declaration. Remote coordinates are independent of fence module
+declarations; `check` does not verify their registry existence.
 
 ````markdown
 ```mooncram
@@ -292,7 +290,6 @@ logical line; leading empty lines are allowed. Empty paths, missing final `)`,
 duplicates and declarations after a test command are parsing errors with source
 locations. A declaration accepts no expected output or exit code. It is not a case;
 configuration-only fences are legal, with the usual no-cases rule for a whole run.
-The old `$ set-current-working-directory` command is rejected by the command parser.
 
 Output beginning with `#cwd(` must use a JSON string with `(escaped)`, even when
 it would be a malformed declaration. The updater automatically escapes such
@@ -316,9 +313,9 @@ using the document directory when no declaration applies.
 Validation failures are one document error, located at the directive and showing
 the resolved path: zero cases execute and no update occurs in that document,
 while later documents continue. A directory removed after validation follows the
-normal execution-error rules. This changes no filesystem side-effect or dry-run
-rules. Local modules still resolve from startup cwd and package builds retain
-`moon -C <module-root>`; their subprocess cwd is the configured block directory.
+normal execution-error rules. Local modules resolve from startup cwd and package
+builds use `moon -C <module-root>`; their subprocess cwd is the configured block
+directory.
 
 Environment variable expansion is not supported. `${NAME}`, `$NAME`, `${}`,
 `${A-B}` and `${UNCLOSED` are ordinary text and do not trigger environment lookup
@@ -330,7 +327,7 @@ must parse before any case runs.
 `$ NAME=value OTHER="${NAME}" moonx ./program.mbtx` sets temporary variables for one
 pipeline segment and its build. Only consecutive assignments before the executable
 are recognized, with an unquoted, unescaped name and `=`; names must match
-`[A-Za-z_][A-Za-z0-9_]*`. Values follow the existing quoting
+`[A-Za-z_][A-Za-z0-9_]*`. Values follow the command quoting
 and escaping rules, including empty values and additional `=`.
 Assignments after the executable are ordinary arguments.
 Words with invalid variable names, such as `9A=x` and `A-B=x`, are not recognized
@@ -365,13 +362,12 @@ optional name; `Document.module_declarations` stores names and opening lines.
 Unversioned package targets require a module-declared fence and the full package
 name. For module `user/foo`, `user/foo` selects the root package and
 `user/foo/cmd/boo` selects that subpackage. `foo`, `cmd/boo`, other module names
-and paths such as `./foo` are rejected. There is no short-name inference,
-ambiguity warning or fallback. Missing, empty or null `source` means the module
-root; otherwise the source root must remain inside the module. Full names are
-mapped relative to this source root. Packages must declare
+and paths such as `./foo` are rejected. Missing, empty or null `source` means
+the module root; otherwise the source root must remain inside the module.
+Full names are mapped relative to this source root. Packages must declare
 `pkgtype(kind: "executable")` or `options("is-main": true)`. Compilation and
 backend errors propagate. Traversal, empty path components, nested `moon.mod`
-boundaries and symlink escapes remain prohibited. `moon.pkg` is parsed with
+boundaries and symlink escapes are prohibited. `moon.pkg` is parsed with
 `moonbitlang/moon_config@0.4.2`; invalid configurations are errors.
 
 Arbitrary binaries, shell commands and `.mbt` files are not targets, and user
@@ -462,7 +458,7 @@ failures and timeouts cancel all document updates and dry-run document diffs.
 mooncram adds no remote dependency installation or cache mechanism. moonx owns
 fetching/building/caching, which begins after its process starts. Other segments
 may run and produce effects before remote fetching fails; no pre-fetch guarantee
-is provided. Remote fetching shares the existing case deadline with local builds
+is provided. Remote fetching shares the case deadline with local builds
 and execution. `test`, `update` and `update --dry-run` use the same flow.
 
 ## 6. Expectations, line matching, and exit status
@@ -592,7 +588,8 @@ are separators; use `"" (escaped)` to assert an empty output line. The final
 stderr, concatenated in pipeline order without added separators.
 There is no comparison of timing between streams. Ignored streams are still
 captured and checked for UTF-8, with the same deadlines and process cleanup.
-Cases without stream markers keep the existing single-output behavior.
+Cases without stream markers assert only the final segment's stdout and the
+pipeline exit status; stderr is available for diagnostics.
 
 The two stream constraints and the case exit code must all match. Markers are
 recognized only when the exact uppercase name is followed by end of line, a
@@ -601,7 +598,6 @@ is an error. `@stdout` and `@STDOUTish` are ordinary output. Bare empty lines
 before the first marker are allowed separators. Bare empty lines within a
 plain section remain output when followed by more output in that section.
 An earlier `[N]` is output; only the final case line sets the exit code.
-No CLI options or fence settings are added.
 
 ## 7. Reports and color
 
@@ -683,7 +679,7 @@ originally explicit; all nonzero statuses use canonical `[N]` spelling.
 
 Internal empty output lines stay bare. Only the final trailing empty line is
 written as `"" (escaped)` when needed to prevent trimming: at the end of each
-stream section, or at the end of legacy output without a following nonzero
+stream section, or at the end of stdout-only output without a following nonzero
 status. Earlier empty lines in the same trailing run remain bare. Empty output
 produces no output lines. An internal blank also uses `"" (escaped)` if its bare
 LF would merge with a preceding CR; this preserves both source newline spellings.
