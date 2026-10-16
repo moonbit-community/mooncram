@@ -20,6 +20,18 @@ argument, or a pipeline of MoonBit tools. Your tests are ordinary Markdown
 files, so you can explain the intent alongside each example. When the behavior
 changes intentionally, mooncram can refresh the expected output for you.
 
+## Before running tests
+
+| Decision | Rule |
+| --- | --- |
+| Write a command | Commands do not run through a shell. Environment variables and wildcards in arguments remain literal. |
+| Select output to assert | By default, only stdout and the program's exit code are asserted. To assert stderr, include both `@STDOUT` and `@STDERR` markers. |
+| Select a backend | Scripts and remote packages always use Wasm. `--target` selects the backend for local packages. |
+| Resolve paths | Local modules are read from `moon.mod` directly in the startup directory. Scripts and relative file arguments use the block's working directory: the document directory by default, or its `#cwd` directory. |
+| Run or preview | `test`, `update`, and `update --dry-run` execute code with your permissions, without a sandbox or temporary workspace isolation. The default 60000 ms case timeout includes builds, remote fetching, execution, and output capture. |
+| Review an update | Passing cases are processed too; expectations and fences may be normalized. An execution error blocks all expectation updates in that document; other documents can still update. |
+| Interpret exit codes | Mooncram's exit code is independent of the tested program's expected code. Dry-run can report mismatches and return `0`; use `test` for CI. |
+
 ## Getting started
 
 Install the [MoonBit toolchain](https://www.moonbitlang.com/download/) first.
@@ -325,7 +337,8 @@ mooncram test tests
 `update` writes directly into the original documents without a confirmation
 prompt. It also normalizes passing cases and keeps glob/regex patterns that
 still match. Commands and surrounding prose are preserved. A document with
-parsing, build, or execution errors is not updated.
+parsing, build, or execution errors is not updated, including its passing cases;
+other documents can still update. Review the full diff before applying it.
 
 `--dry-run` displays edits without writing Markdown, but still runs programs,
 which can change files themselves. For validation without execution, use:
@@ -345,11 +358,24 @@ missing by `check`, since no cases execute during that check.
 mooncram check [paths...] [--color auto|always|never]
 mooncram test [paths...] [--target wasm|native] [--timeout-ms N]
 mooncram update [paths...] [--target wasm|native] [--timeout-ms N] [--dry-run]
+mooncram docs --list
+mooncram docs <document-name>
 mooncram --help
 mooncram --version
 ```
 
-Pass files, directories, or both. Directories are searched recursively for `.md`
+Coding agents and other tools can read the embedded English reference without
+access to this repository. Run `mooncram docs --list` for topic names and
+summaries. Use `mooncram docs quickstart` for a complete first test,
+`mooncram docs recipes` for runnable assertion templates,
+`mooncram docs troubleshooting` for failure diagnosis, or
+`mooncram docs invocation` for the command-line specification.
+Names are case-sensitive and omit `.md`.
+Running `mooncram docs` prints help. Documentation goes to stdout without
+color or a case summary; unknown names and invalid arguments exit with `2`.
+
+For `check`, `test`, and `update`, pass files, directories, or both.
+Directories are searched recursively for `.md`
 files; no paths means the current directory. Hidden entries, `_build`, and
 `target` are skipped during traversal; directory symlinks are not followed.
 Files are deduplicated and sorted before their cases run.
@@ -360,8 +386,11 @@ working directory when available. Captured stdout/stderr is included in full;
 bytes in diagnostics. Timeouts identify the last execution phase.
 
 The default target is `wasm`. The default timeout is `60000` milliseconds per
-case, including builds, downloads, and execution. `check` does not accept
-`--target` or `--timeout-ms`. All commands support `--color` (default `auto`);
+case, including builds, downloads, execution, and output capture. `check` and
+`docs` reject `--target` and `--timeout-ms`. `check`, `test`, and `update` accept `--color`
+(default `auto`). `docs` accepts none of these options and prints plain text.
+Place case options after their subcommand; top-level help and `help` have no
+case options.
 `NO_COLOR` disables automatic color. Put `--` before paths starting with `-`.
 
 In CI, install the toolchain and mooncram, then run
@@ -369,17 +398,22 @@ In CI, install the toolchain and mooncram, then run
 
 | Status | Meaning |
 | --- | --- |
-| `0` | Check, test, or update completed successfully |
+| `0` | Documentation, check, test, or update completed successfully |
 | `1` | An output or exit-code assertion failed in `test` |
 | `2` | Invalid arguments, a parsing/build/execution error, or no cases found |
 
 `update --dry-run` returns `0` when it completes, even if edits are proposed.
-Use `test` for the CI pass/fail decision.
+Use `test` for the CI pass/fail decision. These are mooncram's own exit codes:
+a program returning `2` can pass a case ending in `[2]`, so `mooncram test`
+returns `0` when all cases pass.
 
 ## Further reading
 
+- [Quickstart](internal/docs/mdfiles/quickstart.md)
+- [Complete assertion templates](internal/docs/mdfiles/recipes.md)
+- [Troubleshooting workflow and symptom table](internal/docs/mdfiles/troubleshooting.md)
 - [Example test document](examples/README.md)
-- [Detailed CLI and format reference](internal/CLI_SPEC.md)
+- [Command-line reference](internal/docs/mdfiles/invocation.md)
 - [scrut documentation](https://facebookincubator.github.io/scrut/docs/), which inspired the Markdown testing workflow and this guide's tutorial structure
 
 ## Development

@@ -15,6 +15,13 @@ priv struct Cli {
 }
 
 ///|
+priv enum CliCommand {
+  Run(Cli)
+  DocsList
+  DocsShow(String)
+}
+
+///|
 fn positive_int(text : String) -> Int32 raise {
   if text.is_empty() || !text.iter().all(c => c >= '0' && c <= '9') {
     raise @diagnostic.failure(
@@ -45,6 +52,38 @@ fn validate_target(target : String) -> Unit raise {
 }
 
 ///|
+fn case_options(execution~ : Bool = true) -> Array[@argparse.OptionArg] {
+  let options = []
+  if execution {
+    options.push(
+      @argparse.OptionArg(
+        "target",
+        long="target",
+        default_values=["wasm"],
+        about="Package target: wasm or native",
+      ),
+    )
+    options.push(
+      @argparse.OptionArg(
+        "timeout-ms",
+        long="timeout-ms",
+        default_values=["60000"],
+        about="Per-case time limit, including build",
+      ),
+    )
+  }
+  options.push(
+    @argparse.OptionArg(
+      "color",
+      long="color",
+      default_values=["auto"],
+      about="Report color: auto, always, never",
+    ),
+  )
+  options
+}
+
+///|
 fn cli_command() -> @argparse.Command {
   let paths = @argparse.PositionArg(
     "paths",
@@ -56,41 +95,42 @@ fn cli_command() -> @argparse.Command {
     about="Run MoonBit command examples in Markdown mooncram fences.",
     version=MODULE_VERSION,
     subcommand_required=true,
-    options=[
-      @argparse.OptionArg(
-        "target",
-        long="target",
-        global=true,
-        default_values=["wasm"],
-        about="Package target for test/update: wasm or native",
-      ),
-      @argparse.OptionArg(
-        "timeout-ms",
-        long="timeout-ms",
-        global=true,
-        default_values=["60000"],
-        about="Per-case time limit for test/update, including build",
-      ),
-      @argparse.OptionArg(
-        "color",
-        long="color",
-        global=true,
-        default_values=["auto"],
-        about="Color: auto, always, never",
-      ),
-    ],
     subcommands=[
+      @argparse.Command(
+        "docs",
+        about="Print embedded mooncram documentation",
+        arg_required_else_help=true,
+        flags=[
+          @argparse.FlagArg(
+            "list",
+            long="list",
+            about="List available document names and summaries",
+          ),
+        ],
+        positionals=[
+          @argparse.PositionArg(
+            "doc-name",
+            about="Document name from docs --list (case-sensitive)",
+            num_args=@argparse.ValueRange(lower=0, upper=1),
+          ),
+        ],
+      ),
       @argparse.Command(
         "check",
         about="Validate examples and local targets without execution",
+        options=case_options(execution=false),
         positionals=[paths],
       ),
-      @argparse.Command("test", about="Check command output and exit status", positionals=[
-        paths,
-      ]),
+      @argparse.Command(
+        "test",
+        about="Check command output and exit status",
+        options=case_options(),
+        positionals=[paths],
+      ),
       @argparse.Command(
         "update",
         about="Update and normalize expectations, including passing cases",
+        options=case_options(),
         positionals=[paths],
         flags=[
           @argparse.FlagArg(
@@ -105,21 +145,19 @@ fn cli_command() -> @argparse.Command {
 }
 
 ///|
-fn parse_cli(args : Array[String]) -> Cli raise {
+fn parse_cli(args : Array[String]) -> CliCommand raise {
   let matches = cli_command().parse(argv=args)
   let (name, sub) = matches.subcommand.unwrap()
-  if name == "check" {
-    for option in ["target", "timeout-ms"] {
-      if sub.sources.get(option) is Some(@argparse.Argv) {
-        raise @diagnostic.failure(
-          "--" + option + " is only supported by test/update",
-        )
-      }
-    }
+  if name == "docs" {
+    return parse_docs_cli(sub)
   }
-  let target = sub.values["target"][0]
+  let target = if name == "check" { "wasm" } else { sub.values["target"][0] }
   validate_target(target)
-  let timeout_ms = positive_int(sub.values["timeout-ms"][0])
+  let timeout_ms = if name == "check" {
+    60000
+  } else {
+    positive_int(sub.values["timeout-ms"][0])
+  }
   let color = sub.values["color"][0]
   if color != "auto" && color != "always" && color != "never" {
     raise @diagnostic.failure(
@@ -127,7 +165,7 @@ fn parse_cli(args : Array[String]) -> Cli raise {
     )
   }
   let paths = sub.values.get("paths").unwrap_or([])
-  {
+  Run({
     command: match name {
       "check" => Check
       "update" => Update(dry_run=sub.flags.get("dry-run").unwrap_or(false))
@@ -141,5 +179,5 @@ fn parse_cli(args : Array[String]) -> Cli raise {
     target,
     timeout_ms,
     color,
-  }
+  })
 }

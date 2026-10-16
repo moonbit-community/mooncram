@@ -17,6 +17,18 @@ mooncram 的设计**受 [scrut](https://facebookincubator.github.io/scrut/docs/)
 工具组成的管道。测试文件就是普通的 Markdown 文档，方便在示例旁说明测试意图。
 当程序行为有意改变时，也可以让 mooncram 帮你更新预期输出。
 
+## 运行测试前的规则
+
+| 操作 | 规则 |
+| --- | --- |
+| 编写命令 | 命令不经过 Shell，参数中的环境变量和通配符保持字面量。 |
+| 选择断言内容 | 默认只断言 stdout 和程序退出码；要断言 stderr，必须同时使用 `@STDOUT` 和 `@STDERR` 标记。 |
+| 选择后端 | 脚本和远程包固定使用 Wasm；`--target` 为本地包选择后端。 |
+| 解析路径 | 本地模块从启动目录直接包含的 `moon.mod` 读取；脚本和相对文件参数使用块工作目录，默认是文档目录，也可用 `#cwd` 指定。 |
+| 执行或预览 | `test`、`update`、`update --dry-run` 都会以你的权限执行代码，没有沙箱或临时工作区隔离。默认每个用例的 60000 毫秒超时包含构建、远程获取、执行和输出捕获。 |
+| 审阅更新 | 已通过的用例也会处理，预期和围栏可能被规范化。文档内任何执行错误都会阻止该文档的全部预期更新，其他文档仍可能更新。 |
+| 判断退出码 | mooncram 自身的退出码与程序的预期退出码独立。dry-run 即使报告不匹配也可能返回 `0`；CI 应使用 `test`。 |
+
 ## 快速开始
 
 先安装 [MoonBit 工具链](https://www.moonbitlang.com/download/)，
@@ -301,6 +313,7 @@ mooncram test tests
 `update` 直接修改原文档中的预期，不会弹出确认提示。
 它也会规范化已经通过的用例，并保留仍然匹配的 glob/regex 模式。
 命令和周围说明文字会保留。文档存在解析、构建或执行错误时，不会更新该文档。
+该文档中已通过用例的更新也会被阻止；其他文档仍可能更新。应用前应审阅完整差异。
 
 `--dry-run` 展示拟议修改，不写入 Markdown，但仍会运行程序，程序本身可能修改文件。
 如果只想校验而不执行，请运行：
@@ -319,11 +332,22 @@ mooncram check tests
 mooncram check [paths...] [--color auto|always|never]
 mooncram test [paths...] [--target wasm|native] [--timeout-ms N]
 mooncram update [paths...] [--target wasm|native] [--timeout-ms N] [--dry-run]
+mooncram docs --list
+mooncram docs <document-name>
 mooncram --help
 mooncram --version
 ```
 
-可以传入文件、目录，或两者混用。目录会递归查找 `.md` 文件，不传路径时扫描当前目录。
+Coding Agent 和其他工具可以直接读取程序内嵌的英文参考文档，无需访问本仓库。
+运行 `mooncram docs --list` 查看主题名称和摘要，
+`mooncram docs quickstart` 阅读完整入门示例，`mooncram docs recipes` 获取可运行的断言模板，
+`mooncram docs troubleshooting` 查找排错步骤，`mooncram docs invocation` 读取命令行规范。
+名称区分大小写，不带 `.md` 后缀。
+不带参数的 `mooncram docs` 显示帮助。文档输出到 stdout，不着色，也不打印用例汇总；
+未知名称或无效参数以 `2` 退出。
+
+对于 `check`、`test` 和 `update`，可以传入文件、目录，或两者混用。
+目录会递归查找 `.md` 文件，不传路径时扫描当前目录。
 遍历时跳过隐藏条目、`_build` 和 `target`，不跟随目录符号链接。
 文件去重并排序后，再执行其中的用例。
 
@@ -331,9 +355,12 @@ mooncram --version
 stdout/stderr。未读到 EOF 的流标记为 `partial`；非法 UTF-8 在诊断中以字节转义展示。
 超时信息会指出最后的执行阶段。
 
-默认后端为 `wasm`，每个用例的默认超时为 `60000` 毫秒，包括构建、下载和执行。
-`check` 不接受 `--target` 或 `--timeout-ms`。
-所有命令均支持 `--color`，默认 `auto`；`NO_COLOR` 会禁用自动着色。
+默认后端为 `wasm`，每个用例的默认超时为 `60000` 毫秒，包括构建、下载、执行和输出捕获。
+`check` 和 `docs` 不接受 `--target` 或 `--timeout-ms`。
+`check`、`test` 和 `update` 接受 `--color`，默认 `auto`；
+`docs` 不接受上述三个选项，始终输出纯文本。
+用例选项必须放在相应子命令之后；顶层帮助和 `help` 没有用例选项。
+`NO_COLOR` 会禁用自动着色。
 路径以 `-` 开头时，在路径前加上 `--`。
 
 在 CI 中安装工具链和 mooncram 后，运行 `mooncram test tests --color never`。
@@ -341,17 +368,21 @@ stdout/stderr。未读到 EOF 的流标记为 `partial`；非法 UTF-8 在诊断
 
 | 状态码 | 含义 |
 | --- | --- |
-| `0` | 检查、测试或更新成功完成 |
+| `0` | 文档查询、检查、测试或更新成功完成 |
 | `1` | `test` 中有输出或退出码断言失败 |
 | `2` | 参数无效，发生解析、构建或执行错误，或没有找到用例 |
 
 `update --dry-run` 成功完成时返回 `0`，即使提出了修改。
-CI 应使用 `test` 判断测试是否通过。
+CI 应使用 `test` 判断测试是否通过。上述退出码属于 mooncram 自身：
+被测程序返回 `2` 可以通过以 `[2]` 结束的用例，全部用例通过时 `mooncram test` 返回 `0`。
 
 ## 延伸阅读
 
+- [快速入门](internal/docs/mdfiles/quickstart_CN.md)
+- [常见断言的完整模板](internal/docs/mdfiles/recipes_CN.md)
+- [排错流程与症状表](internal/docs/mdfiles/troubleshooting_CN.md)
 - [示例测试文档](examples/README.md)
-- [完整的命令行与格式参考](internal/CLI_SPEC_CN.md)
+- [命令行参考](internal/docs/mdfiles/invocation_CN.md)
 - [scrut 文档](https://facebookincubator.github.io/scrut/docs/)：本项目的 Markdown 测试工作流及本指南的教程结构参考了它
 
 ## 开发

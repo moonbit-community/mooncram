@@ -1,0 +1,146 @@
+# Markdown recognition and case boundaries
+
+Documents are read as UTF-8; decoding failures are document errors.
+Fenced code blocks with a backtick opening fence and the exact, case-sensitive
+language `mooncram` contain tests. The info string accepts
+optional whitespace and a single module name, such as `mooncram user/foo`.
+The declaration is scoped to that fence; ordinary fences have no module name.
+Multiple words or invalid module names are document parsing errors at the
+opening line. Module/package names use nonempty slash-separated
+components with ASCII letters, digits, `_`, `-`, or `.`; `.` and `..` components
+are prohibited. Valid longer backtick fences work as well as triple backticks.
+
+Other languages, indented code blocks, tilde fences, and apparent fences inside
+larger code examples are silently ignored. Cases inside block quotes and lists
+are supported; the Markdown container prefix is not part of the command or
+output. Normal Markdown indentation rules apply before parsing lines.
+
+An eligible fence must have a closing fence and at least one command or working
+directory declaration. An unclosed or empty eligible fence is a document parsing
+error. Ignored fences do not produce mooncram parsing errors.
+
+## A complete local example
+
+Have `mooncram` installed, with `moon`, `moonx` and `moonrun` on `PATH`.
+Create the following files in a new `demo` directory. This example needs no
+repository checkout or external dependencies.
+
+```text
+demo/
+├── moon.mod
+├── cmd/main/
+│   ├── moon.pkg
+│   └── main.mbt
+└── tests/
+    ├── hello.mbtx
+    └── cases.md
+```
+
+Complete contents of `moon.mod`:
+
+```text
+name = "user/foo"
+```
+
+Complete contents of `cmd/main/moon.pkg`:
+
+```text
+import { "moonbitlang/core/env" }
+
+pkgtype(kind: "executable")
+```
+
+Complete contents of `cmd/main/main.mbt`:
+
+```mbt
+fn main {
+  if @env.args().get(1) is Some("--version") {
+    println("my-cli 1.0.0")
+  } else {
+    println("my-cli")
+  }
+}
+```
+
+Complete contents of `tests/hello.mbtx`:
+
+```mbt
+import { "moonbitlang/core/env" }
+
+fn main {
+  let name = @env.args().get(1).unwrap_or("World")
+  println("Hello, \{name}!")
+}
+```
+
+Complete contents of `tests/cases.md` (omit the outer `markdown` wrapper):
+
+````markdown
+```mooncram user/foo
+$ moonx ./hello.mbtx "Moon Bit"
+Hello, Moon Bit!
+
+$ moonx user/foo/cmd/main --version
+my-cli 1.0.0
+```
+````
+
+From `demo`, run:
+
+```sh
+mooncram check tests/cases.md
+mooncram test tests/cases.md
+```
+
+`check` prints `2 cases, 0 errors`; `test` prints
+`2 cases, 0 failed, 0 errors`. Both exit with `0`.
+The script is relative to `tests`, while the module declaration uses
+`demo/moon.mod` because mooncram starts in `demo`.
+
+## Case boundaries
+
+Within the parsed code block:
+
+- A line beginning exactly with `#cwd(` starts a working directory declaration
+  and ends any preceding expectation span. It must be the first nonempty line.
+- A line beginning exactly with `$ ` starts a command and a case. A line consisting
+  only of `$` is also treated as a command start, then rejected as an empty command.
+- Before the first command, only completely empty lines and a valid directory
+  declaration are accepted. Any other line is an error. `$` followed only by a
+  tab is not the `$ ` command prefix.
+- Every following line up to the next command, directory declaration or closing
+  fence is an expectation line, except completely empty lines at the end of that span.
+- Trailing empty lines are separators and are excluded from expectations.
+  Empty lines inside the remaining expectation span are real output lines;
+  whitespace-only lines are not empty separators.
+- Commands occupy one source line. There is no multiline command continuation,
+  comment syntax, or separate setup/teardown syntax inside a test block.
+
+A line of output that would look like a command or begin with `#cwd(` must use a
+JSON string with `(escaped)`.
+
+The whole document, including all commands and expectations, is parsed before
+executing any case in that document. A parsing error prevents
+every case in that document from running, even cases before the error. Later
+documents are still processed. Reported source line numbers are one-based
+positions in the original Markdown document.
+
+## Remote package coordinates
+
+Use `$ moonx user/module[/package]@version <args...>` directly in a test fence.
+Coordinates require at least two nonempty path components, following the
+module/package name rules above. Versions must be exact SemVer `MAJOR.MINOR.PATCH`,
+optionally followed by `-prerelease` and `+build`. Core numbers and numeric
+prerelease identifiers have no leading zeros; build identifiers may have them.
+Identifiers contain ASCII letters, digits and hyphens, separated by dots, with
+no empty identifiers. `latest`, ranges, wildcards and malformed versions are
+rejected during target resolution. Unversioned targets are local and require a
+matching module declaration. Remote coordinates are independent of fence module
+declarations; `check` does not verify their registry existence.
+
+````markdown
+```mooncram
+$ moonx moonbit-community/moongrep@0.3.5 --version
+* (glob)
+```
+````

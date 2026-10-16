@@ -56,7 +56,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
     return result;
   };
   assert(invoke(["check", "--help"]).stdout.includes("Validate examples"));
-  assert(invoke(["--help"]).stdout.includes("test/update"));
+  assert(invoke(["--help"]).stdout.includes("Usage: mooncram"));
 
   const badScript = join(docs, "check-invalid.mbtx");
   fs.writeFileSync(badScript, INVALID_PROGRAM);
@@ -69,7 +69,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
     block('$ moonx ./check-invalid.mbtx | moonx missing/nonexistent/cmd@1.2.3 | moonx mooncram/integration/check-invalid\nignored assertion\n') +
     block('$ CHECK_ARG=value moonx ./check-invalid.mbtx "${CHECK_ARG}"\n', ""));
   for (const args of [
-    ["check", passing], ["--color", "always", "check", passing],
+    ["check", passing], ["check", "--color", "always", passing],
     ["check", passing, "--color", "never"],
   ]) assert.equal(invoke(args).stdout, "3 cases, 0 errors\n");
   assert(!fs.existsSync(sideEffect));
