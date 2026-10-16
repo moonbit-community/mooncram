@@ -43,7 +43,7 @@ pub fn diff_lines(
 /// Format an assertion-failure report without writing it to a stream.
 ///
 /// Includes `path`, the case's one-based line, command and expected/actual exit
-/// codes. Legacy expectations get a combined diff; paired expectations get
+/// codes. Unmarked expectations get a stdout/status diff; paired expectations get
 /// separately labelled diffs for failing stdout/stderr constraints. Nonempty
 /// diagnostic stderr is appended once unless already shown in a stderr diff.
 /// `color` enables ANSI styling. `actual` should contain normalized output as

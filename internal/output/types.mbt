@@ -72,7 +72,7 @@ pub struct StreamSection {
 }
 
 ///|
-/// Legacy stdout-only or paired stdout/stderr expectation content.
+/// Stdout-only or paired stdout/stderr expectation content.
 pub(all) enum ExpectedBody {
   /// Unmarked lines constrain only final stdout; diagnostic stderr is ignored.
   Legacy(StreamExpectation)

@@ -147,8 +147,7 @@ $ moonx moonbit-community/mooncram@0.0.3 --version
 ````
 
 坐标格式为 `user/module[/package]@version`，必须指定精确 SemVer 版本，
-不接受省略版本、版本范围或 `latest`。无需导入块或别名；旧 `mooncram-import`
-代码块按普通 Markdown 忽略。
+不接受省略版本、版本范围或 `latest`。
 
 `moonx` 负责下载和缓存远程工具。远程工具始终使用 Wasm，
 即使本地包选择了 `--target native`。
@@ -259,7 +258,6 @@ Hello, Moon Bit!
 `#cwd(../fixtures with spaces)` 无需引号，`#cwd("foo")` 的目录名包含双引号。
 空路径、缺少结尾 `)`、重复声明或测试命令后的声明均报错。
 以 `#cwd(` 开头的输出应使用 `(escaped)`，更新器也会自动转义。
-不再接受旧的 `$ set-current-working-directory` 语法。
 
 路径相对于测试文档，目录必须已存在，设置仅作用于当前代码块。
 本地模块仍从启动 mooncram 的目录查找。用例按文档顺序执行，

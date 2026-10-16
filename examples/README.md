@@ -18,22 +18,8 @@ $ moonx moonbit-community/mooncram --version
 A fixed-version Mooncakes tool can be run directly:
 
 ```mooncram
-$ moonx moonbit-community/mooncram@0.0.3 help
-Usage: mooncram [options] <command>
-
-Run MoonBit command examples in Markdown mooncram fences.
-
-Commands:
-  test    Check command output and exit status
-  update  Update failing expectations in place
-  help    Print help for the subcommand(s).
-
-Options:
-  -h, --help                 Show help information.
-  -V, --version              Show version information.
-  --target <target>          Package target: wasm or native [default: wasm]
-  --timeout-ms <timeout-ms>  Per-case time limit, including build [default: 60000]
-  --color <color>            Color: auto, always, never [default: auto]
+$ moonx moonbit-community/mooncram@0.0.3 --version
+0.0.3
 ```
 
 Remote tools use Wasm even with `--target native`. moonx fetches and caches
