@@ -2,13 +2,13 @@
 package "moonbit-community/mooncram/internal/diagnostic"
 
 // Values
-pub fn context(Error, file? : String, line? : Int, command? : String, phase? : String, segment? : String, tool? : String, cwd? : String, hint? : String) -> Failure
+pub fn context(Error, file? : String, line? : Int32, command? : String, phase? : String, segment? : String, tool? : String, cwd? : String, hint? : String) -> Failure
 
 pub fn error_text(Error) -> String
 
 pub fn failure(String) -> Failure
 
-pub fn located(String, Int, String) -> Failure
+pub fn located(String, Int32, String) -> Failure
 
 pub fn render(Error) -> String
 
@@ -25,7 +25,7 @@ pub(all) suberror Failure {
 pub struct Diagnostic {
   summary : String
   file : String?
-  line : Int?
+  line : Int32?
   command : String?
   phase : String?
   segment : String?

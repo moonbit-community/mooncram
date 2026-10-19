@@ -2,7 +2,7 @@
 package "moonbit-community/mooncram/internal/cli"
 
 // Values
-pub async fn run(Array[String]) -> Int
+pub async fn run(Array[String]) -> Int32
 
 // Errors
 

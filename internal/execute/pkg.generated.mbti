@@ -8,7 +8,7 @@ import {
 }
 
 // Values
-pub async fn execute_case(@markdown.Case, @resolve.DocumentContext, target~ : String, timeout_ms~ : Int) -> @output.Captured
+pub async fn execute_case(@markdown.Case, @resolve.DocumentContext, target~ : String, timeout_ms~ : Int32) -> @output.Captured
 
 // Errors
 

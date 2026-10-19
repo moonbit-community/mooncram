@@ -8,7 +8,7 @@ import {
 // Values
 pub fn actual_expectation(Captured, Expectation) -> Array[String]
 
-pub fn actual_expectation_layout(Captured, Expectation) -> Array[(String, Int?)]
+pub fn actual_expectation_layout(Captured, Expectation) -> Array[(String, Int32?)]
 
 pub fn actual_stream_expectation(String, Array[ExpectedLine]) -> Array[String]
 
@@ -24,12 +24,12 @@ pub fn parse_expectation(ArrayView[@cmark.Node[String]], String) -> Expectation 
 pub(all) struct Captured {
   output : String
   diagnostic : String
-  exit_code : Int
+  exit_code : Int32
 }
 
 pub struct Expectation {
   body : ExpectedBody
-  exit_code : Int
+  exit_code : Int32
   source_lines : Array[String]
 }
 pub fn Expectation::matches(Self, Captured) -> Bool
@@ -68,9 +68,9 @@ pub struct StreamExpectation {
 pub struct StreamSection {
   stream : Stream
   constraint : StreamConstraint
-  start : Int
-  content_end : Int
-  end : Int
+  start : Int32
+  content_end : Int32
+  end : Int32
 }
 
 // Type aliases
