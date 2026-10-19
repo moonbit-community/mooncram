@@ -14,7 +14,7 @@ pub fn generate(@markdown.Document, Array[@output.Captured]) -> Generated raise
 // Types and methods
 pub struct Generated {
   source : String
-  changed_cases : Int
+  changed_cases : Int32
 }
 
 // Type aliases
