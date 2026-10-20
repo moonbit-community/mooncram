@@ -9,8 +9,8 @@
 /// assertion failures, or 2 on parsing, validation, execution or filesystem
 /// errors, or when no cases are found. Document/case errors are reported while
 /// other documents/cases continue. Argument-parser help/version requests may
-/// terminate the process. Errors caught here are printed and converted to 2;
-/// async output errors can still propagate.
+/// terminate the process. Diagnostic failures and OS errors caught here are
+/// printed and converted to 2; async output errors can still propagate.
 ///
 /// `check` resolves targets without running tools. `test` and `update` build and
 /// execute commands; `update` also writes changed documents unless `--dry-run`
@@ -31,9 +31,10 @@ pub async fn run(args : Array[String]) -> Int32 {
       }
     }
   } catch {
-    e => {
+    @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
       @stdio.stderr.write(@diagnostic.render(e))
       2
     }
+    e => raise e
   }
 }

@@ -146,7 +146,11 @@ fn cli_command() -> @argparse.Command {
 
 ///|
 fn parse_cli(args : Array[String]) -> CliCommand raise {
-  let matches = cli_command().parse(argv=args)
+  // argparse exposes display-ready messages through a private error type.
+  // Normalize them here so the async reporting boundary can match Failure.
+  let matches = cli_command().parse(argv=args) catch {
+    e => raise @diagnostic.failure(e.to_string())
+  }
   let (name, sub) = matches.subcommand.unwrap()
   if name == "docs" {
     return parse_docs_cli(sub)

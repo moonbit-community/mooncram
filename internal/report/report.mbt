@@ -118,7 +118,8 @@ pub async fn use_color(mode : String) -> Bool {
         return false
       }
       (@fs.kind("/dev/stdout") == CharDevice) catch {
-        _ => false
+        @os_error.OSError(_) => false
+        e => raise e
       }
     }
   }

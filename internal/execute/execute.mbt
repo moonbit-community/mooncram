@@ -51,7 +51,9 @@ pub async fn execute_case(
     }
     capture_pipeline(commands, cwd, progress~)
   }) catch {
-    e => raise progress.report(e)
+    @diagnostic.Failure(_) | @os_error.OSError(_) as e =>
+      raise progress.report(e)
+    e => raise e
   }
   if result is Some(actual) {
     actual
@@ -142,7 +144,8 @@ async fn build_artifact(
     raise @diagnostic.failure("build failed (exit \{build.exit_code})")
   }
   let artifact = parse_artifact(build.output) catch {
-    e => raise progress.remember(e)
+    @diagnostic.Failure(_) as e => raise progress.remember(e)
+    e => raise e
   }
   progress.logs = []
   @files.resolve_from(cwd, artifact)

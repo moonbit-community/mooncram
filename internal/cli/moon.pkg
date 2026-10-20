@@ -9,8 +9,10 @@ import {
   "moonbit-community/mooncram/internal/resolve",
   "moonbit-community/mooncram/internal/update",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "moonbitlang/async/stdio",
   "moonbitlang/core/argparse",
+  "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/string",
   "moonbitlang/x/path",
 }

@@ -33,11 +33,12 @@ pub async fn discover(paths : Array[String]) -> Array[String] {
   for path in paths {
     let absolute = @path.Path(path).resolve().to_string()
     visit(absolute) catch {
-      e =>
+      @os_error.OSError(_) as e =>
         raise @diagnostic.context(
           @diagnostic.wrap(e, "failed to discover Markdown files"),
           file=path,
         )
+      e => raise e
     }
   }
   let files = found.keys().to_array()
@@ -66,7 +67,10 @@ pub async fn write_document(
   // by commands or by a user while tests were running.
   let directory = @path.Path(path).dirname().to_string()
   let (temp, file) = create_sibling_temp(directory)
-  defer (@fs.remove(temp) catch { _ => () })
+  defer (@fs.remove(temp) catch {
+    @os_error.OSError(_) => ()
+    e => raise e
+  })
   {
     defer file.close()
     file.write(updated)
@@ -87,7 +91,8 @@ async fn create_sibling_temp(directory : String) -> (String, @fs.File) {
   for attempt in 0..<100 {
     let name = resolve_from(directory, ".mooncram-\{stamp}-\{attempt}.tmp")
     try @fs.open(name, mode=WriteOnly, create_mode=CreateNew) catch {
-      e => if !@fs.exists(name) { raise e }
+      @os_error.OSError(_) as e if e.is_EEXIST() => ()
+      e => raise e
     } noraise {
       file => return (name, file)
     }

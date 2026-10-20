@@ -1,6 +1,7 @@
 import {
   "moonbit-community/mooncram/internal/diagnostic",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "moonbitlang/core/env",
   "moonbitlang/x/path",
 }
