@@ -60,11 +60,10 @@ A successful run ends with:
 1 cases, 0 failed, 0 errors
 ```
 
-From this checkout, `moon run . -- <arguments>` launches mooncram. To install it
-as a command for use in other projects, run:
+To install mooncram as a command, run:
 
 ```sh
-moon install ./
+moon install https://github.com/moonbit-community/mooncram
 mooncram --help
 ```
 

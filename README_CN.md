@@ -56,11 +56,10 @@ Hello, Moon Bit!
 1 cases, 0 failed, 0 errors
 ```
 
-在仓库中，`moon run . -- <参数>` 用于启动 mooncram。
-如果希望在其他项目中直接使用 `mooncram` 命令，可以安装它：
+将mooncram作为一个命令安装
 
 ```sh
-moon install ./
+moon install https://github.com/moonbit-community/mooncram
 mooncram --help
 ```
 
