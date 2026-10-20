@@ -2,9 +2,10 @@
 
 [中文](README_CN.md)
 
-Test MoonBit command-line applications and scripts with examples written in
-Markdown. Put a command next to its expected output, explain the behavior, and
-let mooncram check that the example still works.
+mooncram is a command-line testing framework designed specifically for MoonBit
+CLI applications and `.mbtx` scripts. Write a command and its expected output in
+Markdown, explain the behavior, and let mooncram check that the example still
+works.
 
 mooncram is **inspired by [scrut](https://facebookincubator.github.io/scrut/docs/)**.
 It brings readable CLI tests to MoonBit, with support for local executable
