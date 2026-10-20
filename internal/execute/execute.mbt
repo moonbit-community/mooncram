@@ -53,14 +53,12 @@ pub async fn execute_case(
   }) catch {
     e => raise progress.report(e)
   }
-  match result {
-    Some(actual) => actual
-    None =>
-      raise progress.report(
-        @diagnostic.failure(
-          "timed out after \{timeout_ms} ms (including build)",
-        ),
-      )
+  if result is Some(actual) {
+    actual
+  } else {
+    raise progress.report(
+      @diagnostic.failure("timed out after \{timeout_ms} ms (including build)"),
+    )
   }
 }
 

@@ -41,9 +41,12 @@ fn Progress::remember(self : Progress, error : Error) -> @diagnostic.Failure {
       }
     }
   }
-  let segment = match self.segment {
-    Some(segment) => Some(segment)
-    None => if pending.is_empty() { None } else { Some(pending.join(", ")) }
+  let segment = if self.segment is Some(segment) {
+    Some(segment)
+  } else if pending.is_empty() {
+    None
+  } else {
+    Some(pending.join(", "))
   }
   let error = match error {
     @diagnostic.Failure(_) => error
