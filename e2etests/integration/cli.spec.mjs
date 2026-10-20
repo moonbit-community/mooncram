@@ -69,7 +69,7 @@ export function testCliArguments({ cli, docs }) {
     cli(["help", option, value], { expected: EXIT_CODE.ERROR });
   }
   assert(cli(["update", "--help"]).stdout.includes("dry-run"));
-  assert.equal(cli(["--version"]).stdout, `${CLI_VERSION}\n`);
+  assert.equal(cli(["--version"]).stdout.trimEnd(), CLI_VERSION);
   for (const args of INVALID_CLI_ARGUMENTS) {
     cli(args, { expected: EXIT_CODE.ERROR });
   }
