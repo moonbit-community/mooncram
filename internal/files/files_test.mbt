@@ -41,3 +41,17 @@ async test "atomic document replacement rejects concurrent edits and cleans up" 
   assert_eq(@fs.read_file(path).text(), "updated")
   assert_eq(@fs.readdir(dir, include_hidden=true), ["test.md"])
 }
+
+///|
+async test "document replacement propagates temporary file creation errors" {
+  let dir = @fs.tmpdir(prefix="mooncram-update-error")
+  defer @fs.rmdir(dir, recursive=true)
+  let path = @files.resolve_from(dir, "missing/test.md")
+  try @files.write_document(path, "original", "updated") catch {
+    @os_error.OSError(_) as e => assert_true(e.is_ENOENT())
+    e => raise e
+  } noraise {
+    _ => fail("creating a temporary file in a missing directory should fail")
+  }
+  assert_eq(@fs.readdir(dir, include_hidden=true), [])
+}

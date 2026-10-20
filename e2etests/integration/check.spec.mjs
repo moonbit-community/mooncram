@@ -97,6 +97,13 @@ export function testCheck({ executable, target, directory, docs, project }) {
   assert(result.stderr.includes("check-targets.md:3:"));
   assert(!fs.existsSync(sideEffect));
 
+  const invalidUtf8 = Buffer.from([0xff]);
+  const unreadable = writeDocument(docs, "check-invalid-utf8.md", invalidUtf8);
+  result = invoke(["check", unreadable, passing], { expected: EXIT_CODE.ERROR });
+  assert.equal(result.stdout, "3 cases, 1 errors\n");
+  assert(result.stderr.startsWith(`ERROR ${fs.realpathSync(unreadable)}: failed to read Markdown document\n`), result.stderr);
+  assert.deepEqual(fs.readFileSync(unreadable), invalidUtf8);
+
   for (const [name, source, diagnostic] of [
     ["markdown", "```mooncram\n$ moonx ./check-invalid.mbtx\n", "unclosed"],
     ["command", block("$ moonx ./check-invalid.mbtx || remote\n", ""), "empty pipeline"],
@@ -161,6 +168,18 @@ export function testCheck({ executable, target, directory, docs, project }) {
   result = invoke(["check", fullNames], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
   assert.equal(result.stdout, "0 cases, 1 errors\n");
   assert(result.stderr.includes("invalid configuration"));
+
+  fs.writeFileSync(join(moduleRoot, "moon.mod"), invalidUtf8);
+  result = invoke(["check", fullNames], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
+  assert.equal(result.stdout, "0 cases, 1 errors\n");
+  assert(result.stderr.startsWith(`ERROR ${fs.realpathSync(fullNames)}:1: `), result.stderr);
+
+  fs.writeFileSync(join(moduleRoot, "moon.mod"), 'name = "user/foo"\n');
+  fs.writeFileSync(join(moduleRoot, "moon.pkg"), invalidUtf8);
+  result = invoke(["check", fullNames], { cwd: moduleRoot, expected: EXIT_CODE.ERROR });
+  assert.equal(result.stdout, "1 cases, 1 errors\n");
+  assert(result.stderr.startsWith(`ERROR ${fs.realpathSync(fullNames)}:2: cannot resolve executable package 'user/foo'\n`), result.stderr);
+  assert(result.stderr.includes("phase: resolve"), result.stderr);
 }
 
 export function testGeneratedTargets({ cli, docs, project, target }) {
