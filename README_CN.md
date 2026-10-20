@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-用 Markdown 中的示例测试 MoonBit 命令行应用和脚本。写下命令和预期输出，
+mooncram是一个针对MoonBit命令行程序/mbtx脚本特化的命令行测试框架, 用 Markdown 中的示例测试 MoonBit 命令行应用和脚本。写下命令和预期输出，
 再用几句话解释它的用途，mooncram 就能检查这个示例是否仍然有效。
 
 mooncram 的设计**受 [scrut](https://facebookincubator.github.io/scrut/docs/) 启发**。
