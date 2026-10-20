@@ -36,7 +36,9 @@ async fn validate_document_modules(
   }
   let (_, first_line) = document.module_declarations[0]
   let context = load_module(startup_cwd) catch {
-    e => raise @diagnostic.context(e, file=document.path, line=first_line)
+    @diagnostic.Failure(_) | @os_error.OSError(_) | @utf8.Malformed(_) as e =>
+      raise @diagnostic.context(e, file=document.path, line=first_line)
+    e => raise e
   }
   for declaration in document.module_declarations {
     let (name, line) = declaration

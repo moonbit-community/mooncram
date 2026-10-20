@@ -1,11 +1,12 @@
 ///|
 fn assert_error_contains(f : () -> Unit raise, expected : String) -> Unit raise {
   try f() catch {
-    e =>
+    @diagnostic.Failure(_) as e =>
       assert_true(
         @diagnostic.error_text(e).contains(expected),
         msg=@diagnostic.error_text(e),
       )
+    e => raise e
   } noraise {
     _ => fail("expected error containing: " + expected)
   }

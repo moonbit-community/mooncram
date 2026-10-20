@@ -3,6 +3,8 @@ import {
   "moonbit-community/mooncram/internal/files",
   "moonbit-community/mooncram/internal/markdown",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
+  "moonbitlang/core/encoding/utf8",
   "moonbitlang/moon_config",
   "moonbitlang/x/path",
 }

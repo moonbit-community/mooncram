@@ -80,7 +80,9 @@ pub async fn DocumentContext::resolve_target(
   let path = @files.resolve_from(self.cwd_for(case), executable)
   if executable.has_suffix(".mbtx") {
     let kind = @fs.kind(path) catch {
-      e => raise @diagnostic.wrap(e, "cannot access script '\{executable}'")
+      @os_error.OSError(_) as e =>
+        raise @diagnostic.wrap(e, "cannot access script '\{executable}'")
+      e => raise e
     }
     if kind != Regular {
       raise @diagnostic.failure(
@@ -99,11 +101,12 @@ pub async fn DocumentContext::resolve_target(
   }
   if case.module_name is Some(_) && self.module_context is Some(context) {
     let package_path = resolve_package(context, executable) catch {
-      e =>
+      @diagnostic.Failure(_) | @os_error.OSError(_) | @utf8.Malformed(_) as e =>
         raise @diagnostic.wrap(
           e,
           "cannot resolve executable package '\{executable}'",
         )
+      e => raise e
     }
     Package(context.root, package_path)
   } else {

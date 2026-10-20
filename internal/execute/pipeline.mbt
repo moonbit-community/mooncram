@@ -118,7 +118,7 @@ async fn capture_pipeline(
             stderr=stderr_writer,
             cancel_handler=@process.hard_cancel(),
           ) catch {
-            e => {
+            @os_error.OSError(_) as e => {
               let error = @diagnostic.wrap(
                 e,
                 "failed to start '\{command.program}'",
@@ -135,13 +135,14 @@ async fn capture_pipeline(
               }
               raise progress.remember(error)
             }
+            e => raise e
           }
           processes.push(
             process_group.spawn(() => {
               let status = process.wait()
               progress.pending[i] = None
               check_remote_status(command.remote, i + 1, status) catch {
-                e =>
+                @diagnostic.Failure(_) as e =>
                   raise progress.remember(
                     @diagnostic.context(
                       e,
@@ -150,6 +151,7 @@ async fn capture_pipeline(
                       tool=command.program,
                     ),
                   )
+                e => raise e
               }
               status
             }),
@@ -178,7 +180,7 @@ async fn capture_pipeline(
         exit_code,
       }
     } catch {
-      e => {
+      @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
         let primary = progress.remember(e)
         // Only readers remain. A descendant may still hold a pipe open; never
         // let preserving logs delay cancellation indefinitely. The outer case
@@ -191,10 +193,12 @@ async fn capture_pipeline(
             }
           }),
         ) catch {
-          _ => ()
+          @diagnostic.Failure(_) | @async.WaitedTaskAlreadyCancelled => ()
+          e => raise e
         }
         raise primary
       }
+      e => raise e
     }
   })
 }

@@ -3,6 +3,7 @@ import {
   "moonbit-community/mooncram/internal/output",
   "moonbit-community/chalk",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "moonbitlang/core/diff",
   "moonbitlang/core/env",
 }

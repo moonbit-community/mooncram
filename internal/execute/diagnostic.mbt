@@ -109,7 +109,7 @@ async fn capture_stream(
     }
     log.complete = true
     @utf8.decode(log.bytes.to_bytes()) catch {
-      _ =>
+      @utf8.Malformed(_) =>
         raise @diagnostic.context(
           @diagnostic.failure("invalid UTF-8 in captured \{log.stream}"),
           phase=if log.phase == "build" { "build" } else { "capture" },
@@ -118,7 +118,7 @@ async fn capture_stream(
         )
     }
   } catch {
-    e => {
+    @diagnostic.Failure(_) | @os_error.OSError(_) | @io.ReaderClosed as e => {
       let error = match e {
         @diagnostic.Failure(_) => e
         _ => @diagnostic.wrap(e, "failed to read captured \{log.stream}")
@@ -132,6 +132,7 @@ async fn capture_stream(
         ),
       )
     }
+    e => raise e
   }
 }
 
