@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import { join } from "node:path";
 import {
+  ROOT,
   EXIT_CODE,
   DIRECTORY_LINK_TYPE,
   INVALID_PROGRAM,
@@ -14,7 +15,9 @@ import {
   writeDocument,
 } from "./basic.mjs";
 
-const CLI_VERSION = "0.0.7";
+const CLI_VERSION = fs.readFileSync(join(ROOT, "moon.mod"), "utf8")
+  .match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+assert(CLI_VERSION, "moon.mod must declare a version");
 const INVALID_CLI_ARGUMENTS = [
   ["test", "--timeout-ms", "0"],
   ["test", "--target", "js"],
@@ -66,7 +69,7 @@ export function testCliArguments({ cli, docs }) {
     cli(["help", option, value], { expected: EXIT_CODE.ERROR });
   }
   assert(cli(["update", "--help"]).stdout.includes("dry-run"));
-  assert(cli(["--version"]).stdout.includes(CLI_VERSION));
+  assert.equal(cli(["--version"]).stdout, `${CLI_VERSION}\n`);
   for (const args of INVALID_CLI_ARGUMENTS) {
     cli(args, { expected: EXIT_CODE.ERROR });
   }
