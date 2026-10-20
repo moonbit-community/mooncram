@@ -30,13 +30,15 @@ fn render_case(
   let mut fence_length = 3
   let mut previous_cr = case.newline == "\r"
   for (line, row) in @output.actual_expectation_layout(actual, case.expected) {
-    let old = match row {
-      Some(i) => case.expected.source_lines.get(i)
-      None => None
+    let old = if row is Some(i) {
+      case.expected.source_lines.get(i)
+    } else {
+      None
     }
-    let layout = match row {
-      Some(i) => case.output_layout.get(i).unwrap_or(case.command_layout)
-      None => case.command_layout
+    let layout = if row is Some(i) {
+      case.output_layout.get(i).unwrap_or(case.command_layout)
+    } else {
+      case.command_layout
     }
     let (rendered, fence_start) = if old == Some(line) {
       (layout.original, layout.original_fence_start)
@@ -68,14 +70,14 @@ fn render_case(
     // A bare LF immediately after CR would merge two source lines into CRLF.
     // Protect output blanks in that position while keeping both newline styles.
     // Separator blanks carry no assertion and must not become output instead.
-    let is_output = match row {
-      None => true
-      Some(i) =>
-        match case.expected.body {
-          Legacy(content) => i < content.lines.length()
-          Streams(sections) =>
-            sections.iter().any(s => i > s.start && i < s.content_end)
-        }
+    let is_output = if row is Some(i) {
+      match case.expected.body {
+        Legacy(content) => i < content.lines.length()
+        Streams(sections) =>
+          sections.iter().any(s => i > s.start && i < s.content_end)
+      }
+    } else {
+      true
     }
     let rendered = if previous_cr && rendered == "\n" && is_output {
       "\"\" (escaped)\n"

@@ -59,9 +59,10 @@ fn diagnostic(error : Error) -> Diagnostic {
 
 ///|
 fn[T] prefer(existing : T?, fallback : T?) -> T? {
-  match existing {
-    Some(_) => existing
-    None => fallback
+  if existing is Some(_) {
+    existing
+  } else {
+    fallback
   }
 }
 
@@ -100,9 +101,10 @@ pub fn context(
 /// Explain an operation while preserving its underlying reason and context.
 pub fn wrap(error : Error, summary : String) -> Failure {
   let d = diagnostic(error)
-  let cause = match d.cause {
-    Some(cause) => d.summary + "\n" + cause
-    None => d.summary
+  let cause = if d.cause is Some(cause) {
+    d.summary + "\n" + cause
+  } else {
+    d.summary
   }
   Failure({ ..d, summary, cause: Some(cause), })
 }
