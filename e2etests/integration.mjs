@@ -22,7 +22,7 @@ import { testBuildDiagnostics } from "./integration/diagnostics.spec.mjs";
 import { testCliArguments, testModuleResolution, testDirectoryScanning } from "./integration/cli.spec.mjs";
 import { testDocs } from "./integration/docs.spec.mjs";
 import { testDocExamples } from "./integration/doc-examples.spec.mjs";
-import { testPassingCases } from "./integration/execution.spec.mjs";
+import { testPassingCases, testScriptsWithoutMoonx } from "./integration/execution.spec.mjs";
 import { testCheck, testGeneratedTargets } from "./integration/check.spec.mjs";
 import {
   testExportRejection,
@@ -72,6 +72,7 @@ async function runIntegrationTests(target) {
     console.log(`${target}: embedded docs, runnable doc examples, check validation, tool isolation and generated target timing passed`);
     testModuleResolution(context);
     testPassingCases(context);
+    testScriptsWithoutMoonx(context);
     testExportRejection(context);
     testCommandEnvironmentCasing(context);
     testCommandEnvironment(context);

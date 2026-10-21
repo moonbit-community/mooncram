@@ -283,10 +283,12 @@ export function testBuildEnvironment({ cli, docs, directory, target }) {
   assert(builds.every(build => build.cwd === fs.realpathSync(join(directory, "cwd fixture"))));
   assert(builds.filter(build => build.args[0] === "-C").every(build =>
     build.args[1] === fs.realpathSync(join(directory, "project"))));
-  assert(modes.includes("parent"));
-  assert(modes.includes("package-temp") && modes.includes("script-temp") && modes.includes("pipeline-temp"));
-  assert(modes.every(mode => ["parent", "package-temp", "script-temp", "pipeline-temp"].includes(mode)));
-  assert.equal(builds.filter(build => build.mode === "script-temp" && build.args.includes("--build-only")).length, 1);
-  assert.equal(builds.filter(build => build.mode === "pipeline-temp" && build.args[0] === "-C").length, 1);
-  assert.equal(modes.at(-1), "parent", "temporary build env must not leak into the next case");
+  assert.deepEqual(modes, [
+    "parent", "parent", "parent", "package-temp", "script-temp", "pipeline-temp", "parent",
+  ], "each local segment builds exactly once in order, without leaking temporary env into later cases");
+  const scripts = builds.filter(build => build.args[0] === "run");
+  assert.equal(scripts.length, 2);
+  for (const build of scripts) {
+    assert.deepEqual(build.args.slice(0, 4), ["run", "--build-only", "--target", "wasm"]);
+  }
 }
