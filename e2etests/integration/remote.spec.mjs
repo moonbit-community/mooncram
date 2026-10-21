@@ -19,6 +19,7 @@ import {
   findTool,
   copyExecutable,
   copyTool,
+  createToolchain,
   isolatedExecutable,
   createEnvironment,
   createCli,
@@ -30,8 +31,7 @@ import {
 export async function testRemotePackages({ executable, docs, project, directory, target }) {
   // Substitute a native fixture for moonx, so no remote registry/cache or
   // network is touched. Real local packages still build and run normally.
-  const tools = join(directory, "remote-tools");
-  fs.mkdirSync(tools);
+  const tools = createToolchain(join(directory, "remote-tools"), ["moon", "moonc"]);
   const runner = copyTool("moonrun", tools);
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const stub = join(project, "moonx-double");
@@ -229,10 +229,11 @@ export async function testRemotePackages({ executable, docs, project, directory,
   const startup = block("$ moonx fixture/tool@1.2.3 hello\nwrong\n", "");
   const missing = write("startup", startup);
   const startupResult = invoke(["update", missing], { env: noMoonxEnv, expected: EXIT_CODE.ERROR });
-  assert(startupResult.stderr.includes("failed to start 'moonx'"));
+  assert(startupResult.stderr.includes(`failed to start '${double}'`), startupResult.stderr);
   assert(startupResult.stderr.includes("phase: start"));
   assert(startupResult.stderr.includes("segment: 1/1 (fixture/tool@1.2.3)"));
-  assert(startupResult.stderr.includes("hint: check that 'moonx' is available on PATH"));
+  assert(startupResult.stderr.includes(`tool: ${double}`), startupResult.stderr);
+  assert(!startupResult.stderr.includes("available on PATH"), startupResult.stderr);
   assert.equal(fs.readFileSync(missing, "utf8"), startup);
   await new Promise(resolve => setTimeout(resolve, 5500));
   for (const filename of [...cancelled, "remote-timeout.txt"]) {

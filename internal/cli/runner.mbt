@@ -1,6 +1,7 @@
 ///|
 async fn run_cli(cli : Cli) -> Int32 {
   let startup_cwd = @path.Path(".").resolve().to_string()
+  let toolchain = @execute.Toolchain::new(startup_cwd)
   let files = @files.discover(cli.paths)
   let color = @report.use_color(cli.color)
   let mut total = 0
@@ -40,6 +41,7 @@ async fn run_cli(cli : Cli) -> Int32 {
           let actual = @execute.execute_case(
             case,
             context,
+            toolchain~,
             target=cli.target,
             timeout_ms=cli.timeout_ms,
           )

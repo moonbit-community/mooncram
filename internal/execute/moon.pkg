@@ -7,10 +7,13 @@ import {
   "moonbit-community/mooncram/internal/output",
   "moonbit-community/mooncram/internal/resolve",
   "moonbitlang/async",
+  "moonbitlang/async/fs",
   "moonbitlang/async/io",
   "moonbitlang/async/os_error",
   "moonbitlang/async/process",
   "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/x/path",
 }
 
 supported_targets = "wasm+native"

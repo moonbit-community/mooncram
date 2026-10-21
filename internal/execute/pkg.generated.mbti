@@ -8,11 +8,15 @@ import {
 }
 
 // Values
-pub async fn execute_case(@markdown.Case, @resolve.DocumentContext, target~ : String, timeout_ms~ : Int32) -> @output.Captured
+pub async fn execute_case(@markdown.Case, @resolve.DocumentContext, toolchain~ : Toolchain, target~ : String, timeout_ms~ : Int32) -> @output.Captured
 
 // Errors
 
 // Types and methods
+pub struct Toolchain {
+  // private fields
+}
+pub fn Toolchain::new(String) -> Self
 
 // Type aliases
 

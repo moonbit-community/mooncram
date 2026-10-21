@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   EXIT_CODE,
   CANCELLATION_LIMIT_MS,
   EXECUTABLE_SUFFIX,
-  TOOL_DIRECTORIES,
   SCRIPT_FILENAME,
   SCRIPT_COMMAND,
   LOCAL_PACKAGE,
   run,
   block,
-  findTool,
   copyTool,
+  createToolchain,
   isolatedExecutable,
   createEnvironment,
   createCli,
@@ -130,28 +129,22 @@ export function testPipelinePreflight({ cli, docs, target }) {
 }
 
 export function testPipelineStartupFailure({ executable, docs, directory, project, packageDir, target }) {
-  // Remove moonrun from PATH while keeping the build tools. The native package
+  // Remove moonrun from the selected installation. The native package
   // starts successfully, then starting the script must fail and cancel it.
-  const tools = join(directory, "startup-tools");
-  fs.mkdirSync(tools);
-  for (const name of ["moon", "moonc"]) {
-    copyTool(name, tools);
-  }
-  // Launch the Wasm CLI with a renamed runner so its child lookup cannot find
-  // moonrun beside the parent executable, including on Windows.
+  const tools = createToolchain(join(directory, "startup-tools"), ["moon", "moonc"]);
+  // Launch the Wasm CLI with a renamed runner, keeping moonrun absent from
+  // the selected bin directory.
   const runner = copyTool("moonrun", tools, "mooncram-test-runner");
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const env = createEnvironment();
-  env.PATH = [tools, ...TOOL_DIRECTORIES.filter(path => !fs.existsSync(join(path, "moonrun" + EXECUTABLE_SUFFIX)))].join(delimiter);
-  // Copied build tools must still load resources from the original toolchain.
-  env.MOON_TOOLCHAIN_ROOT ??= dirname(dirname(fs.realpathSync(findTool("moonc"))));
+  env.PATH = [tools, env.PATH].join(delimiter);
   // Changing the tool paths can invalidate native build commands. Warm both
   // artifacts with this environment before measuring startup-failure cleanup.
   run([
-    "moon", "-C", project, "run", "--build-only", "--target", "native", packageDir,
+    join(tools, "moon" + EXECUTABLE_SUFFIX), "-C", project, "run", "--build-only", "--target", "native", packageDir,
   ], { cwd: docs, env });
   run([
-    "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
+    join(tools, "moon" + EXECUTABLE_SUFFIX), "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
   ], { cwd: docs, env });
   for (const middle of [false, true]) {
     const downstream = `${SCRIPT_COMMAND} echo` +
@@ -166,9 +159,10 @@ export function testPipelineStartupFailure({ executable, docs, directory, projec
     const elapsed = performance.now() - start;
     const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
       `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
-    assert(result.stderr.includes("failed to start 'moonrun'"), diagnostic);
-    assert(result.stderr.includes("tool: moonrun"), diagnostic);
-    assert(result.stderr.includes("check that 'moonrun' is available on PATH"), diagnostic);
+    const missing = join(tools, "moonrun" + EXECUTABLE_SUFFIX);
+    assert(result.stderr.includes(`failed to start '${missing}'`), diagnostic);
+    assert(result.stderr.includes(`tool: ${missing}`), diagnostic);
+    assert(!result.stderr.includes("available on PATH"), diagnostic);
     assert(result.stderr.includes("phase: start"), diagnostic);
     assert(result.stderr.includes("segment: 2/"), diagnostic);
     assert(result.stderr.includes("startup-error.md:5:"));

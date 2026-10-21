@@ -5,7 +5,7 @@ import { performance } from "node:perf_hooks";
 import {
   ROOT, EXIT_CODE, CANCELLATION_LIMIT_MS, IMPORTS, MAIN_PACKAGE_CONFIG,
   LOCAL_PACKAGE, SCRIPT_COMMAND, SCRIPT_FILENAME, run, formatImports, createEnvironment, copyExecutable,
-  copyTool, createCli, isolatedExecutable, writePackage, writeDocument, block,
+  copyTool, createToolchain, createCli, isolatedExecutable, writePackage, writeDocument, block,
 } from "./basic.mjs";
 
 export function testBuildDiagnostics({ executable, docs, project, directory, target }) {
@@ -15,11 +15,10 @@ export function testBuildDiagnostics({ executable, docs, project, directory, tar
   const artifact = JSON.parse(run([
     "moon", "-C", project, "run", "--build-only", "--target", "native", helper,
   ], { env: createEnvironment() }).stdout).artifacts_path[0];
-  const tools = join(directory, "build-diagnostic-tools");
-  fs.mkdirSync(tools);
-  copyExecutable(artifact, tools, "moon");
-  // Windows searches the runner's directory before PATH. Keep it beside the
-  // double so the installed moon.exe cannot take precedence.
+  const tools = createToolchain(join(directory, "build-diagnostic-tools"), ["moonc"]);
+  const moon = copyExecutable(artifact, tools, "moon");
+  // Keep the CLI launcher separate from the tool entries under test, including
+  // when the selected installation has no moonrun on Windows.
   const runner = copyTool("moonrun", tools, "mooncram-test-runner");
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const sideEffect = join(docs, "side-effect.txt");
@@ -40,7 +39,7 @@ export function testBuildDiagnostics({ executable, docs, project, directory, tar
       assert(result.stderr.startsWith(`ERROR ${fs.realpathSync(doc)}:2: `), result.stderr);
       assert(result.stderr.includes("phase: build"), result.stderr);
       assert(result.stderr.includes(`segment: 1/1 (${label})`), result.stderr);
-      assert(result.stderr.includes("tool: moon"), result.stderr);
+      assert(result.stderr.includes(`tool: ${moon}`), result.stderr);
       assert.equal(fs.readFileSync(doc, "utf8"), original);
       assert(!fs.existsSync(sideEffect), "program ran despite a failed build preflight");
       if (mode === "fail") {

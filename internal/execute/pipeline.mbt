@@ -123,16 +123,6 @@ async fn capture_pipeline(
                 e,
                 "failed to start '\{command.program}'",
               )
-              let error = if ["moon", "moonx", "moonrun"].contains(
-                  command.program,
-                ) {
-                @diagnostic.context(
-                  error,
-                  hint="check that '\{command.program}' is available on PATH",
-                )
-              } else {
-                error
-              }
               raise progress.remember(error)
             }
             e => raise e
@@ -159,7 +149,7 @@ async fn capture_pipeline(
         }
         progress.phase = phase
         progress.segment = if building { Some(labels[0]) } else { None }
-        progress.tool = if building { Some("moon") } else { None }
+        progress.tool = if building { Some(commands[0].program) } else { None }
         let mut exit_code = 0
         for process in processes {
           let status = process.wait()
