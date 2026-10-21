@@ -70,10 +70,17 @@ fn align_lines(
 fn stream_layout(
   text : String,
   expected : Array[ExpectedLine],
+  preserve_layout~ : Bool,
   protect_blank~ : Bool,
 ) -> Array[(String, Int32?)] {
   let (lines, no_eol) = output_lines(text)
-  let rows = align_lines(lines, expected)
+  // Reports need alignment only to retain patterns; updates also need source rows.
+  let rows = if preserve_layout ||
+    !expected.iter().all(line => line.matcher is Equal(_)) {
+    align_lines(lines, expected)
+  } else {
+    Array::make(lines.length(), None)
+  }
   lines.mapi((i, line) => {
     let row = rows[i]
     let mut rendered = match row {
@@ -117,7 +124,9 @@ pub fn actual_stream_expectation(
   text : String,
   expected : Array[ExpectedLine],
 ) -> Array[String] {
-  stream_layout(text, expected, protect_blank=true).map(row => row.0)
+  stream_layout(text, expected, preserve_layout=false, protect_blank=true).map(row => {
+    row.0
+  })
 }
 
 ///|
@@ -147,6 +156,15 @@ pub fn actual_expectation_layout(
   actual : Captured,
   expected : Expectation,
 ) -> Array[(String, Int32?)] {
+  render_expectation(actual, expected, preserve_layout=true)
+}
+
+///|
+fn render_expectation(
+  actual : Captured,
+  expected : Expectation,
+  preserve_layout~ : Bool,
+) -> Array[(String, Int32?)] {
   let rendered = []
   let status_row = match expected.body {
     Legacy(content) => {
@@ -154,6 +172,7 @@ pub fn actual_expectation_layout(
         (line, row) in stream_layout(
           actual.output,
           content.lines,
+          preserve_layout~,
           protect_blank=actual.exit_code == 0,
         ) {
         rendered.push((line, row))
@@ -177,7 +196,13 @@ pub fn actual_expectation_layout(
           }
         }
         rendered.push((section.stream.label(), Some(section.start)))
-        for (line, row) in stream_layout(text, lines, protect_blank=true) {
+        for
+          (line, row) in stream_layout(
+            text,
+            lines,
+            preserve_layout~,
+            protect_blank=true,
+          ) {
           rendered.push((line, row.map(i => section.start + 1 + i)))
         }
         for i in section.content_end..<section.end {
@@ -237,5 +262,5 @@ pub fn actual_expectation(
   actual : Captured,
   expected : Expectation,
 ) -> Array[String] {
-  actual_expectation_layout(actual, expected).map(row => row.0)
+  render_expectation(actual, expected, preserve_layout=false).map(row => row.0)
 }
