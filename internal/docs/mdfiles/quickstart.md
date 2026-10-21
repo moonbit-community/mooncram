@@ -26,7 +26,7 @@ variables, wildcards and `~` are not expanded, and redirection is unsupported.
 
 ## Create two files
 
-Have `mooncram` installed, with `moon`, `moonx` and `moonrun` on `PATH`.
+Have `mooncram` installed, with `moon` and `moonrun` on `PATH`.
 This example needs no repository checkout, module configuration or external
 dependencies. Create the following files in any working directory:
 

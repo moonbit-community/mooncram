@@ -17,23 +17,24 @@ let _embed_execution_md : String =
   #|
   #|## Tools and backends
   #|
-  #|Mooncram uses external MoonBit tools. `moon` must be available to build cases;
-  #|scripts and remote packages also require `moonx`, Wasm packages require `moonrun`, and native
-  #|package builds require the corresponding native toolchain. The backend used
+  #|Mooncram uses external MoonBit tools. Local cases require `moon` for builds;
+  #|scripts and Wasm packages require `moonrun` to execute the built artifacts.
+  #|Remote packages require `moonx`, and native package builds require the
+  #|corresponding native toolchain. The backend used
   #|to run mooncram itself is separate from the backend selected for a test case.
   #|
   #|| Case kind | Backend | Build behavior |
   #|| --- | --- | --- |
-  #|| `.mbtx` script | Always Wasm | Compilation is checked before running the script with `moonx`. |
+  #|| `.mbtx` script | Always Wasm | Built once per segment, then the returned artifact is run directly with `moonrun`. |
   #|| Local package | Wasm by default; `--target native` selects native | Built from the local module before execution. |
   #|| Remote package | Always Wasm | Fetched, built, and cached by `moonx` when its pipeline segment starts. |
   #|
   #|Scripts always use Wasm, including when the CLI specifies `native`.
   #|Mooncram requests a build for every local segment of every case, in segment order.
   #|All local segments must pass preflight before any tested program starts; build
-  #|reuse is performed by the underlying tools. Script preflight checks compilation
-  #|before `moonx` runs so that preflight compiler failures cannot be accepted as
-  #|expected program exits.
+  #|reuse is performed by the underlying tools. Scripts execute the artifact returned
+  #|by preflight without another build step. Later cases build again, so changes to
+  #|a script made by an earlier case take effect.
   #|
   #|Build failures and unusable build results are tool execution errors, not program
   #|results that can satisfy an expected `[N]` exit status. Build-error diagnostics
@@ -53,7 +54,7 @@ let _embed_execution_md : String =
   #|
   #|Builds and every tested pipeline segment inherit mooncram's environment and
   #|override names using that segment's temporary assignments. The same environment
-  #|is used for its build and execution, including script preflight and remote moonx
+  #|is used for its build and execution, including scripts and remote moonx
   #|tools. Their working directory is the
   #|validated block directory, or the canonical document's parent by default.
   #|Build processes and the first pipeline segment receive immediate EOF on stdin rather than
