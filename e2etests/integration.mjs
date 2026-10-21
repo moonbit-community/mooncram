@@ -43,6 +43,7 @@ import {
   testShellOperatorRejection,
 } from "./integration/pipelines.spec.mjs";
 import { assertNoSlowSideEffect, testTimeouts } from "./integration/timeouts.spec.mjs";
+import { testToolchainSelection } from "./integration/toolchain.spec.mjs";
 
 const ARGUMENT_OPTIONS = {
   help: { type: "boolean", short: "h" },
@@ -69,6 +70,7 @@ async function runIntegrationTests(target) {
     testDocExamples(context);
     testCheck(context);
     testGeneratedTargets(context);
+    testToolchainSelection(context);
     console.log(`${target}: embedded docs, runnable doc examples, check validation, tool isolation and generated target timing passed`);
     testModuleResolution(context);
     testPassingCases(context);
