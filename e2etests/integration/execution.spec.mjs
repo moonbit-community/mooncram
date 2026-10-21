@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import { dirname, join } from "node:path";
 import {
   ANSI_ESCAPE,
+  SCRIPT_FILENAME,
   SCRIPT_COMMAND,
   LOCAL_PACKAGE,
   block,
+  copyTool,
+  findTool,
+  isolatedExecutable,
+  createCli,
+  createEnvironment,
   quoteArgument,
   writeDocument,
   contextCase,
@@ -55,4 +63,35 @@ export function testPassingCases({ cli, docs, target }) {
   const result = cli(["test", good, "--target", target, "--color", "never"]);
   assert(result.stdout.includes("0 failed, 0 errors"));
   assert(!result.stdout.includes(ANSI_ESCAPE));
+}
+
+export function testScriptsWithoutMoonx({ executable, docs, directory, project, target }) {
+  const tools = join(directory, "script-tools");
+  fs.mkdirSync(tools);
+  for (const name of ["moon", "moonc"]) copyTool(name, tools);
+  const runner = copyTool("moonrun", tools);
+  const cli = createCli(isolatedExecutable(executable, target, runner), project);
+  // The isolated PATH has no moonx or native compiler. Scripts must stay on
+  // Wasm even when --target native is selected, for either CLI backend.
+  const env = { ...createEnvironment(), PATH: tools };
+  env.MOON_TOOLCHAIN_ROOT ??= dirname(dirname(fs.realpathSync(findTool("moonc"))));
+  const workspace = join(directory, "script workspace");
+  fs.mkdirSync(workspace);
+  fs.copyFileSync(join(docs, SCRIPT_FILENAME), join(workspace, SCRIPT_FILENAME));
+  fs.writeFileSync(join(workspace, "relative.txt"), "script cwd contents\n");
+  const rewritten = 'fn main { println("rebuilt after edit") }';
+  const document = writeDocument(docs, "scripts-without-moonx.md", block(
+    `#cwd(../script workspace)\n` +
+    `$ ${SCRIPT_COMMAND} args '' -- 'with space'\n["","--","with space"]\n` +
+    `$ MODE=script-temp ${SCRIPT_COMMAND} context\nscript-temp\nyes\nscript cwd contents\n` +
+    `$ ${SCRIPT_COMMAND} context\nparent\nyes\nscript cwd contents\n` +
+    `$ MODE=upstream ${SCRIPT_COMMAND} check-env MODE upstream | MODE=downstream ${SCRIPT_COMMAND} check-env-echo downstream\nupstream\n` +
+    `$ ${SCRIPT_COMMAND} status 255 0\n[255]\n` +
+    `$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n` +
+    `$ ${SCRIPT_COMMAND} write-file ${quoteArgument(SCRIPT_FILENAME)} ${quoteArgument(rewritten)}\n` +
+    `$ ${SCRIPT_COMMAND}\nrebuilt after edit\n`,
+  ));
+  const result = cli(["test", document, "--target", "native"], { env });
+  assert(result.stdout.includes("8 cases, 0 failed, 0 errors"), result.stdout);
+  assert.equal(fs.readFileSync(join(workspace, SCRIPT_FILENAME), "utf8"), rewritten);
 }

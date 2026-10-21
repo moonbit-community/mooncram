@@ -7,6 +7,8 @@ import {
   EXIT_CODE,
   CANCELLATION_LIMIT_MS,
   LOCAL_PACKAGE,
+  SCRIPT_COMMAND,
+  SCRIPT_FILENAME,
   block,
   writeDocument,
 } from "./basic.mjs";
@@ -18,12 +20,13 @@ export function assertNoSlowSideEffect(docs) {
   assert(!fs.existsSync(join(docs, SLOW_SIDE_EFFECT_FILENAME)));
   assert(!fs.existsSync(join(docs, "dual-slow.txt")));
   assert(!fs.existsSync(join(docs, "build-timeout-finished.txt")));
-  for (const segment of ["first", "middle", "last", "spawn", "capture"]) {
+  for (const segment of ["first", "middle", "last", "spawn", "capture",
+    "script", "script-first", "script-middle", "script-last"]) {
     assert(!fs.existsSync(join(docs, `slow-${segment}.txt`)));
   }
 }
 
-export function testTimeouts({ cli, docs }) {
+export function testTimeouts({ cli, docs, target }) {
   // A deadline covers the build and executable together. Both managed
   // native artifacts and moonrun processes must be cancelled promptly.
   for (const backend of TARGETS) {
@@ -67,5 +70,41 @@ export function testTimeouts({ cli, docs }) {
       "test", early, "--target", backend, "--timeout-ms", "1500",
     ], { expected: EXIT_CODE.ERROR }).stderr.includes("timed out after 1500 ms"));
   }
+  testScriptTimeouts({ cli, docs, target });
   assertNoSlowSideEffect(docs);
+}
+
+function testScriptTimeouts({ cli, docs, target }) {
+  // Warm every artifact first, then require start markers so a build timeout
+  // cannot pass as evidence that a running script was cancelled.
+  const warm = writeDocument(docs, "script-timeout-warm.md", block(
+    `$ ${SCRIPT_COMMAND} hello | ${LOCAL_PACKAGE} echo | ${SCRIPT_COMMAND} echo\nHello, Moon Bit!\n`,
+  ));
+  cli(["test", warm, "--target", "native"]);
+  for (const segments of [
+    [[SCRIPT_COMMAND, "script"]],
+    [[SCRIPT_COMMAND, "script-first"], [LOCAL_PACKAGE, "script-middle"], [SCRIPT_COMMAND, "script-last"]],
+  ]) {
+    for (const [, name] of segments) {
+      fs.rmSync(join(docs, `slow-${name}.txt.started`), { force: true });
+    }
+    const command = segments.map(([program, name]) => `${program} slow slow-${name}.txt`).join(" | ");
+    const original = block(`$ ${SCRIPT_COMMAND} hello\nwrong\n\n$ ${command}\nwrong\n`);
+    const document = writeDocument(docs, "script-timeout.md", original);
+    const start = performance.now();
+    const result = cli([
+      "update", document, "--target", "native", "--timeout-ms", "1500",
+    ], { expected: EXIT_CODE.ERROR });
+    assert(performance.now() - start < CANCELLATION_LIMIT_MS, result.stderr);
+    assert(result.stderr.includes("timed out after 1500 ms"), result.stderr);
+    assert(result.stderr.includes("phase: run"), result.stderr);
+    for (const [index, [program, name]] of segments.entries()) {
+      const label = program === SCRIPT_COMMAND ? `./${SCRIPT_FILENAME}` : LOCAL_PACKAGE.slice(6);
+      assert(result.stderr.includes(`${index + 1}/${segments.length} (${label})`), result.stderr);
+      assert(fs.existsSync(join(docs, `slow-${name}.txt.started`)),
+        `${target}: timeout must exercise a running ${name} segment`);
+    }
+    assert(result.stderr.includes("Not updating"), result.stderr);
+    assert.equal(fs.readFileSync(document, "utf8"), original);
+  }
 }

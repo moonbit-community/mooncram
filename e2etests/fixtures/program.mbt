@@ -29,6 +29,7 @@ async fn main {
     }
     "make-directory" => @fs.mkdir(args[2])
     "read-file" => @stdio.stdout.write(@fs.read_file(args[2]))
+    "write-file" => @fs.write_file(args[2], args[3])
     "relay" => {
       @stdio.stderr.write(args[2] + "\n")
       @stdio.stdout.write(@stdio.stdin.read_all())
