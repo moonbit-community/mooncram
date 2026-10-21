@@ -17,7 +17,8 @@ mooncram 解析代码行之前，先应用 Markdown 的围栏缩进规则。
 
 ## 完整的本地示例
 
-先安装 `mooncram`，并确保 `moon`、`moonx` 和 `moonrun` 位于 `PATH`。
+先安装 `mooncram` 和完整 MoonBit 工具链，将安装的 `bin` 目录加入 `PATH`。
+整次 mooncram 调用使用该安装中的工具。
 在新建的 `demo` 目录中创建以下文件。本例无需仓库副本或外部依赖。
 
 ```text

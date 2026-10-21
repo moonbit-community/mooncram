@@ -32,7 +32,8 @@ mooncram 的设计**受 [scrut](https://facebookincubator.github.io/scrut/docs/)
 ## 快速开始
 
 先安装 [MoonBit 工具链](https://www.moonbitlang.com/download/)，
-确保 `moon`、`moonx` 和 `moonrun` 都在 `PATH` 中。
+将其 `bin` 目录加入 `PATH`。每次 mooncram 调用选择首个可执行的 `moon`，
+并按需使用同一安装中的 `moonrun` 和 `moonx`。
 
 体验当前源码版本：
 

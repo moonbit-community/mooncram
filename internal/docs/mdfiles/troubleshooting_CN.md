@@ -41,8 +41,10 @@
 | 找不到脚本 | 脚本相对于块的 `#cwd` 目录或规范文档的父目录解析，不是启动目录。检查拼写、`.mbtx` 后缀，以及是否由前面的用例生成。 | 修正路径后运行 `mooncram check tests/example.md`；对于生成的脚本，用 `mooncram test tests/example.md` 验证准备步骤。 |
 | `#cwd` 目录不存在，或文档没有执行任何用例 | 执行该文档的任何用例前，全部块工作目录就必须存在。相对 `#cwd` 以文档目录为基准，引号会成为目录名的一部分。 | 在启动 mooncram 前创建目录，或修正 `#cwd`，再运行 `mooncram check tests/example.md`。 |
 | 缺少模块或模块名称不匹配 | 启动目录必须直接包含 `moon.mod`，不向父目录搜索。围栏声明必须与其 `name` 完全一致，本地目标必须写完整模块/包名。`#cwd` 不改变模块查找位置。 | 在终端切换到模块根目录，修正声明或目标，再用相对于根目录的路径运行 `mooncram check tests/example.md`。 |
+| `failed to resolve MoonBit toolchain` | 启动时 `PATH` 中首个可执行的 `moon` 必须解析到完整安装，包含 `bin/moonc`、`include` 和 `lib/core`（Windows 添加 `.exe`）。`tool` 显示选中的绝对路径；首个安装无效时不尝试后面的条目，不支持版本管理器 shim。 | 修复该安装，或将完整安装的 `bin` 放到 `PATH` 首位，再运行 `mooncram test tests/example.md`。`check` 不验证工具链。 |
+| `failed to start` 指向 `moonrun` 或 `moonx` | 两个配套工具均取自选中 `moon` 所在安装的 `bin`，不会使用 `PATH` 中的其他安装。根据绝对 `tool` 路径及系统错误检查文件缺失和执行权限。 | 恢复该安装中所需的配套工具，或调整启动时的 `PATH` 选择完整安装后重新运行。段内 `PATH` 赋值不会切换安装。 |
 | 构建失败 | 阅读 `phase: build` 上下文和捕获的编译输出，检查依赖、可执行包配置、所选后端及工具是否可用。构建失败不能满足程序的 `[N]` 预期。 | 修复报告中的构建问题，再以相同后端运行 `mooncram test tests/example.md --color never`。 |
-| 超时 | 期限包含本地构建、远程获取、执行和输出捕获。根据报告阶段和部分输出，判断是否构建或下载过慢、等待输入，或程序未退出。 | 修复挂起；如果操作确实需要更多时间，重试 `mooncram test tests/example.md --timeout-ms 120000`。 |
+| 超时 | 期限包含首次工具链解析、本地构建、远程获取、执行和输出捕获。根据报告阶段和部分输出，判断是否路径搜索、构建或下载过慢、等待输入，或程序未退出。 | 修复挂起；如果操作确实需要更多时间，重试 `mooncram test tests/example.md --timeout-ms 120000`。 |
 | 输出看起来相同却失败 | 除退出码外，还要检查行尾空格、制表符、空行、ANSI 转义和末尾换行。CRLF 会规范化，其他字符仍有意义。差异展示的是预期语法，不是原始字节。 | 运行 `mooncram test tests/example.md --color never`，查看 actual 一侧的 `(escaped)` 和 `(no-eol)`，修复程序或精确预期。 |
 | stderr 出现意外消息仍通过 | 无标记用例只断言 stdout；对 stderr 做断言必须同时提供两个流标记。 | 在 `@STDOUT` 下写预期输出，并加上 `@STDERR (empty)` 要求静默；或者用 `@STDOUT (ignore)` 和 `@STDERR` 只检查 stderr，再运行 `mooncram test tests/example.md`。 |
 | 更新打印 `FAIL`，但汇总为 `updated 0` | 文档内任何执行错误都会抑制全部更新；查找 `ERROR` 和 `Not updating ...: execution errors in this document`。替换或更新校验错误也可能阻止修改；其他文档可能已经更新。 | 修复错误后重跑 `mooncram update tests/example.md --dry-run`，审阅差异，再应用并复测。 |

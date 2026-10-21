@@ -26,7 +26,8 @@ variables, wildcards and `~` are not expanded, and redirection is unsupported.
 
 ## Create two files
 
-Have `mooncram` installed, with `moon` and `moonrun` on `PATH`.
+Install `mooncram` and a complete MoonBit toolchain, with its `bin` directory on
+`PATH`. Mooncram uses that installation's `moon` and `moonrun` for these scripts.
 This example needs no repository checkout, module configuration or external
 dependencies. Create the following files in any working directory:
 

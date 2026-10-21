@@ -1,7 +1,8 @@
 # 常见断言的完整模板
 
 以下示例提供完整程序和测试文档，复制两个文件即可，无需占位脚本或模块配置。
-确保 `mooncram`、`moon` 和 `moonrun` 位于 `PATH`。
+先安装 `mooncram` 和完整 MoonBit 工具链，将安装的 `bin` 目录加入 `PATH`。
+脚本使用同一安装中的 `moon` 和 `moonrun`。
 脚本固定了 `moonbitlang/async` 和 `moonbitlang/x` 的版本；
 首次构建需要下载依赖。
 
