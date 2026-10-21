@@ -3,7 +3,8 @@
 ///
 /// `target` must be `"wasm"` or `"native"` and applies to local packages;
 /// scripts and remote tools always run as Wasm. `timeout_ms` is the positive
-/// deadline for target resolution, all builds, remote fetching and execution.
+/// deadline for toolchain/target resolution, builds, remote fetching and execution.
+/// `toolchain` is shared by every case in this CLI invocation.
 ///
 /// Every local segment finishes its build preflight before tested programs
 /// start. Segments run concurrently, inheriting the process environment with
@@ -22,6 +23,7 @@
 pub async fn execute_case(
   case : @markdown.Case,
   context : @resolve.DocumentContext,
+  toolchain~ : Toolchain,
   target~ : String,
   timeout_ms~ : Int32,
 ) -> @output.Captured {
@@ -43,6 +45,7 @@ pub async fn execute_case(
         segment.argv,
         cwd,
         resolved,
+        toolchain~,
         target~,
         extra_env=segment.extra_env,
         progress~,
@@ -69,16 +72,18 @@ async fn prepare_command(
   argv : Array[String],
   cwd : String,
   resolved : @resolve.ResolvedTarget,
+  toolchain~ : Toolchain,
   target~ : String,
   extra_env~ : Map[String, String],
   progress~ : Progress,
 ) -> Command {
+  let tools = toolchain.resolve(progress)
   let args = argv[2:].to_owned()
   match resolved {
     Remote(coordinate) =>
       {
         label: argv[1],
-        program: "moonx",
+        program: tools.tool("moonx"),
         extra_env,
         args: ["--target", "wasm", coordinate, "--"] + args,
         remote: Some(coordinate),
@@ -89,12 +94,13 @@ async fn prepare_command(
       let artifact = build_artifact(
         ["run", "--build-only", "--target", "wasm", executable],
         cwd,
+        tools~,
         extra_env~,
         progress~,
       )
       {
         label: argv[1],
-        program: "moonrun",
+        program: tools.tool("moonrun"),
         extra_env,
         remote: None,
         args: [artifact, "--"] + args,
@@ -106,13 +112,14 @@ async fn prepare_command(
           "-C", module_root, "run", "--build-only", "--target", target, package_path,
         ],
         cwd,
+        tools~,
         extra_env~,
         progress~,
       )
       if target == "wasm" {
         {
           label: argv[1],
-          program: "moonrun",
+          program: tools.tool("moonrun"),
           extra_env,
           remote: None,
           args: [artifact, "--"] + args,
@@ -128,13 +135,14 @@ async fn prepare_command(
 async fn build_artifact(
   args : Array[String],
   cwd : String,
+  tools~ : ResolvedToolchain,
   extra_env~ : Map[String, String],
   progress~ : Progress,
 ) -> String {
   progress.phase = "build"
-  progress.tool = Some("moon")
+  progress.tool = Some(tools.moon)
   let build = capture_pipeline(
-    [{ label: "moon", program: "moon", extra_env, args, remote: None, }],
+    [{ label: "moon", program: tools.moon, extra_env, args, remote: None, }],
     cwd,
     progress~,
     building=true,

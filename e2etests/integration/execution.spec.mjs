@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   ANSI_ESCAPE,
   SCRIPT_FILENAME,
@@ -8,7 +8,7 @@ import {
   LOCAL_PACKAGE,
   block,
   copyTool,
-  findTool,
+  createToolchain,
   isolatedExecutable,
   createCli,
   createEnvironment,
@@ -66,15 +66,12 @@ export function testPassingCases({ cli, docs, target }) {
 }
 
 export function testScriptsWithoutMoonx({ executable, docs, directory, project, target }) {
-  const tools = join(directory, "script-tools");
-  fs.mkdirSync(tools);
-  for (const name of ["moon", "moonc"]) copyTool(name, tools);
+  const tools = createToolchain(join(directory, "script-tools"), ["moon", "moonc"]);
   const runner = copyTool("moonrun", tools);
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   // The isolated PATH has no moonx or native compiler. Scripts must stay on
   // Wasm even when --target native is selected, for either CLI backend.
   const env = { ...createEnvironment(), PATH: tools };
-  env.MOON_TOOLCHAIN_ROOT ??= dirname(dirname(fs.realpathSync(findTool("moonc"))));
   const workspace = join(directory, "script workspace");
   fs.mkdirSync(workspace);
   fs.copyFileSync(join(docs, SCRIPT_FILENAME), join(workspace, SCRIPT_FILENAME));

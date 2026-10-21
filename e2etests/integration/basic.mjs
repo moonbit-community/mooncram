@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -107,6 +107,19 @@ export function copyExecutable(source, directory, name) {
 
 export function copyTool(name, directory, destinationName = name) {
   return copyExecutable(findTool(name), directory, destinationName);
+}
+
+// Keep the selected moon physically inside its own installation. Resource
+// directory links avoid duplicating the standard library for every fixture.
+export function createToolchain(directory, names = ["moon", "moonc", "moonrun", "moonx"]) {
+  const source = dirname(dirname(fs.realpathSync(findTool("moon"))));
+  const bin = join(directory, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  for (const name of ["include", "lib"]) {
+    fs.symlinkSync(join(source, name), join(directory, name), DIRECTORY_LINK_TYPE);
+  }
+  for (const name of names) copyTool(name, bin);
+  return fs.realpathSync(bin);
 }
 
 export function isolatedExecutable(executable, target, runner) {

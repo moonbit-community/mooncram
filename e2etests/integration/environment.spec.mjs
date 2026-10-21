@@ -10,6 +10,7 @@ import {
   block,
   findTool,
   createEnvironment,
+  createToolchain,
   createDocuments,
   writeDocument,
 } from "./basic.mjs";
@@ -256,8 +257,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
 export function testBuildEnvironment({ cli, docs, directory, target }) {
   if (process.platform === "win32") return;
   const realMoon = findTool("moon");
-  const tools = join(directory, "build-env-tools");
-  fs.mkdirSync(tools);
+  const tools = createToolchain(join(directory, "build-env-tools"), ["moonc", "moonrun", "moonx"]);
   const log = join(directory, "build-env.jsonl");
   fs.writeFileSync(join(tools, "moon"), '#!/usr/bin/env node\n' +
     'const fs = require("node:fs");\n' +
