@@ -127,8 +127,9 @@ fn apply_edits(source : String, edits : Array[Edit]) -> String {
 /// backtick length of at least three, considering every case sharing it. Changed-case
 /// counts include all cases affected by marker changes, counted at most once.
 ///
-/// Re-parses the generated text and checks that commands/configuration remain
-/// unchanged and every expectation matches its capture. Validation failures
+/// Re-parses changed text and checks that commands/configuration remain
+/// unchanged and every expectation matches its capture. Unchanged text reuses
+/// the parsed document and still checks every capture. Validation failures
 /// raise errors instead of returning an update.
 /// Re-parsing preserves literal arguments and assignments. No commands execute
 /// and no files are written; commit with `@files.write_document` if desired.
@@ -174,6 +175,12 @@ pub fn generate(
         }
       }
     }
+  }
+  if edits.is_empty() {
+    for i, case in document.cases {
+      validate_expectation(case.expected, captures[i], i)
+    }
+    return { source: document.source, changed_cases: 0, }
   }
   edits.sort_by((a, b) => a.start.compare(b.start))
   let source = apply_edits(document.source, edits)

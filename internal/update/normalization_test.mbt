@@ -1,4 +1,51 @@
 ///|
+test "normalized updates return the original mixed-layout document unchanged" {
+  let source = "Intro😀\r\n\n> ```mooncram\r\n>$ moonx ./a.mbtx\n>head\r\n>tail (no-eol)\n>\r\n>$ moonx ./b.mbtx\r\n>@STDERR (empty)\n>@STDOUT\n>v* (glob)\r\n> [0-9]+ (regex)\n> [2]\r\n> ```\nTail"
+  let doc = @markdown.parse_document("unchanged.md", source)
+  let result = @update.generate(doc, [
+    { output: "head\ntail", diagnostic: "ignored", exit_code: 0, },
+    { output: "version\n123\n", diagnostic: "", exit_code: 2, },
+  ])
+  assert_eq(result.source, source)
+  assert_eq(result.changed_cases, 0)
+}
+
+///|
+test "documents without cases return unchanged source and zero changes" {
+  for
+    source in [
+      "", "# Notes\r\n\r\nNo cases 😀.\n", "Intro\n\n```text\n$ literal\n```\nTail",
+      "`````mooncram\n#cwd(.)\n`````\n",
+    ] {
+    let doc = @markdown.parse_document("empty.md", source)
+    assert_true(doc.cases.is_empty())
+    let result = @update.generate(doc, [])
+    assert_eq(result.source, source)
+    assert_eq(result.changed_cases, 0)
+  }
+}
+
+///|
+test "passing cases still normalize their shared fence without output edits" {
+  let source = "``````mooncram\n$ moonx ./a.mbtx\n```\n\n$ moonx ./b.mbtx\nkeep\n``````\n"
+  let doc = @markdown.parse_document("fence.md", source)
+  let captures : Array[@output.Captured] = [
+    { output: "```\n", diagnostic: "", exit_code: 0, },
+    { output: "keep\n", diagnostic: "", exit_code: 0, },
+  ]
+  for i, case in doc.cases {
+    assert_true(case.expected.matches(captures[i]))
+  }
+  let result = @update.generate(doc, captures)
+  assert_eq(result.source, source.replace_all(old="``````", new="````"))
+  assert_eq(result.changed_cases, 2)
+  let parsed = @markdown.parse_document("fence.md", result.source)
+  let again = @update.generate(parsed, captures)
+  assert_eq(again.source, result.source)
+  assert_eq(again.changed_cases, 0)
+}
+
+///|
 test "passing exact expectations normalize to readable text" {
   let lines = [
     "[INFO] ready", "$HOME", "[literal]", "inline `code` and ``ticks``", "  leading",
@@ -192,6 +239,24 @@ test "whole document updates normalize every case fence and count each case once
   let again = @update.generate(parsed, captures)
   assert_eq(again.source, result.source)
   assert_eq(again.changed_cases, 0)
+}
+
+///|
+test "exact updates retain aligned container prefixes and mixed newlines" {
+  let prefix = "> ```mooncram\r\n>$ moonx ./a.mbtx\n"
+  let source = prefix + ">head\r\n> keep\n>tail\r\n> ```\r\n"
+  for
+    (output, body) in [
+      ("head\ninsert\nkeep\ntail\n", ">head\r\n>insert\n> keep\n>tail\r\n"),
+      ("head\ntail\n", ">head\r\n>tail\r\n"),
+      ("head\nnew\ntail\n", ">head\r\n> new\n>tail\r\n"),
+    ] {
+    assert_update(
+      source,
+      [{ output, diagnostic: "", exit_code: 0, }],
+      prefix + body + "> ```\r\n",
+    )
+  }
 }
 
 ///|
