@@ -1,4 +1,17 @@
 ///|
+fn validate_expectation(
+  expected : @output.Expectation,
+  actual : @output.Captured,
+  index : Int32,
+) -> Unit raise {
+  guard expected.matches(actual) else {
+    raise @diagnostic.failure(
+      "generated expectation does not match captured output for case \{index + 1}",
+    )
+  }
+}
+
+///|
 fn validate_generated(
   before : @markdown.Document,
   source : String,
@@ -29,10 +42,6 @@ fn validate_generated(
         "generated document changed command or configuration for case \{i + 1}",
       )
     }
-    guard new.expected.matches(captures[i]) else {
-      raise @diagnostic.failure(
-        "generated expectation does not match captured output for case \{i + 1}",
-      )
-    }
+    validate_expectation(new.expected, captures[i], i)
   }
 }
