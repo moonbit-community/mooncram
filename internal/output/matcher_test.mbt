@@ -49,6 +49,56 @@ test "empty output empty lines whitespace and exit status" {
 }
 
 ///|
+test "line counts distinguish empty output trailing blanks and final newlines" {
+  for
+    (body, matching_output) in [
+      ("", ""),
+      ("\"\" (escaped)\n", "\n"),
+      ("\"\" (escaped)\n\"\" (escaped)\n", "\n\n"),
+      ("a (no-eol)\n", "a"),
+      ("a\n", "a\n"),
+      ("a\n\"\" (escaped)\n", "a\n\n"),
+    ] {
+    for output in ["", "\n", "\n\n", "a", "a\n", "a\n\n"] {
+      assert_output(body, output, 0, output == matching_output)
+    }
+  }
+}
+
+///|
+test "line matching rejects missing extra and mismatched lines" {
+  let body = "a\nb\nc\n"
+  assert_output(body, "a\nb\nc\n", 0, true)
+  for
+    output in [
+      "x\nb\nc\n", "a\nx\nc\n", "a\nb\nx\n", "a\nb\n", "a\nb\nc\nd\n", "a\nb\nc\n\n",
+    ] {
+    assert_output(body, output, 0, false)
+  }
+}
+
+///|
+test "empty line matchers require an actual line" {
+  for line in ["\"\" (escaped)", "* (glob)", ".* (regex)"] {
+    let body = "a\n" + line + "\n"
+    assert_output(body, "a\n\n", 0, true)
+    assert_output(body, "a\n", 0, false)
+    assert_output(body, "a\n\n\n", 0, false)
+    assert_output(body + "b\n", "a\n\nb\n", 0, true)
+    assert_output(body + "b\n", "a\nb\n", 0, false)
+  }
+  for line in ["* (glob)", ".* (regex)"] {
+    let body = line + " (no-eol)\n"
+    assert_output(body, "x", 0, true)
+    assert_output(body, "", 0, false)
+    assert_output(body, "\n", 0, false)
+    assert_output("a\n" + body, "a\nx", 0, true)
+    assert_output("a\n" + body, "a\n", 0, false)
+    assert_output("a\n" + body, "a\n\n", 0, false)
+  }
+}
+
+///|
 test "no-eol escaped controls and syntax conflicts" {
   assert_output("tail (no-eol)\n", "tail", 0, true)
   assert_output("tail (no-eol)\n", "tail\n", 0, false)
@@ -116,6 +166,28 @@ test "regex matches whole lines including alternations" {
 }
 
 ///|
+test "glob and regex match whole Unicode lines at nonzero offsets" {
+  for
+    (middle, last) in [
+      ("中? [0-9] (glob)", "尾. (?:甲|乙) (regex)"),
+      ("中. [0-9] (regex)", "尾? [甲乙] (glob)"),
+    ] {
+    for (annotation, eol) in [("", "\n"), (" (no-eol)", "")] {
+      let body = "前😀\n" + middle + "\n" + last + annotation + "\n"
+      assert_output(body, "前😀\n中😀 7\n尾🚀 乙" + eol, 0, true)
+      for
+        output in [
+          "前😀\nx中😀 7\n尾🚀 乙", "前😀\n中😀 7x\n尾🚀 乙",
+          "前😀\n中😀 7\nx尾🚀 乙", "前😀\n中😀 7\n尾🚀 乙x",
+          "前😀\n中😀😀 7\n尾🚀 乙", "前😀\n中😀 7\n尾🚀🚀 乙",
+        ] {
+        assert_output(body, output + eol, 0, false)
+      }
+    }
+  }
+}
+
+///|
 test "equal suffix matches literal text including with no-eol" {
   for line in [" (equal)", "hello (equal)", "literal (glob) (equal)"] {
     let without_suffix = line[:line.length() - 8].to_owned()
@@ -167,6 +239,17 @@ fn assert_streams(
 }
 
 ///|
+test "matching preserves Unicode whitespace and CR without normalization" {
+  let body = "\"中文😀  \" (escaped)\n\"\\t\\r\\t  \" (escaped)\n\"末行🚀\\r\" (escaped) (no-eol)\n"
+  assert_streams(body, "中文😀  \n\t\r\t  \n末行🚀\r", "", 0, true)
+  assert_streams(body, "中文😀 \n\t\r\t  \n末行🚀\r", "", 0, false)
+  assert_streams(body, "中文😀  \n\t\t  \n末行🚀\r", "", 0, false)
+  assert_streams(body, "中文😀  \n\t\r\t  \n末行🚀", "", 0, false)
+  assert_streams("a\n", "a\r\n", "", 0, false)
+  assert_streams("\"a\\r\" (escaped)\n", "a\r\n", "", 0, true)
+}
+
+///|
 test "paired streams match independently in either order" {
   for
     body in [
@@ -214,6 +297,52 @@ test "each stream has independent patterns and final newline" {
   )
   assert_output("\"@STDERR\" (escaped)\n", "@STDERR\n", 0, true)
   assert_output("@stdout\n@STDOUTish\n", "@stdout\n@STDOUTish\n", 0, true)
+}
+
+///|
+test "paired multiline streams check content line counts and final newline" {
+  for (out_annotation, out_eol) in [("", "\n"), (" (no-eol)", "")] {
+    for (err_annotation, err_eol) in [("", "\n"), (" (no-eol)", "")] {
+      let body = "@STDOUT\n前😀\n中? (glob)\n尾. (regex)" +
+        out_annotation +
+        "\n@STDERR\n警告\n代碼 [0-9]+ (regex)\n終? (glob)" +
+        err_annotation +
+        "\n"
+      let stdout = "前😀\n中😀\n尾🚀" + out_eol
+      let stderr = "警告\n代碼 42\n終😀" + err_eol
+      assert_streams(body, stdout, stderr, 0, true)
+      for
+        output in [
+          "錯誤\n中😀\n尾🚀", "前😀\n錯誤\n尾🚀", "前😀\n中😀\n錯誤",
+          "前😀\n中😀", "前😀\n中😀\n尾🚀\nextra",
+        ] {
+        assert_streams(body, output + out_eol, stderr, 0, false)
+      }
+      for
+        diagnostic in [
+          "錯誤\n代碼 42\n終😀", "警告\n錯誤\n終😀", "警告\n代碼 42\n錯誤",
+          "警告\n代碼 42", "警告\n代碼 42\n終😀\nextra",
+        ] {
+        assert_streams(body, stdout, diagnostic + err_eol, 0, false)
+      }
+      let wrong_out_eol = if out_eol == "" { "\n" } else { "" }
+      let wrong_err_eol = if err_eol == "" { "\n" } else { "" }
+      assert_streams(
+        body,
+        "前😀\n中😀\n尾🚀" + wrong_out_eol,
+        stderr,
+        0,
+        false,
+      )
+      assert_streams(
+        body,
+        stdout,
+        "警告\n代碼 42\n終😀" + wrong_err_eol,
+        0,
+        false,
+      )
+    }
+  }
 }
 
 ///|
