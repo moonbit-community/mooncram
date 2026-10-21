@@ -67,7 +67,7 @@ fn glob_char(chars : Array[Char], start : Int32) -> (Char, Int32) raise {
 }
 
 ///|
-fn match_glob(tokens : Array[GlobToken], text : String) -> Bool {
+fn match_glob(tokens : Array[GlobToken], text : StringView) -> Bool {
   let chars = text.to_array()
   let mut previous = Array::make(chars.length() + 1, false)
   previous[0] = true

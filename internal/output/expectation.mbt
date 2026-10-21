@@ -258,9 +258,9 @@ pub fn output_lines(text : String) -> (Array[String], Bool) {
 }
 
 ///|
-fn Matcher::matches(self : Matcher, text : String) -> Bool {
+fn Matcher::matches(self : Matcher, text : StringView) -> Bool {
   match self {
-    Equal(expected) => expected == text
+    Equal(expected) => expected[:] == text
     Glob(tokens) => match_glob(tokens, text)
     Regex(regex) =>
       regex.execute(text) is Some(result) && result.content() == text
@@ -269,16 +269,23 @@ fn Matcher::matches(self : Matcher, text : String) -> Bool {
 
 ///|
 fn StreamExpectation::matches(self : StreamExpectation, text : String) -> Bool {
-  let (lines, no_eol) = output_lines(text)
-  if self.no_eol != no_eol || self.lines.length() != lines.length() {
+  let no_eol = !text.is_empty() && !text.has_suffix("\n")
+  if self.no_eol != no_eol {
     return false
   }
-  for i, expected in self.lines {
-    if !expected.matcher.matches(lines[i]) {
+  if text.is_empty() {
+    return self.lines.is_empty()
+  }
+  // Remove only the final LF delimiter, preserving preceding empty lines.
+  let content = if no_eol { text[:] } else { text[:text.length() - 1] }
+  let lines = content.split("\n")
+  for expected in self.lines {
+    guard lines.next() is Some(line) else { return false }
+    if !expected.matcher.matches(line) {
       return false
     }
   }
-  true
+  lines.next() is None
 }
 
 ///|
