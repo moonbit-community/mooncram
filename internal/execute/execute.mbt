@@ -84,21 +84,20 @@ async fn prepare_command(
         remote: Some(coordinate),
       }
     Script(executable) => {
-      // moonx combines build and program statuses. Check compilation first.
-      ignore(
-        build_artifact(
-          ["run", "--build-only", "--target", "wasm", executable],
-          cwd,
-          extra_env~,
-          progress~,
-        ),
+      // Run the prebuilt Wasm directly, keeping build failures separate from
+      // program statuses without entering the build flow again.
+      let artifact = build_artifact(
+        ["run", "--build-only", "--target", "wasm", executable],
+        cwd,
+        extra_env~,
+        progress~,
       )
       {
         label: argv[1],
-        program: "moonx",
+        program: "moonrun",
         extra_env,
         remote: None,
-        args: [executable, "--"] + args,
+        args: [artifact, "--"] + args,
       }
     }
     Package(module_root, package_path) => {

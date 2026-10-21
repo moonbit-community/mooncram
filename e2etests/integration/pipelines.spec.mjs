@@ -130,23 +130,25 @@ export function testPipelinePreflight({ cli, docs, target }) {
 }
 
 export function testPipelineStartupFailure({ executable, docs, directory, project, packageDir, target }) {
-  // Remove moonx from PATH while keeping the build tools. The first package
+  // Remove moonrun from PATH while keeping the build tools. The native package
   // starts successfully, then starting the script must fail and cancel it.
-  const tools = join(directory, "tools");
+  const tools = join(directory, "startup-tools");
   fs.mkdirSync(tools);
-  for (const name of ["moon", "moonc", "moonrun"]) {
+  for (const name of ["moon", "moonc"]) {
     copyTool(name, tools);
   }
-  const runner = join(tools, "moonrun" + EXECUTABLE_SUFFIX);
+  // Launch the Wasm CLI with a renamed runner so its child lookup cannot find
+  // moonrun beside the parent executable, including on Windows.
+  const runner = copyTool("moonrun", tools, "mooncram-test-runner");
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const env = createEnvironment();
-  env.PATH = [tools, ...TOOL_DIRECTORIES.filter(path => !fs.existsSync(join(path, "moonx" + EXECUTABLE_SUFFIX)))].join(delimiter);
+  env.PATH = [tools, ...TOOL_DIRECTORIES.filter(path => !fs.existsSync(join(path, "moonrun" + EXECUTABLE_SUFFIX)))].join(delimiter);
   // Copied build tools must still load resources from the original toolchain.
   env.MOON_TOOLCHAIN_ROOT ??= dirname(dirname(fs.realpathSync(findTool("moonc"))));
   // Changing the tool paths can invalidate native build commands. Warm both
   // artifacts with this environment before measuring startup-failure cleanup.
   run([
-    "moon", "-C", project, "run", "--build-only", "--target", target, packageDir,
+    "moon", "-C", project, "run", "--build-only", "--target", "native", packageDir,
   ], { cwd: docs, env });
   run([
     "moon", "run", "--build-only", "--target", "wasm", join(docs, SCRIPT_FILENAME),
@@ -160,11 +162,13 @@ export function testPipelineStartupFailure({ executable, docs, directory, projec
     );
     const document = writeDocument(docs, "startup-error.md", original);
     const start = performance.now();
-    const result = cli(["update", document, "--target", target], { env, expected: EXIT_CODE.ERROR });
+    const result = cli(["update", document, "--target", "native"], { env, expected: EXIT_CODE.ERROR });
     const elapsed = performance.now() - start;
     const diagnostic = `${target}: pipeline startup failure took ${elapsed.toFixed(0)} ms` +
       `\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
-    assert(result.stderr.includes("failed to start 'moonx'"), diagnostic);
+    assert(result.stderr.includes("failed to start 'moonrun'"), diagnostic);
+    assert(result.stderr.includes("tool: moonrun"), diagnostic);
+    assert(result.stderr.includes("check that 'moonrun' is available on PATH"), diagnostic);
     assert(result.stderr.includes("phase: start"), diagnostic);
     assert(result.stderr.includes("segment: 2/"), diagnostic);
     assert(result.stderr.includes("startup-error.md:5:"));
