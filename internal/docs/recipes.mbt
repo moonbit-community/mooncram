@@ -5,8 +5,9 @@ let _embed_recipes_md : String =
   #|# Complete templates for common assertions
   #|
   #|These examples supply the entire program and test document. Copy both files;
-  #|no placeholder scripts or module configuration are needed. Have `mooncram`,
-  #|`moon` and `moonrun` on `PATH`. The script pins `moonbitlang/async`
+  #|no placeholder scripts or module configuration are needed. Install `mooncram`
+  #|and a complete MoonBit toolchain, with its `bin` directory on `PATH`. The script
+  #|uses that installation's `moon` and `moonrun`, and pins `moonbitlang/async`
   #|and `moonbitlang/x`; the first build needs access to download these dependencies.
   #|
   #|```text

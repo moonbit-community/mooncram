@@ -11,17 +11,39 @@ let _embed_execution_md : String =
   #|temporary workspace isolation. Dry-run prevents writing updated Markdown;
   #|program side effects and build artifacts can still be created.
   #|
-  #|`--timeout-ms` defaults to `60000`. One deadline wraps path inspection, builds,
-  #|remote fetching, execution, and output capture for each case. It is not a fresh
-  #|timeout per subprocess or a timeout for the whole run.
+  #|`--timeout-ms` defaults to `60000`. One deadline wraps toolchain resolution,
+  #|path inspection, builds, remote fetching, execution, and output capture for each
+  #|case. It is not a fresh timeout per subprocess or a timeout for the whole run.
   #|
   #|## Tools and backends
   #|
-  #|Mooncram uses external MoonBit tools. Local cases require `moon` for builds;
-  #|scripts and Wasm packages require `moonrun` to execute the built artifacts.
+  #|Mooncram selects one MoonBit installation for the whole invocation, shared by
+  #|every document, case and pipeline segment. It searches the startup `PATH` in
+  #|order for the first executable `moon` (`moon.exe` on Windows), then follows
+  #|symbolic links to its real installation. Relative and empty `PATH` entries
+  #|refer to the startup directory, regardless of a case's working directory.
+  #|Windows implicit search directories are not used.
+  #|
+  #|The selected executable must be in an installation's `bin` directory, with
+  #|`include`, `lib/core` and an executable `bin/moonc` under the same installation root
+  #|(`moonc.exe` on Windows). An incomplete first installation is an error; mooncram
+  #|does not try later `PATH` entries. Ordinary executables and symbolic links are
+  #|supported; version-manager shims are not supported.
+  #|
+  #|Builds use the resolved absolute `moon` path. Wasm execution uses `moonrun` and
+  #|remote execution uses the `moonx` entry in that same `bin` directory, with `.exe`
+  #|on Windows. A link to `moon` on `PATH` is sufficient to locate its installation's
+  #|companions. Missing companions produce startup errors without falling back to
+  #|tools elsewhere on `PATH`. To switch installations, change the startup `PATH`
+  #|and run mooncram again.
+  #|
+  #|Toolchain resolution is lazy and shares the first executing case's deadline.
+  #|`check`, help and `docs` do not resolve or start tools. Local cases require
+  #|`moon` for builds; scripts and Wasm packages require `moonrun` to execute the built artifacts.
   #|Remote packages require `moonx`, and native package builds require the
   #|corresponding native toolchain. The backend used
   #|to run mooncram itself is separate from the backend selected for a test case.
+  #|Local scripts do not require `moonx`; native-only cases do not require `moonrun`.
   #|
   #|| Case kind | Backend | Build behavior |
   #|| --- | --- | --- |
@@ -57,6 +79,8 @@ let _embed_execution_md : String =
   #|is used for its build and execution, including scripts and remote moonx
   #|tools. Their working directory is the
   #|validated block directory, or the canonical document's parent by default.
+  #|Segment assignments to `PATH` reach child processes but do not change the
+  #|installation already selected from the startup environment.
   #|Build processes and the first pipeline segment receive immediate EOF on stdin rather than
   #|mooncram's interactive input. Later segments receive the preceding stdout.
   #|

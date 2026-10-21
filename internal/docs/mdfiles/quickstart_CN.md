@@ -24,7 +24,8 @@ mooncram 使用 Markdown 中的命令和预期输出来测试 MoonBit 命令行�
 
 ## 创建两个文件
 
-先安装 `mooncram`，并确保 `moon` 和 `moonrun` 位于 `PATH`。
+先安装 `mooncram` 和完整 MoonBit 工具链，将安装的 `bin` 目录加入 `PATH`。
+这些脚本使用同一安装中的 `moon` 和 `moonrun`。
 本例无需仓库副本、模块配置或外部依赖。在任意工作目录创建以下文件：
 
 ```text

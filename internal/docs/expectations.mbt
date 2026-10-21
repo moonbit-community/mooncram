@@ -16,9 +16,10 @@ let _embed_expectations_md : String =
   #|
   #|## Prepare the examples
   #|
-  #|The annotation and paired-stream examples below share one script. Have
-  #|`mooncram`, `moon` and `moonrun` on `PATH`. Create these files in a new
-  #|`demo` directory; no module configuration or repository checkout is needed.
+  #|The annotation and paired-stream examples below share one script. Install
+  #|`mooncram` and a complete MoonBit toolchain, with its `bin` directory on `PATH`.
+  #|The script uses that installation's `moon` and `moonrun`. Create these files in a
+  #|new `demo` directory; no module configuration or repository checkout is needed.
   #|The script pins its dependencies; the first build needs access to download them.
   #|
   #|```text

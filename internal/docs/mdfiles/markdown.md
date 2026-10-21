@@ -21,7 +21,8 @@ error. Ignored fences do not produce mooncram parsing errors.
 
 ## A complete local example
 
-Have `mooncram` installed, with `moon`, `moonx` and `moonrun` on `PATH`.
+Install `mooncram` and a complete MoonBit toolchain, with its `bin` directory on
+`PATH`. Mooncram uses that installation's tools throughout the invocation.
 Create the following files in a new `demo` directory. This example needs no
 repository checkout or external dependencies.
 

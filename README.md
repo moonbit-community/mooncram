@@ -36,7 +36,8 @@ changes intentionally, mooncram can refresh the expected output for you.
 ## Getting started
 
 Install the [MoonBit toolchain](https://www.moonbitlang.com/download/) first.
-You need `moon`, `moonx`, and `moonrun` on your `PATH`.
+Put its `bin` directory on `PATH`. Each mooncram invocation selects the first
+executable `moon` and uses that installation's `moonrun` and `moonx` as needed.
 
 To try the current source:
 
