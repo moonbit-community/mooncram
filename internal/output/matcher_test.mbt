@@ -114,7 +114,7 @@ test "no-eol escaped controls and syntax conflicts" {
   assert_output("\"literal (glob)\" (escaped)\n", "literal (glob)\n", 0, true)
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx\na (no-eol)\nb\n")),
-    "example.md:4:",
+    "example.md:3:3: (no-eol)",
   )
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx\n\"\" (escaped) (no-eol)\n")),
@@ -122,7 +122,7 @@ test "no-eol escaped controls and syntax conflicts" {
   )
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx\nnot-json (escaped)\n")),
-    "JSON string",
+    "invalid JSON in (escaped) output",
   )
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx\n\"a\\nb\" (escaped)\n")),
@@ -161,7 +161,7 @@ test "regex matches whole lines including alternations" {
   assert_output("foo|bar (regex)\n", "foox\n", 0, false)
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx\n[ (regex)\n")),
-    "example.md:3: invalid regex",
+    "example.md:3:1: invalid regex",
   )
 }
 
@@ -371,9 +371,9 @@ test "stream parser rejects malformed pairs and reports exact source positions" 
       (
         "@STDOUT\n@STDERR (ignore)\n\"\" (escaped)\n", "example.md:5: (ignore) and (empty)",
       ),
-      ("@STDOUT\na (no-eol)\nb\n@STDERR\n", "example.md:5: (no-eol)"),
+      ("@STDOUT\na (no-eol)\nb\n@STDERR\n", "example.md:4:3: (no-eol)"),
       (
-        "@STDOUT\n@STDERR\n\"\" (escaped) (no-eol)\n", "example.md:5: an empty output line",
+        "@STDOUT\n@STDERR\n\"\" (escaped) (no-eol)\n", "example.md:5:14: an empty output line",
       ),
     ] {
     assert_error_contains(
