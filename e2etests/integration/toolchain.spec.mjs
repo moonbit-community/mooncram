@@ -174,9 +174,18 @@ export function testToolchainSelection({ executable, target, directory, docs, pr
   }
   const noPath = environment(a);
   delete noPath.PATH;
-  const missingPath = invoke(["test", remote], a, { env: noPath, expected: EXIT_CODE.ERROR });
-  assert(missingPath.stderr.includes("on startup PATH"), missingPath.stderr);
-  assert.deepEqual(calls(), []);
+  // Windows libuv fills in missing PATH from the parent process. Remove every
+  // spelling from the parent during this synchronous launch, then restore it.
+  const parentPaths = Object.entries(process.env).filter(([key]) => key.toUpperCase() === "PATH");
+  try {
+    for (const [key] of parentPaths) delete process.env[key];
+    const missingPath = invoke(["test", remote], a, { env: noPath, expected: EXIT_CODE.ERROR });
+    assert(missingPath.stderr.includes("on startup PATH"), missingPath.stderr);
+    assert(missingPath.stderr.includes("phase: resolve"), missingPath.stderr);
+    assert.deepEqual(calls(), []);
+  } finally {
+    for (const [key, value] of parentPaths) process.env[key] = value;
+  }
 
   // A long unsuccessful search deterministically spends the deadline before
   // reaching A. Resolving the installation shares the first case's timeout.
