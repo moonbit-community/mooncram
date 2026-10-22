@@ -52,7 +52,7 @@ test "empty and unclosed test blocks have accurate errors" {
   )
   assert_error_contains(
     () => ignore(parse_example("$ moonx ./a.mbtx |\n")),
-    "example.md:2: empty pipeline segment",
+    "example.md:2:18: empty pipeline segment",
   )
   assert_error_contains(() => ignore(parse_example("$\n")), "example.md:2:")
 }
@@ -128,7 +128,7 @@ test "redirection errors retain the document command position" {
             parse_example("$ " + prefix + "moonx ./c.mbtx " + suffix + "\n"),
           )
         },
-        "example.md:2: unquoted shell operator",
+        "example.md:2:\{19 + prefix.length()}: unquoted shell operator",
       )
     }
   }
@@ -232,7 +232,7 @@ test "export statements fail at the command line including export-only fences" {
     for output in ["", "hello\n", "[0]\n"] {
       assert_error_contains(
         () => ignore(parse_example("$ " + command + "\n" + output)),
-        "example.md:2: command must start with moonx: export",
+        "example.md:2:\{3 + command.find("export").unwrap()}: command must start with moonx: export",
       )
     }
   }
@@ -244,7 +244,7 @@ test "export statements fail at the command line including export-only fences" {
         ),
       )
     },
-    "nested.md:2: command must start with moonx: export",
+    "nested.md:2:7: command must start with moonx: export",
   )
 }
 
@@ -297,7 +297,15 @@ test "malformed working directory declarations and old commands retain locations
           ),
         )
       },
-      "bad.md:3: " + message,
+      "bad.md:3:" +
+      (if body.has_prefix("$ ") {
+        (5 + body.find("set-current-working-directory").unwrap()).to_string() +
+        ":"
+      } else {
+        ""
+      }) +
+      " " +
+      message,
     )
   }
 }

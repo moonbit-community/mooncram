@@ -195,7 +195,20 @@ fn parse_document_with_case_sensitivity(
         )
       }
       let pipeline = @command.parse(node.v[1:].to_owned(), case_insensitive~) catch {
-        e => raise @diagnostic.context(e, file=path, line~)
+        e =>
+          raise @diagnostic.context(
+            map_parse_error(
+              e,
+              path,
+              source,
+              lines,
+              code[i:i + 1],
+              node.v,
+              is_command=true,
+            ),
+            file=path,
+            line~,
+          )
       }
       has_command = true
       let mut next = i + 1
@@ -212,7 +225,18 @@ fn parse_document_with_case_sensitivity(
         end -= 1
       }
       has_test_command = true
-      let expected = @output.parse_expectation(code[i + 1:end], path)
+      let expected = @output.parse_expectation(code[i + 1:end], path) catch {
+        e =>
+          raise map_parse_error(
+            e,
+            path,
+            source,
+            lines,
+            code[i + 1:end],
+            node.v,
+            is_command=false,
+          )
+      }
       let command_line = lines[line - 1]
       let output_layout = code[i + 1:end].map(node => {
         let @cmark_base.LinePos(line, _) = node.meta.loc.first_line

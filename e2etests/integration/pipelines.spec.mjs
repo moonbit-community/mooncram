@@ -107,7 +107,7 @@ export function testRedirectionRejection({ cli, docs, target }) {
           fs.rmSync(sideEffect, { force: true });
           const options = args[0] === "check" ? [] : ["--target", target];
           const result = cli([...args, document, ...options], { expected: EXIT_CODE.ERROR });
-          assert(result.stderr.includes("redirect-invalid.md:3: unquoted shell operator"), result.stderr);
+          assert(result.stderr.includes(`redirect-invalid.md:3:${3 + segments.join("|").indexOf(">")}: unquoted shell operator`), result.stderr);
           assert.equal(fs.readFileSync(document, "utf8"), original);
           assert(!fs.existsSync(sideEffect), "invalid redirection must prevent every case in the document");
         }
@@ -205,6 +205,6 @@ export function testShellOperatorRejection({ cli, docs }) {
   );
   const before = fs.readFileSync(errorDoc);
   const result = cli(["update", errorDoc], { expected: EXIT_CODE.ERROR });
-  assert(result.stderr.includes("error.md:4: empty pipeline segment"));
+  assert(result.stderr.includes(`error.md:4:${LOCAL_PACKAGE.length + 11}: empty pipeline segment`));
   assert.deepEqual(fs.readFileSync(errorDoc), before);
 }

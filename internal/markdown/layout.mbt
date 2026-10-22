@@ -50,8 +50,7 @@ fn line_layout(
   // A partially consumed tab contributes virtual spaces to the parsed content.
   // Keep the original row verbatim when possible, and use an exact space prefix
   // for changed rows so those virtual spaces aren't emitted a second time.
-  let raw_length = line.end - line.newline.length() - node.meta.loc.first_ccode
-  let padding = @cmp.maximum(0, node.v.length() - raw_length)
+  let padding = virtual_padding(line, node)
   let prefix = if padding > 0 {
     expanded[:expanded.length() - padding].to_owned()
   } else {
@@ -65,7 +64,7 @@ fn line_layout(
       break
     }
     col = next
-    original_fence_start += 1
+    original_fence_start += c.utf16_len()
   }
   {
     prefix,
@@ -79,4 +78,10 @@ fn line_layout(
     original_fence_start,
     original: source[line.start:line.end].to_owned(),
   }
+}
+
+///|
+fn virtual_padding(line : SourceLine, node : @cmark.Node[String]) -> Int32 {
+  let raw_length = line.end - line.newline.length() - node.meta.loc.first_ccode
+  @cmp.maximum(0, node.v.length() - raw_length)
 }

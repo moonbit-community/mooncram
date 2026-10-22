@@ -33,7 +33,7 @@ export function testExportRejection({ cli, docs, target }) {
       ]) {
         fs.rmSync(sideEffect, { force: true });
         const result = cli([...operation, bad], { expected: EXIT_CODE.ERROR });
-        assert(result.stderr.includes(`export-error.md:${line}: command must start with moonx: export`), result.stderr);
+        assert(result.stderr.includes(`export-error.md:${line}:${3 + invalid.indexOf("export")}: command must start with moonx: export`), result.stderr);
         assert(result.stdout.includes("0 cases"), result.stdout);
         assert(!fs.existsSync(sideEffect), "a case ran before document validation completed");
         assert.equal(fs.readFileSync(bad, "utf8"), source);
