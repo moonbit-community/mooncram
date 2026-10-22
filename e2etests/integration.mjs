@@ -18,7 +18,7 @@ import {
   createTemporaryDirectory,
   createFixtures,
 } from "./integration/basic.mjs";
-import { testBuildDiagnostics } from "./integration/diagnostics.spec.mjs";
+import { testBuildDiagnostics, testParseDiagnostics } from "./integration/diagnostics.spec.mjs";
 import { testCliArguments, testModuleResolution, testDirectoryScanning } from "./integration/cli.spec.mjs";
 import { testDocs } from "./integration/docs.spec.mjs";
 import { testDocExamples } from "./integration/doc-examples.spec.mjs";
@@ -69,6 +69,7 @@ async function runIntegrationTests(target) {
     testDocs(context);
     testDocExamples(context);
     testCheck(context);
+    testParseDiagnostics(context);
     testGeneratedTargets(context);
     testToolchainSelection(context);
     console.log(`${target}: embedded docs, runnable doc examples, check validation, tool isolation and generated target timing passed`);
