@@ -10,9 +10,15 @@ pub fn failure(String) -> Failure
 
 pub fn located(String, Int32, String) -> Failure
 
+pub fn map_input(Error, (InputRange) -> SourceRange?) -> Failure
+
 pub fn render(Error) -> String
 
+pub fn with_input(Error, Int32, Int32, row? : Int32, message? : String) -> Failure
+
 pub fn with_logs(Error, Array[Log]) -> Failure
+
+pub fn with_related(Error, Label) -> Failure
 
 pub fn wrap(Error, String) -> Failure
 
@@ -26,6 +32,8 @@ pub struct Diagnostic {
   summary : String
   file : String?
   line : Int32?
+  primary : Label?
+  related : Array[Label]
   command : String?
   phase : String?
   segment : String?
@@ -36,10 +44,37 @@ pub struct Diagnostic {
   logs : Array[Log]
 }
 
+pub(all) struct InputRange {
+  row : Int32
+  start : Int32
+  end : Int32
+}
+
+pub(all) struct Label {
+  location : Location
+  message : String?
+}
+
+pub(all) enum Location {
+  Input(InputRange)
+  Source(SourceRange)
+}
+
 pub(all) struct Log {
   label : String
   bytes : Bytes
   complete : Bool
+}
+
+pub(all) struct SourceRange {
+  file : String
+  line : Int32
+  start : Int32
+  end : Int32
+  line_start : Int32
+  source_line : String
+  precise : Bool
+  is_command : Bool
 }
 
 // Type aliases
