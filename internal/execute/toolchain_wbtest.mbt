@@ -25,16 +25,20 @@ fn toolchain_with_path(cwd : String, path : String?) -> Toolchain {
 }
 
 ///|
-async fn assert_toolchain_error(tools : Toolchain, expected : String) -> Unit {
+async fn capture_toolchain_error(tools : Toolchain) -> @diagnostic.Diagnostic {
   try tools.resolve(Progress::new(tools.startup_cwd)) catch {
-    @diagnostic.Failure(_) as e => {
-      let report = @diagnostic.render(e)
-      assert_true(report.contains(expected), msg=report)
-    }
+    @diagnostic.Failure(diagnostic) => diagnostic
     e => raise e
   } noraise {
-    _ => fail("expected toolchain error containing: " + expected)
+    _ => fail("expected toolchain resolution to fail")
   }
+}
+
+///|
+async fn assert_toolchain_error(tools : Toolchain, expected : String) -> Unit {
+  let diagnostic = capture_toolchain_error(tools)
+  let report = @diagnostic.render(@diagnostic.Failure(diagnostic))
+  assert_true(report.contains(expected), msg=report)
 }
 
 ///|
@@ -107,18 +111,56 @@ async test "toolchain caches the selected installation across cases" {
 async test "invalid first installation fails without falling back and caches its error" {
   let root = @fs.realpath(@fs.tmpdir(prefix="mooncram-toolchain"))
   defer @fs.rmdir(root, recursive=true)
-  let a = test_toolchain(@files.resolve_from(root, "A"))
+  // Windows paths already contain backslashes. POSIX permits both backslashes
+  // and quotes in a directory name, exposing extra escaping on either platform.
+  let name = if @path.sep == '\\' {
+    "A with spaces"
+  } else {
+    "A with spaces \\and \"quotes\""
+  }
+  let installation = @files.resolve_from(root, name)
+  let a = test_toolchain(installation)
   let b = test_toolchain(@files.resolve_from(root, "B"))
   let path = Some(a + @path.delimiter.to_string() + b)
-  for required in ["include", "lib/core", "bin/" + tool_name("moonc")] {
-    let missing = @files.resolve_from(root, "A/" + required)
-    let saved = missing + ".saved"
-    @fs.rename(missing, saved)
+  let moon = @files.resolve_from(a, tool_name("moon"))
+  for
+    (entry, required, as_file) in [
+      ("include", "include", false),
+      ("lib/core", "lib/core", false),
+      ("include", "include", true),
+      ("lib/core", "lib/core", true),
+      ("lib", "lib/core", true),
+      ("bin/" + tool_name("moonc"), "bin/" + tool_name("moonc"), false),
+    ] {
+    let invalid = @files.resolve_from(installation, entry)
+    let required = @files.resolve_from(installation, required)
+    let saved = invalid + ".saved"
+    @fs.rename(invalid, saved)
+    if as_file {
+      @fs.write_file(invalid, "")
+    }
     let tools = toolchain_with_path(root, path)
-    assert_toolchain_error(tools, missing)
-    assert_toolchain_error(tools, @files.resolve_from(a, tool_name("moon")))
-    @fs.rename(saved, missing)
-    assert_toolchain_error(tools, missing)
+    let diagnostic = capture_toolchain_error(tools)
+    let kind = if entry.has_prefix("bin/") { "executable" } else { "directory" }
+    let cause = "expected toolchain \{kind} '\{required}'"
+    assert_eq(diagnostic.summary, "failed to resolve MoonBit toolchain")
+    assert_eq(diagnostic.tool, Some(moon))
+    assert_eq(diagnostic.cause, Some(cause))
+    let report = @diagnostic.render(@diagnostic.Failure(diagnostic))
+    assert_true(report.contains("tool: " + moon), msg=report)
+    assert_true(report.contains("cause: " + cause), msg=report)
+    assert_eq(
+      @diagnostic.render(@diagnostic.Failure(capture_toolchain_error(tools))),
+      report,
+    )
+    if as_file {
+      @fs.remove(invalid)
+    }
+    @fs.rename(saved, invalid)
+    assert_eq(
+      @diagnostic.render(@diagnostic.Failure(capture_toolchain_error(tools))),
+      report,
+    )
     assert_eq(
       toolchain_with_path(root, path).resolve(Progress::new(root)).bin,
       a,

@@ -152,6 +152,10 @@ export function testToolchainSelection({ executable, target, directory, docs, pr
     assert(result.stderr.includes("failed to resolve MoonBit toolchain"), result.stderr);
     assert(result.stderr.includes(`tool: ${fs.realpathSync(moon)}`), result.stderr);
     assert(result.stderr.includes("phase: resolve"), result.stderr);
+    if (name === "include" || name === "lib/core") {
+      const required = join(fs.realpathSync(root), name);
+      assert(result.stderr.includes(`cause: expected toolchain directory '${required}'`), result.stderr);
+    }
     assert.deepEqual(calls(), []);
     // These commands must not even validate the installation's structure.
     for (const args of [["check", both], ["--help"], ["docs", "execution"]]) {
