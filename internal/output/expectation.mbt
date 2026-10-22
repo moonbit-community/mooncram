@@ -16,28 +16,24 @@ fn exit_marker(text : String) -> Int32? raise {
 }
 
 ///|
-fn parse_expected_line(raw : String) -> ExpectedLine raise {
+fn parse_expected_line(raw : String, row : Int32) -> ExpectedLine raise {
   let matcher = if raw.has_suffix(" (escaped)") {
     let encoded = raw[:raw.length() - 10].to_owned()
-    let value = @json.parse(encoded) catch {
-      _ => raise @diagnostic.failure("(escaped) requires a JSON string")
-    }
-    guard value is String(text) else {
-      raise @diagnostic.failure("(escaped) requires a JSON string")
-    }
-    if text.contains("\n") {
-      raise @diagnostic.failure("an escaped output line cannot contain LF")
-    }
-    Equal(text)
+    Equal(parse_escaped(encoded, row))
   } else if raw.has_suffix(" (glob)") {
     Glob(parse_glob(raw[:raw.length() - 7].to_owned()))
   } else if raw.has_suffix(" (regex)") {
     let pattern = raw[:raw.length() - 8].to_owned()
-    Regex(
-      @string.Regex("^(?:\{pattern})$") catch {
-        e => raise @diagnostic.wrap(e, "invalid regex")
-      },
-    )
+    let parsed = @string.Regex(pattern) catch {
+      e =>
+        raise @diagnostic.with_input(
+          @diagnostic.wrap(e, "invalid regex"),
+          0,
+          pattern.length(),
+          row~,
+        )
+    }
+    Regex(re"^" + parsed + re"$")
   } else {
     Equal(raw)
   }
@@ -48,25 +44,47 @@ fn parse_expected_line(raw : String) -> ExpectedLine raise {
 fn parse_stream_lines(
   nodes : ArrayView[@cmark.Node[String]],
   file : String,
+  start_row : Int32,
 ) -> StreamExpectation raise {
   let lines = []
   let mut no_eol = false
-  for node in nodes {
+  for i, node in nodes {
     let @cmark_base.LinePos(line, _) = node.meta.loc.first_line
+    let row = start_row + i
+    if no_eol {
+      let previous = nodes[i - 1]
+      let @cmark_base.LinePos(previous_line, _) = previous.meta.loc.first_line
+      raise @diagnostic.with_related(
+        @diagnostic.with_input(
+          @diagnostic.located(
+            file, previous_line, "(no-eol) must be on the final output line",
+          ),
+          previous.v.length() - 8,
+          previous.v.length(),
+          row=row - 1,
+        ),
+        {
+          location: Input({ row, start: 0, end: node.v.length(), }),
+          message: Some("subsequent output line"),
+        },
+      )
+    }
     try {
-      if no_eol {
-        raise @diagnostic.failure("(no-eol) must be on the final output line")
-      }
       no_eol = node.v.has_suffix(" (no-eol)")
       let raw = if no_eol {
         node.v[:node.v.length() - 9].to_owned()
       } else {
         node.v
       }
-      let parsed = parse_expected_line(raw)
+      let parsed = parse_expected_line(raw, row)
       if no_eol && parsed.matcher is Equal("") {
-        raise @diagnostic.failure(
-          "an empty output line cannot have (no-eol); omit it for empty output",
+        raise @diagnostic.with_input(
+          @diagnostic.failure(
+            "an empty output line cannot have (no-eol); omit it for empty output",
+          ),
+          node.v.length() - 8,
+          node.v.length(),
+          row~,
         )
       }
       lines.push({ ..parsed, raw: node.v, })
@@ -160,7 +178,7 @@ pub fn parse_expectation(
     }
   }
   let body = if markers.is_empty() {
-    Legacy(parse_stream_lines(nodes[:end], file))
+    Legacy(parse_stream_lines(nodes[:end], file, 0))
   } else {
     let first = markers[0].0
     for i in 0..<first {
@@ -190,7 +208,9 @@ pub fn parse_expectation(
       }
       let constraint = match mode {
         Match(_) =>
-          Match(parse_stream_lines(nodes[start + 1:content_end], file))
+          Match(
+            parse_stream_lines(nodes[start + 1:content_end], file, start + 1),
+          )
         Ignore | Empty => {
           if content_end > start + 1 {
             let @cmark_base.LinePos(line, _) = nodes[start + 1].meta.loc.first_line
