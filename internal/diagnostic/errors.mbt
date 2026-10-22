@@ -4,6 +4,8 @@ pub struct Diagnostic {
   summary : String
   file : String?
   line : Int32?
+  primary : Label?
+  related : Array[Label]
   command : String?
   phase : String?
   segment : String?
@@ -35,6 +37,8 @@ pub fn failure(summary : String) -> Failure {
     summary,
     file: None,
     line: None,
+    primary: None,
+    related: [],
     command: None,
     phase: None,
     segment: None,
