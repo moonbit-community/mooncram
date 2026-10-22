@@ -64,145 +64,69 @@ pub fn parse(
 ) -> Array[PipelineSegment] raise {
   let words = tokenize(command)
   let pipeline : Array[PipelineSegment] = []
-  for tokens in words {
-    let segment = []
-    let extra_env : Map[String, String] = Map([])
-    let env_key = fn(name : String) {
-      if case_insensitive {
-        name.to_upper()
-      } else {
-        name
-      }
+  for i, tokens in words {
+    fn invalid(
+      summary : String,
+      start : Int32,
+      end : Int32,
+    ) -> @diagnostic.Failure {
+      @diagnostic.context(
+        @diagnostic.with_input(@diagnostic.failure(summary), start, end),
+        command~,
+        segment="\{i + 1}/\{words.length()}",
+      )
     }
-    for (word, assignment) in tokens {
-      if segment.is_empty() && assignment is Some(name) {
-        extra_env[env_key(name)] = word[name.length() + 1:].to_owned()
+    let segment : Array[Word] = []
+    let extra_env : Map[String, String] = Map([])
+    for token in tokens.words {
+      if segment.is_empty() && token.assignment is Some(name) {
+        let key = if case_insensitive { name.to_upper() } else { name }
+        extra_env[key] = token.text[name.length() + 1:].to_owned()
       } else {
-        segment.push(word)
+        segment.push(token)
       }
     }
     if segment.is_empty() {
       if !extra_env.is_empty() {
-        raise @diagnostic.failure("environment assignments require a command")
+        raise invalid(
+          "environment assignments require a command",
+          tokens.end,
+          tokens.end,
+        )
       }
-      raise @diagnostic.failure(
+      raise invalid(
         "empty pipeline segment; expected moonx and a target",
+        tokens.empty_range.0,
+        tokens.empty_range.1,
       )
     }
     let executable = segment[0]
-    if executable == "" {
-      raise @diagnostic.failure("expected moonx and a nonempty target")
+    if executable.text == "" {
+      raise invalid(
+        "expected moonx and a nonempty target",
+        executable.start,
+        executable.end,
+      )
     }
-    if executable != "moonx" {
-      raise @diagnostic.failure("command must start with moonx: " + executable)
+    if executable.text != "moonx" {
+      raise invalid(
+        "command must start with moonx: " + executable.text,
+        executable.start,
+        executable.end,
+      )
     }
-    if segment.length() < 2 || segment[1].is_empty() {
-      raise @diagnostic.failure("moonx requires a nonempty target")
+    if segment.length() < 2 {
+      raise invalid("moonx requires a nonempty target", tokens.end, tokens.end)
     }
-    pipeline.push({ argv: segment, extra_env, })
-  }
-  pipeline
-}
-
-///|
-/// Preserve raw assignment prefixes while decoding words.
-fn tokenize(command : String) -> Array[Array[(String, String?)]] raise {
-  let pipeline = []
-  let mut args = []
-  let word = StringBuilder()
-  let mut quote : Char? = None
-  let mut escaped = false
-  let mut started = false
-  let mut assignment : String? = None
-  let chars = [ for c in command => c ]
-  for c in chars {
-    if c == '\u0000' || c == '\n' || c == '\r' {
-      raise @diagnostic.failure("command contains a NUL or newline")
+    let target = segment[1]
+    if target.text.is_empty() {
+      raise invalid(
+        "moonx requires a nonempty target",
+        target.start,
+        target.end,
+      )
     }
+    pipeline.push({ argv: segment.map(word => word.text), extra_env, })
   }
-  for i = 0; i < chars.length(); {
-    let c = chars[i]
-    // Recognize raw assignment prefixes before decoding quotes and escapes.
-    if !started && quote is None && !escaped && !(c is (' ' | '\t' | '|')) {
-      let raw = StringBuilder()
-      let mut end = i
-      while end < chars.length() && !(chars[end] is (' ' | '\t' | '|')) {
-        raw.write_char(chars[end])
-        end += 1
-      }
-      let raw = raw.to_string()
-      // Only a raw, unquoted and unescaped NAME= prefix is an assignment.
-      // Retain the whole word for assignments occurring after the executable.
-      if raw.find("=") is Some(eq) {
-        let name = raw[:eq].to_owned()
-        if valid_name(name) {
-          assignment = Some(name)
-        }
-      }
-    }
-    if escaped {
-      word.write_char(c)
-      escaped = false
-      started = true
-    } else if quote == Some('\'') {
-      if c == '\'' {
-        quote = None
-      } else {
-        word.write_char(c)
-      }
-    } else if c == '\\' {
-      escaped = true
-      started = true
-    } else if quote == Some('"') {
-      if c == '"' {
-        quote = None
-      } else {
-        word.write_char(c)
-      }
-    } else {
-      match c {
-        '\'' | '"' => {
-          quote = Some(c)
-          started = true
-        }
-        ' ' | '\t' =>
-          if started {
-            args.push((word.to_string(), assignment))
-            assignment = None
-            word.reset()
-            started = false
-          }
-        '|' => {
-          if started {
-            args.push((word.to_string(), assignment))
-            assignment = None
-            word.reset()
-            started = false
-          }
-          pipeline.push(args)
-          args = []
-        }
-        '&' | ';' | '<' | '>' | '`' | '(' | ')' =>
-          raise @diagnostic.failure(
-            "unquoted shell operator '\{c}'; quote it to pass it literally",
-          )
-        _ => {
-          word.write_char(c)
-          started = true
-        }
-      }
-    }
-    continue i + 1
-  }
-  if escaped {
-    raise @diagnostic.failure("trailing backslash in command")
-  }
-  if quote is Some(_) {
-    raise @diagnostic.failure("unclosed quote in command")
-  }
-  if started {
-    args.push((word.to_string(), assignment))
-  }
-  pipeline.push(args)
   pipeline
 }

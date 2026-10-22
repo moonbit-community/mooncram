@@ -85,7 +85,7 @@ export function testCliArguments({ cli, docs }) {
   }
   const parsePath = writeDocument(docs, "parse-location.md", block("$ moonx ./missing.mbtx '\n", ""));
   const parseResult = cli(["check", parsePath], { expected: EXIT_CODE.ERROR });
-  assert(parseResult.stderr.startsWith(`ERROR ${fs.realpathSync(parsePath)}:2: unclosed quote`), parseResult.stderr);
+  assert(parseResult.stderr.startsWith(`ERROR ${fs.realpathSync(parsePath)}:2:24: unclosed quote`), parseResult.stderr);
   assert.equal(parseResult.stderr.split(fs.realpathSync(parsePath)).length, 2);
   const missingScript = writeDocument(docs, "missing-script.md", block("$ moonx ./missing.mbtx\n", ""));
   const missingResult = cli(["check", missingScript], { expected: EXIT_CODE.ERROR });
