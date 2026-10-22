@@ -59,3 +59,37 @@ export function testBuildDiagnostics({ executable, docs, project, directory, tar
   }
   console.log(`${target}: build errors, invalid artifacts, logs and build-stage timeouts passed`);
 }
+
+export function testParseDiagnostics({ cli, docs }) {
+  const cases = [
+    {
+      name: "command", body: "$ moonx a 'oops\n", location: "2:11",
+      report: "unclosed quote in command\n  2 | $ moonx a ⟦'⟧oops\n  segment: 1\n  hint: close the quote opened here\n",
+    },
+    {
+      name: "target", body: "$ moonx\n", location: "2:8",
+      report: "moonx requires a nonempty target\n  2 | $ moonx⟦⟧\n  segment: 1/1\n",
+    },
+    {
+      name: "regex", body: "$ moonx a\n[ (regex)\n", location: "3:1",
+      report: "invalid regex\n  3 | ⟦[⟧ (regex)\n  $ moonx a\n  cause: ParserError at position 1: Unclosed character class\n",
+    },
+    {
+      name: "json", body: '$ moonx a\n"中😀\\q" (escaped)\n', location: "3:6",
+      report: 'invalid JSON in (escaped) output\n  3 | "中😀\\⟦q⟧" (escaped)\n  $ moonx a\n  cause: Invalid character \'q\' at line 1, column 5\n',
+    },
+    {
+      name: "no-eol", body: "$ moonx a\na (no-eol)\nb\n", location: "3:3",
+      report: "(no-eol) must be on the final output line\n  3 | a ⟦(no-eol)⟧\n  note: {file}:4:1: subsequent output line\n  4 | ⟦b⟧\n  $ moonx a\n",
+    },
+  ];
+  for (const { name, body, location, report } of cases) {
+    const source = block(body, "");
+    const file = writeDocument(docs, `parse-${name}.md`, source);
+    const result = cli(["check", file], { expected: EXIT_CODE.ERROR });
+    const real = fs.realpathSync(file);
+    assert.equal(result.stderr, `ERROR ${real}:${location}: ${report.replace("{file}", real)}`);
+    assert.equal(result.stdout, "0 cases, 1 errors\n");
+    assert.equal(fs.readFileSync(file, "utf8"), source);
+  }
+}
