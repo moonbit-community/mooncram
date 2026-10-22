@@ -93,7 +93,11 @@ async fn Toolchain::find(
       let root = bin.dirname().to_string()
       for directory in ["include", "lib/core"] {
         let required = @files.resolve_from(root, directory)
-        if @fs.kind(required) != Directory {
+        let is_directory = try @fs.kind(required) == Directory catch {
+          @os_error.OSError(_) as e if e.is_ENOENT() || e.is_ENOTDIR() => false
+          e => raise e
+        }
+        if !is_directory {
           raise @diagnostic.failure(
             "expected toolchain directory '\{required}'",
           )
