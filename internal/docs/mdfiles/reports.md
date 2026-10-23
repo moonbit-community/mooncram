@@ -26,11 +26,14 @@ stderr; ignored stderr remains available for diagnosis if another assertion
 fails.
 
 Errors are written to **stderr** with the available source location, execution
-context, and underlying reason. A precise inner source location takes precedence
-over an outer document location, so the file prefix appears only once:
+context, and underlying reason. The `ERROR` header uses the most precise
+available source location:
 
 ```text
-ERROR <file>[:<line>]: <summary>
+ERROR <file>[:<line>[:<column>]]: <summary>
+  <line> | <source before>⟦<highlighted range>⟧<source after>
+  note: <related file>:<line>[:<column>]: <message>
+  <line> | <related source excerpt>
   $ <original command text>
   phase: <resolve|build|start|run|capture>
   segment: <index>/<count> (<executable>)
@@ -42,8 +45,21 @@ ERROR <file>[:<line>]: <summary>
 <captured output>
 ```
 
+Line and column numbers are one-based positions in the original Markdown,
+including list and block-quote prefixes. Columns count UTF-16 code units: a tab
+counts as one and `😀` counts as two. If an exact source range is unavailable,
+a known source line may be highlighted in full without a column number.
+
+Parser diagnostics can show source excerpts with `⟦…⟧` around the affected text;
+an empty `⟦⟧` marks a position without selecting a character. Related locations
+appear as `note` entries with their own source excerpts when available. Tabs,
+control characters and literal `⟦`/`⟧` in the source are escaped in excerpts;
+column numbers still refer to the original, unescaped line.
+
 Only available fields appear. Argument errors without a document location omit
 the file prefix; document parse errors without a command omit the command line.
+The separate command line is also omitted when a primary or related source
+excerpt already shows the command.
 Option-value validation errors include the option name, actual value, and accepted
 range or values. Argument-parser syntax errors retain contextual help. Operating
 system and dependency reasons appear under `cause`, with wording that can vary
