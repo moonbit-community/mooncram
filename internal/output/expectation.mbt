@@ -21,7 +21,7 @@ fn parse_expected_line(raw : String, row : Int32) -> ExpectedLine raise {
     let encoded = raw[:raw.length() - 10].to_owned()
     Equal(parse_escaped(encoded, row))
   } else if raw.has_suffix(" (glob)") {
-    Glob(parse_glob(raw[:raw.length() - 7].to_owned()))
+    Glob(parse_glob(raw[:raw.length() - 7]))
   } else if raw.has_suffix(" (regex)") {
     let pattern = raw[:raw.length() - 8].to_owned()
     let parsed = @string.Regex(pattern) catch {

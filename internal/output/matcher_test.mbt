@@ -154,6 +154,33 @@ test "glob is anchored Unicode aware and supports sets ranges and escapes" {
 }
 
 ///|
+test "glob sets preserve leading brackets literal hyphens and escaped members" {
+  for
+    (pattern, matching, nonmatching) in [
+      ("[]]", "]", "["),
+      ("[]-]", "-", "a"),
+      ("[-a]", "-", "b"),
+      ("[a-]", "-", "b"),
+      ("[-]", "-", "a"),
+      ("[\\]\\-\\[]", "]", "a"),
+      ("[\\]\\-\\[]", "-", "a"),
+      ("[\\]\\-\\[]", "[", "a"),
+      ("[a\\-c]", "-", "b"),
+      ("[a-\\c]", "b", "d"),
+      ("[!]]", "😀", "]"),
+      ("[^-]", "😀", "-"),
+      ("[^^]", "a", "^"),
+      ("[😀-😃]", "😁", "😄"),
+      ("[!😀-😃]", "😄", "😁"),
+      ("\\[\\]\\-\\*\\?\\\\", "[]-*?\\", "[]-*?"),
+      ("\\😀?", "😀🚀", "😀"),
+    ] {
+    assert_output(pattern + " (glob)\n", matching + "\n", 0, true)
+    assert_output(pattern + " (glob)\n", nonmatching + "\n", 0, false)
+  }
+}
+
+///|
 test "regex matches whole lines including alternations" {
   assert_output("hello [0-9]+ (regex)\n", "hello 123\n", 0, true)
   assert_output("foo|bar (regex)\n", "foo\n", 0, true)

@@ -21,6 +21,35 @@ fn output_source(d : @diagnostic.Diagnostic) -> @diagnostic.SourceRange raise {
 }
 
 ///|
+test "glob errors retain exact messages for incomplete escapes sets and reversed ranges" {
+  for
+    (pattern, summary) in [
+      ("abc\\", "trailing backslash in glob"),
+      ("😀\\", "trailing backslash in glob"),
+      ("[\\", "trailing backslash in glob set"),
+      ("[a-\\", "trailing backslash in glob set"),
+      ("[", "unclosed or empty character set in glob"),
+      ("[]", "unclosed or empty character set in glob"),
+      ("[!]", "unclosed or empty character set in glob"),
+      ("[^]", "unclosed or empty character set in glob"),
+      ("[a", "unclosed or empty character set in glob"),
+      ("[a-", "unclosed or empty character set in glob"),
+      ("[a\\]", "unclosed or empty character set in glob"),
+      ("[z-a]", "reversed character range in glob"),
+      ("[z-a", "reversed character range in glob"),
+      ("[😃-😀]", "reversed character range in glob"),
+    ] {
+    for annotation in [" (glob)", " (glob) (no-eol)"] {
+      let d = output_failure(pattern + annotation)
+      assert_eq(d.summary, summary)
+      assert_eq(d.file, Some("example.md"))
+      assert_eq(d.line, Some(3))
+      assert_eq(d.cause, None)
+    }
+  }
+}
+
+///|
 test "regex failures preserve the original pattern and its unwrapped cause" {
   for pattern in ["[", "[z-a]", "(abc", "abc\\", "中😀["] {
     let cause = try @string.Regex(pattern) catch {
