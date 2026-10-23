@@ -94,7 +94,7 @@ test "lexical offsets count UTF-16 even after Unicode escapes and quoted pipes" 
     }
   }
   let prefix = "NAME='中😀' "
-  for word in ["ba\\d", "'中😀'", "\"\""] {
+  for word in ["ba\\d", "'中😀'", "b\"😀\"ad", "\"\""] {
     let d = command_failure(prefix + word)
     guard d.primary is Some({ location: Input(range), .. }) else {
       fail("missing input range")
@@ -104,5 +104,73 @@ test "lexical offsets count UTF-16 even after Unicode escapes and quoted pipes" 
       (prefix.length(), prefix.length() + word.length()),
     )
     assert_eq((prefix + word)[range.start:range.end], word[:])
+  }
+}
+
+///|
+test "NUL and newlines fail at the character in every quoting and escape state" {
+  for segment_prefix in ["", "moonx ok|"] {
+    for quote in ["", "'", "\""] {
+      for escape in ["", "\\"] {
+        let prefix = segment_prefix + "moonx ok " + quote + "中😀" + escape
+        for control in ["\u0000", "\n", "\r"] {
+          let text = prefix + control + "tail" + quote
+          let d = command_failure(text)
+          assert_eq(d.summary, "command contains a NUL or newline")
+          assert_eq(d.hint, None)
+          assert_eq(d.command, Some(text))
+          assert_eq(
+            d.segment,
+            Some(if segment_prefix == "" { "1" } else { "2" }),
+          )
+          guard d.primary is Some({ location: Input(range), .. }) else {
+            fail("missing input range")
+          }
+          assert_eq(
+            (range.start, range.end),
+            (prefix.length(), prefix.length() + 1),
+          )
+        }
+      }
+    }
+  }
+}
+
+///|
+test "lexical failures precede command validation and preserve quote and escape hints" {
+  for prefix in ["other target|", "|", "moonx ''|"] {
+    for
+      (tail, summary, hint, offset) in [
+        (
+          "中😀'tail", "unclosed quote in command", "close the quote opened here",
+          3,
+        ),
+        (
+          "中😀'tail\\", "unclosed quote in command", "close the quote opened here",
+          3,
+        ),
+        (
+          "中😀\"tail", "unclosed quote in command", "close the quote opened here",
+          3,
+        ),
+        (
+          "中😀\"tail\\", "trailing backslash in command", "add the escaped character or double the backslash to pass it literally",
+          8,
+        ),
+        (
+          "中😀\\", "trailing backslash in command", "add the escaped character or double the backslash to pass it literally",
+          3,
+        ),
+      ] {
+      let d = command_failure(prefix + tail)
+      assert_eq(d.summary, summary)
+      assert_eq(d.hint, Some(hint))
+      assert_eq(d.segment, Some("2"))
+      guard d.primary is Some({ location: Input(range), .. }) else {
+        fail("missing input range")
+      }
+      let start = prefix.length() + offset
+      assert_eq((range.start, range.end), (start, start + 1))
+    }
   }
 }

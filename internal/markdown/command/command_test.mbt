@@ -37,6 +37,30 @@ test "command quoting and literal expansion characters" {
 }
 
 ///|
+test "empty quotes preserve arguments and join adjacent word fragments" {
+  assert_eq(
+    @command.parse(
+      "mo\"\"on'x' ''ok \"\"'' '' \"\" a''b\"\"c 'a'\"b\"c x\\ y' z'|moonx \"\"next\t",
+    ),
+    plain_pipeline([["ok", "", "", "", "abc", "abc", "x y z"], ["next"]]),
+  )
+}
+
+///|
+test "backslashes escape Unicode characters except inside single quotes" {
+  let command =
+    #|moonx ok 'a\b\' "a\b" "a\"b" a\😀b "\😀" '\😀' "\\" x\|y "\|"
+  assert_eq(
+    @command.parse(command),
+    plain_pipeline([
+      [
+        "ok", "a\\b\\", "ab", "a\"b", "a😀b", "😀", "\\😀", "\\", "x|y", "|",
+      ],
+    ]),
+  )
+}
+
+///|
 test "command rejects shell operators and incomplete arguments" {
   for operator in [">", "<", ";", "&&", "&", "`", "$(whoami)"] {
     assert_error_contains(

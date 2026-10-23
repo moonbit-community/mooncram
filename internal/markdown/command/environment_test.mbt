@@ -49,6 +49,24 @@ test "temporary assignment values reuse quoting and escaping" {
 }
 
 ///|
+test "assignment prefixes precede long plain values and adjacent quoted fragments" {
+  for
+    (word, name, value) in [
+      ("LONG_09=plain=中😀", "LONG_09", "plain=中😀"),
+      ("A=''\"\"", "A", ""),
+      ("_a9=x\\ y'|'\"z\"", "_a9", "x y|z"),
+      ("A=\\😀", "A", "😀"),
+    ] {
+    for prefix in ["", "moonx ok|"] {
+      let pipeline = segments(prefix + word + " moonx ok")
+      let segment = pipeline[pipeline.length() - 1]
+      assert_eq(segment.extra_env, Map::from_array([(name, value)]))
+      assert_eq(segment.argv, ["moonx", "ok"])
+    }
+  }
+}
+
+///|
 test "quoted escaped variable-like and invalid names are ordinary words" {
   for
     (word, literal) in [
@@ -59,9 +77,12 @@ test "quoted escaped variable-like and invalid names are ordinary words" {
       ("A\\=x", "A=x"),
       ("\\A=x", "A=x"),
       ("A\"\"=x", "A=x"),
+      ("A''=x", "A=x"),
       ("''A=x", "A=x"),
       ("9A=x", "9A=x"),
       ("A-B=x", "A-B=x"),
+      ("A😀=x", "A😀=x"),
+      ("A\u00a0=x", "A\u00a0=x"),
       ("名=x", "名=x"),
       ("=x", "=x"),
     ] {
