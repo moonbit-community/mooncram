@@ -23,10 +23,13 @@ FAIL <canonical-file>:<command-line>
 stderr 被忽略而其他断言失败时，仍可作为诊断展示。
 
 错误写入 **stderr**，显示可用的源码位置、执行上下文和底层原因。
-能确定更精确的源码位置时，报告该位置；文件前缀只打印一次：
+`ERROR` 标题使用能够确定的最精确源码位置：
 
 ```text
-ERROR <file>[:<line>]: <summary>
+ERROR <file>[:<line>[:<column>]]: <summary>
+  <line> | <source before>⟦<highlighted range>⟧<source after>
+  note: <related file>:<line>[:<column>]: <message>
+  <line> | <related source excerpt>
   $ <original command text>
   phase: <resolve|build|start|run|capture>
   segment: <index>/<count> (<executable>)
@@ -38,8 +41,18 @@ ERROR <file>[:<line>]: <summary>
 <captured output>
 ```
 
+行号和列号从 1 开始，对应原始 Markdown 中的位置，包括列表和引用块前缀。
+列号按 UTF-16 码元计数：制表符计为一个，`😀` 计为两个。
+无法确定精确源码区间时，可能高亮整条已知源码行，并省略列号。
+
+解析诊断可以显示源码片段，用 `⟦…⟧` 标出相关文本；空的 `⟦⟧` 表示没有选中
+字符的定位点。关联位置通过 `note` 展示，并在可用时附上对应源码片段。
+源码中的制表符、控制字符和字面量 `⟦`/`⟧` 在片段中会被转义；
+列号仍对应转义前的原始行。
+
 仅打印可用字段。没有文档位置的参数错误省略文件前缀；没有命令的文档解析错误
-省略命令行。参数值校验错误包含选项名、实际值和有效值范围；参数解析器产生的
+省略命令行。主位置或关联位置的源码片段已经展示命令时，也不再单独打印命令行。
+参数值校验错误包含选项名、实际值和有效值范围；参数解析器产生的
 语法错误保留对应上下文的帮助文本。操作系统及依赖库的原因文本放在 `cause` 中，
 措辞可能随环境变化。配置解析器的详细报告也作为原因展示。
 
