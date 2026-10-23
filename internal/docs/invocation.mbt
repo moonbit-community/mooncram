@@ -22,8 +22,8 @@ let _embed_invocation_md : String =
   #|From the repository checkout, the executable can be launched with:
   #|
   #|```text
-  #|moon run . -- check README.md
-  #|moon run . -- test README.md
+  #|moon run . -- check examples/README.md
+  #|moon run . -- test examples/README.md
   #|moon run . -- update examples --dry-run
   #|```
   #|

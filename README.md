@@ -39,37 +39,27 @@ Install the [MoonBit toolchain](https://www.moonbitlang.com/download/) first.
 Put its `bin` directory on `PATH`. Each mooncram invocation selects the first
 executable `moon` and uses that installation's `moonrun` and `moonx` as needed.
 
-To try the current source:
+To install mooncram as a command:
 
 ```sh
-git clone https://github.com/moonbit-community/mooncram.git
-cd mooncram
-moon update
-moon run . -- test README.md
-```
-
-That last command runs this example using [examples/hello.mbtx](examples/hello.mbtx):
-
-```mooncram
-$ moonx ./examples/hello.mbtx "Moon Bit"
-Hello, Moon Bit!
-```
-
-A successful run ends with:
-
-```text
-1 cases, 0 failed, 0 errors
-```
-
-To install mooncram as a command, run:
-
-```sh
+# Stable release
+moon install moonbit-community/mooncram
+# Latest source
 moon install https://github.com/moonbit-community/mooncram
+# Print help
 mooncram --help
 ```
 
-Keep the MoonBit binary directory on your `PATH`. The rest of this guide uses
-the installed `mooncram` command.
+To run the Wasm version of mooncram directly:
+
+```sh
+# Latest stable release
+moonx moonbit-community/mooncram@latest --help
+# Specific version
+moonx moonbit-community/mooncram@0.0.9 --help
+```
+
+The rest of this guide uses the installed `mooncram` command.
 
 ## Write your first test
 
@@ -416,22 +406,6 @@ returns `0` when all cases pass.
 - [Example test document](examples/README.md)
 - [Command-line reference](internal/docs/mdfiles/invocation.md)
 - [scrut documentation](https://facebookincubator.github.io/scrut/docs/), which inspired the Markdown testing workflow and this guide's tutorial structure
-
-## Development
-
-From the repository root:
-
-```sh
-moon test
-moon test --target native
-moon run . -- test README.md README_CN.md
-node e2etests/integration.mjs
-moon info && moon fmt
-```
-
-The integration suite requires Node.js and a native C toolchain and exercises
-both Wasm and native. See [the CI workflow](.github/workflows/check.yml) for the
-full checks.
 
 ## License
 

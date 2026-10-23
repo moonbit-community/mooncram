@@ -35,36 +35,27 @@ mooncram 的设计**受 [scrut](https://facebookincubator.github.io/scrut/docs/)
 将其 `bin` 目录加入 `PATH`。每次 mooncram 调用选择首个可执行的 `moon`，
 并按需使用同一安装中的 `moonrun` 和 `moonx`。
 
-体验当前源码版本：
-
-```sh
-git clone https://github.com/moonbit-community/mooncram.git
-cd mooncram
-moon update
-moon run . -- test README_CN.md
-```
-
-最后一条命令会运行下面的示例，使用的是 [examples/hello.mbtx](examples/hello.mbtx)：
-
-```mooncram
-$ moonx ./examples/hello.mbtx "Moon Bit"
-Hello, Moon Bit!
-```
-
-测试通过时，最后会看到：
-
-```text
-1 cases, 0 failed, 0 errors
-```
-
 将mooncram作为一个命令安装
 
 ```sh
+# 稳定版
+moon install moonbit-community/mooncram
+# 最新版
 moon install https://github.com/moonbit-community/mooncram
+# 打印帮助
 mooncram --help
 ```
 
-请将 MoonBit 的可执行文件目录加入 `PATH`。下文统一使用安装后的 `mooncram` 命令。
+直接运行wasm版本的mooncram
+
+```sh
+# 最新的稳定版
+moonx moonbit-community/mooncram@latest --help
+# 指定版本
+moonx moonbit-community/mooncram@0.0.9 --help
+```
+
+下文统一使用安装后的 `mooncram` 命令。
 
 ## 编写第一个测试
 
@@ -384,21 +375,6 @@ CI 应使用 `test` 判断测试是否通过。上述退出码属于 mooncram �
 - [示例测试文档](examples/README.md)
 - [命令行参考](internal/docs/mdfiles/invocation_CN.md)
 - [scrut 文档](https://facebookincubator.github.io/scrut/docs/)：本项目的 Markdown 测试工作流及本指南的教程结构参考了它
-
-## 开发
-
-在仓库根目录运行：
-
-```sh
-moon test
-moon test --target native
-moon run . -- test README.md README_CN.md
-node e2etests/integration.mjs
-moon info && moon fmt
-```
-
-集成测试需要 Node.js 和原生 C 工具链，覆盖 Wasm 和 native 两个后端。
-完整检查流程见 [CI 配置](.github/workflows/check.yml)。
 
 ## 许可证
 
