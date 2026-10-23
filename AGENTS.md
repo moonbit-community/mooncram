@@ -51,3 +51,15 @@ You can browse and install extra skills here:
   scientific computations), prefer assertion tests. You can use
   `moon coverage analyze > uncovered.log` to see which parts of your code are
   not covered by tests.
+
+## Development
+
+From the repository root:
+
+```sh
+moon check && moon fmt
+moon test
+moon test --target native
+moon run . -- test examples/README.md
+node e2etests/integration.mjs
+```
