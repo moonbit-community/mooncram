@@ -18,8 +18,8 @@ mooncram docs (-h | --help)
 在仓库目录中，可以这样启动程序：
 
 ```text
-moon run . -- check README.md
-moon run . -- test README.md
+moon run . -- check examples/README.md
+moon run . -- test examples/README.md
 moon run . -- update examples --dry-run
 ```
 
