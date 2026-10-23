@@ -7,63 +7,85 @@ priv enum GlobToken {
 }
 
 ///|
-fn parse_glob(pattern : String) -> Array[GlobToken] raise {
-  let chars = pattern.to_array()
+fn parse_glob(pattern : StringView) -> Array[GlobToken] raise {
   let tokens = []
-  let mut i = 0
-  while i < chars.length() {
-    match chars[i] {
-      '*' => tokens.push(AnyMany)
-      '?' => tokens.push(AnyChar)
-      '\\' => {
-        i += 1
-        if i == chars.length() {
-          raise @diagnostic.failure("trailing backslash in glob")
-        }
-        tokens.push(Literal(chars[i]))
+  for input = pattern {
+    lexmatch input with longest {
+      re"^$" => break
+      (re"^\*", after=rest) => {
+        tokens.push(AnyMany)
+        continue rest
       }
-      '[' => {
-        i += 1
-        let negated = chars.get(i) is Some('!' | '^')
-        if negated {
-          i += 1
-        }
-        let ranges = []
-        while i < chars.length() && (chars[i] != ']' || ranges.is_empty()) {
-          let first = glob_char(chars, i)
-          i = first.1
-          if chars.get(i) == Some('-') &&
-            chars.get(i + 1) is Some(c) &&
-            c != ']' {
-            let last = glob_char(chars, i + 1)
-            if first.0 > last.0 {
-              raise @diagnostic.failure("reversed character range in glob")
-            }
-            ranges.push((first.0, last.0))
-            i = last.1
-          } else {
-            ranges.push((first.0, first.0))
+      (re"^\?", after=rest) => {
+        tokens.push(AnyChar)
+        continue rest
+      }
+      (re"^\\", after=rest) =>
+        match rest {
+          [c, .. rest] => {
+            tokens.push(Literal(c))
+            continue rest
           }
+          [] => raise @diagnostic.failure("trailing backslash in glob")
         }
-        if i >= chars.length() || ranges.is_empty() {
-          raise @diagnostic.failure("unclosed or empty character set in glob")
-        }
-        tokens.push(CharSet(ranges, negated))
+      (re"^\[", after=rest) => {
+        let (set, rest) = glob_set(rest)
+        tokens.push(set)
+        continue rest
       }
-      c => tokens.push(Literal(c))
+      (re"^[^*?\\\[]+" as text, after=rest) => {
+        for c in text {
+          tokens.push(Literal(c))
+        }
+        continue rest
+      }
     }
-    i += 1
   }
   tokens
 }
 
 ///|
-fn glob_char(chars : Array[Char], start : Int32) -> (Char, Int32) raise {
-  let i = if chars[start] == '\\' { start + 1 } else { start }
-  if i >= chars.length() {
-    raise @diagnostic.failure("trailing backslash in glob set")
+fn glob_set(input : StringView) -> (GlobToken, StringView) raise {
+  let (negated, input) = lexmatch input with longest {
+    (re"^[!^]", after=rest) => (true, rest)
+    _ => (false, input)
   }
-  (chars[i], i + 1)
+  let ranges = []
+  for input = input {
+    // The first ']' is a member; only a later one closes the set.
+    if input is [']', .. rest] && !ranges.is_empty() {
+      break (CharSet(ranges, negated), rest)
+    }
+    let (first, rest) = glob_char(input)
+    match rest {
+      ['-', .. after_hyphen] if after_hyphen is [c, ..] && c != ']' => {
+        let (last, rest) = glob_char(after_hyphen)
+        if first > last {
+          raise @diagnostic.failure("reversed character range in glob")
+        }
+        ranges.push((first, last))
+        continue rest
+      }
+      _ => {
+        ranges.push((first, first))
+        continue rest
+      }
+    }
+  }
+}
+
+///|
+fn glob_char(input : StringView) -> (Char, StringView) raise {
+  lexmatch input with longest {
+    re"^$" =>
+      raise @diagnostic.failure("unclosed or empty character set in glob")
+    (re"^\\", after=rest) =>
+      match rest {
+        [c, .. rest] => (c, rest)
+        [] => raise @diagnostic.failure("trailing backslash in glob set")
+      }
+    (re"^[^\\]" as c, after=rest) => (c, rest)
+  }
 }
 
 ///|
