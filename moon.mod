@@ -11,7 +11,7 @@
 
 name = "moonbit-community/mooncram"
 
-version = "0.0.9"
+version = "0.1.0"
 
 readme = "README.md"
 

@@ -56,7 +56,7 @@ To run the Wasm version of mooncram directly:
 # Latest stable release
 moonx moonbit-community/mooncram@latest --help
 # Specific version
-moonx moonbit-community/mooncram@0.0.9 --help
+moonx moonbit-community/mooncram@0.1.0 --help
 ```
 
 The rest of this guide uses the installed `mooncram` command.
