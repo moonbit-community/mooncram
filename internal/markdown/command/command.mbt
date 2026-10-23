@@ -19,22 +19,6 @@ pub extend PipelineSegment with @debug.Debug::{to_repr}
 pub extend PipelineSegment with Eq::{equal, not_equal}
 
 ///|
-fn valid_name(name : String) -> Bool {
-  let mut first = true
-  for c in name {
-    if first {
-      if !(c is ('A'..<='Z' | 'a'..<='z' | '_')) {
-        return false
-      }
-      first = false
-    } else if !(c is ('A'..<='Z' | 'a'..<='z' | '_' | '0'..<='9')) {
-      return false
-    }
-  }
-  !first
-}
-
-///|
 /// Parse an executable pipeline.
 /// Variable-like text such as ${NAME} is literal, with normal quoting and escaping.
 /// Leading NAME=value assignments affect only their segment's environment.

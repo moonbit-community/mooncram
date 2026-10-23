@@ -15,15 +15,11 @@ priv struct TokenSegment {
 
 ///|
 // Preserve raw word ranges and assignment prefixes while decoding arguments.
+// Views retain UTF-16 source offsets through quoted and escaped fragments.
 fn tokenize(command : String) -> Array[TokenSegment] raise {
   let pipeline : Array[TokenSegment] = []
   let mut args : Array[Word] = []
   let word = StringBuilder()
-  let mut quote : (Char, Int32)? = None
-  let mut escape : Int32? = None
-  let mut started = false
-  let mut word_start = 0
-  let mut assignment : String? = None
   let mut previous_pipe : Int32? = None
   fn invalid(
     summary : String,
@@ -36,112 +32,114 @@ fn tokenize(command : String) -> Array[TokenSegment] raise {
       segment=(pipeline.length() + 1).to_string(),
     )
   }
-  let chars = [ for c in command => c ]
-  for i = 0, pos = 0; i < chars.length(); {
-    let c = chars[i]
-    if c == '\u0000' || c == '\n' || c == '\r' {
-      raise invalid("command contains a NUL or newline", pos, pos + 1)
-    }
-    // Character indices are used only for scanning. Source ranges always use
-    // the separate UTF-16 cursor, including quoted and escaped characters.
-    if !started && !(c is (' ' | '\t' | '|')) {
-      word_start = pos
-      let raw = StringBuilder()
-      let mut end = i
-      while end < chars.length() && !(chars[end] is (' ' | '\t' | '|')) {
-        raw.write_char(chars[end])
-        end += 1
-      }
-      let raw = raw.to_string()
-      if raw.find("=") is Some(eq) {
-        let name = raw[:eq].to_owned()
-        if valid_name(name) {
-          assignment = Some(name)
-        }
+  fn escaped(input : StringView) -> StringView raise {
+    let pos = input.start_offset()
+    lexmatch input with longest {
+      re"^$" =>
+        raise @diagnostic.context(
+          invalid("trailing backslash in command", pos - 1, pos),
+          hint="add the escaped character or double the backslash to pass it literally",
+        )
+      (re"^[\u0000\r\n]", after=_) =>
+        raise invalid("command contains a NUL or newline", pos, pos + 1)
+      (re"^[^\u0000\r\n]" as c, after=rest) => {
+        word.write_char(c)
+        rest
       }
     }
-    if escape is Some(_) {
-      word.write_char(c)
-      escape = None
-    } else if quote is Some(('\'', _)) {
-      if c == '\'' {
-        quote = None
-      } else {
-        word.write_char(c)
-      }
-    } else if c == '\\' {
-      escape = Some(pos)
-      started = true
-    } else if quote is Some(('"', _)) {
-      if c == '"' {
-        quote = None
-      } else {
-        word.write_char(c)
-      }
-    } else {
-      match c {
-        '\'' | '"' => {
-          quote = Some((c, pos))
-          started = true
+  }
+
+  fn double_quoted(input : StringView) -> StringView raise {
+    let quote_start = input.start_offset() - 1
+    for input = input {
+      let pos = input.start_offset()
+      lexmatch input with longest {
+        re"^$" =>
+          raise @diagnostic.context(
+            invalid("unclosed quote in command", quote_start, quote_start + 1),
+            hint="close the quote opened here",
+          )
+        (re"^[\u0000\r\n]", after=_) =>
+          raise invalid("command contains a NUL or newline", pos, pos + 1)
+        (re"^\"", after=rest) => break rest
+        (re"^\\", after=rest) => continue escaped(rest)
+        (re"^[^\"\\\u0000\r\n]+" as text, after=rest) => {
+          word.write_view(text)
+          continue rest
         }
-        ' ' | '\t' =>
-          if started {
-            args.push({
-              text: word.to_string(),
-              assignment,
-              start: word_start,
-              end: pos,
-            })
-            assignment = None
-            word.reset()
-            started = false
-          }
-        '|' => {
-          if started {
-            args.push({
-              text: word.to_string(),
-              assignment,
-              start: word_start,
-              end: pos,
-            })
-            assignment = None
-            word.reset()
-            started = false
-          }
-          pipeline.push({ words: args, end: pos, empty_range: (pos, pos + 1), })
-          args = []
-          previous_pipe = Some(pos)
-        }
-        '&' | ';' | '<' | '>' | '`' | '(' | ')' =>
+      }
+    }
+  }
+
+  fn scan_word(input : StringView) -> (Word, StringView) raise {
+    let start = input.start_offset()
+    // Inspect only the raw prefix, separately from the longer plain-text rule.
+    let assignment = lexmatch input with longest {
+      (re"^" + (re"[A-Za-z_][A-Za-z0-9_]*" as name) + re"=", after=_) =>
+        Some(name.to_owned())
+      _ => None
+    }
+    word.reset()
+    let rest = for input = input {
+      let pos = input.start_offset()
+      lexmatch input with longest {
+        (re"^(?:$|[ \t|])", after=_) => break input
+        (re"^[\u0000\r\n]", after=_) =>
+          raise invalid("command contains a NUL or newline", pos, pos + 1)
+        (re"^[&;<>`()]" as c, after=_) =>
           raise invalid(
             "unquoted shell operator '\{c}'; quote it to pass it literally",
             pos,
             pos + 1,
           )
-        _ => {
-          word.write_char(c)
-          started = true
+        (re"^'" + (re"[^'\u0000\r\n]*" as text) + re"'", after=rest) => {
+          word.write_view(text)
+          continue rest
+        }
+        // Without a closing quote, the literal run ends at EOF or a control.
+        (re"^'[^'\u0000\r\n]*", after=rest) =>
+          if rest.is_empty() {
+            raise @diagnostic.context(
+              invalid("unclosed quote in command", pos, pos + 1),
+              hint="close the quote opened here",
+            )
+          } else {
+            let pos = rest.start_offset()
+            raise invalid("command contains a NUL or newline", pos, pos + 1)
+          }
+        (re"^\"", after=rest) => continue double_quoted(rest)
+        (re"^\\", after=rest) => continue escaped(rest)
+        (re"^[^ \t|'\"\\&;<>`()\u0000\r\n]+" as text, after=rest) => {
+          word.write_view(text)
+          continue rest
         }
       }
     }
-    continue i + 1, pos + c.utf16_len()
-  }
-  if escape is Some(pos) {
-    raise @diagnostic.context(
-      invalid("trailing backslash in command", pos, pos + 1),
-      hint="add the escaped character or double the backslash to pass it literally",
+    (
+      { text: word.to_string(), assignment, start, end: rest.start_offset(), },
+      rest,
     )
   }
-  if quote is Some((_, pos)) {
-    raise @diagnostic.context(
-      invalid("unclosed quote in command", pos, pos + 1),
-      hint="close the quote opened here",
-    )
+
+  for input = command[:] {
+    let pos = input.start_offset()
+    lexmatch input with longest {
+      re"^$" => break
+      (re"^[ \t]+", after=rest) => continue rest
+      (re"^\|", after=rest) => {
+        pipeline.push({ words: args, end: pos, empty_range: (pos, pos + 1), })
+        args = []
+        previous_pipe = Some(pos)
+        continue rest
+      }
+      _ => {
+        let (word, rest) = scan_word(input)
+        args.push(word)
+        continue rest
+      }
+    }
   }
   let end = command.length()
-  if started {
-    args.push({ text: word.to_string(), assignment, start: word_start, end, })
-  }
   let empty_range = match previous_pipe {
     Some(pos) => (pos, pos + 1)
     None => (end, end)
