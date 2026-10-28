@@ -85,10 +85,11 @@ export function testScriptsWithoutMoonx({ executable, docs, directory, project, 
     `$ MODE=upstream ${SCRIPT_COMMAND} check-env MODE upstream | MODE=downstream ${SCRIPT_COMMAND} check-env-echo downstream\nupstream\n` +
     `$ ${SCRIPT_COMMAND} status 255 0\n[255]\n` +
     `$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n` +
-    `$ ${SCRIPT_COMMAND} write-file ${quoteArgument(SCRIPT_FILENAME)} ${quoteArgument(rewritten)}\n` +
+    `$ ${SCRIPT_COMMAND} write-script ${quoteArgument(SCRIPT_FILENAME)} ${quoteArgument(rewritten)}\n` +
     `$ ${SCRIPT_COMMAND}\nrebuilt after edit\n`,
   ));
   const result = cli(["test", document, "--target", "native"], { env });
   assert(result.stdout.includes("8 cases, 0 failed, 0 errors"), result.stdout);
-  assert.equal(fs.readFileSync(join(workspace, SCRIPT_FILENAME), "utf8"), rewritten);
+  assert.equal(fs.readFileSync(join(workspace, SCRIPT_FILENAME), "utf8"),
+    'import { "moonbitlang/core/builtin" }\n' + rewritten);
 }

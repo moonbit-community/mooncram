@@ -17,25 +17,21 @@ export const DIRECTORY_LINK_TYPE = process.platform === "win32" ? "junction" : "
 export const EXECUTABLE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 export const TOOL_DIRECTORIES = (process.env.PATH ?? "").split(delimiter);
 export const CLEANUP_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
-// Keep these dependency versions in sync with moon.mod.
-const ASYNC_VERSION = "0.22.4";
+// Keep this dependency version in sync with moon.mod.
 const X_VERSION = "0.5.5";
-const ASYNC_DEPENDENCY = `moonbitlang/async@${ASYNC_VERSION}`;
 const X_DEPENDENCY = `moonbitlang/x@${X_VERSION}`;
 export const IMPORTS = [
-  "moonbitlang/async",
-  "moonbitlang/async/fs",
-  "moonbitlang/async/stdio",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/fs",
+  "moonbitlang/core/async/stdio",
   "moonbitlang/core/env",
   "moonbitlang/core/string",
   "moonbitlang/x/sys",
 ];
 const PACKAGE_IMPORTS = formatImports(IMPORTS);
-const SCRIPT_IMPORTS = PACKAGE_IMPORTS
-  .replaceAll("moonbitlang/async", ASYNC_DEPENDENCY)
-  .replaceAll("moonbitlang/x/sys", `${X_DEPENDENCY}/sys`);
+const SCRIPT_IMPORTS = PACKAGE_IMPORTS.replaceAll("moonbitlang/x/sys", `${X_DEPENDENCY}/sys`);
 const MODULE_CONFIG = 'name = "mooncram/integration"\n' +
-  `import { "${ASYNC_DEPENDENCY}", "${X_DEPENDENCY}" }\n`;
+  `import { "${X_DEPENDENCY}" }\n`;
 export const MAIN_PACKAGE_CONFIG = 'options("is-main": true)\n';
 export const INVALID_PROGRAM = "fn main { nonexistent_function() }\n";
 export const LIBRARY_PROGRAM = "pub fn value() -> Int { 1 }\n";

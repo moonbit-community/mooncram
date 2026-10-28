@@ -15,15 +15,15 @@ export function testCheck({ executable, target, directory, docs, project }) {
   const runner = copyTool("moonrun", tools, "mooncram-test-runner");
   const stub = join(project, "reject-tools");
   writePackage(stub, formatImports([
-    "moonbitlang/async", "moonbitlang/async/fs", "moonbitlang/async/process",
+    "moonbitlang/core/async", "moonbitlang/core/async/fs", "moonbitlang/core/async/process",
     "moonbitlang/core/env", "moonbitlang/x/sys",
   ]) + MAIN_PACKAGE_CONFIG,
   'async fn main {\n' +
     '  let args = @env.args()\n' +
     '  if args.get(1) is Some("--probe-tool") {\n' +
-    '    @sys.exit(@process.run(args[2], ["--mooncram-tool-probe", args[2]]))\n' +
+    '    @sys.exit(@process.run(args[2], ["--mooncram-tool-probe", args[2]]).exit_code)\n' +
     '  }\n' +
-    '  @fs.write_file(@env.get_env_var("MOONCRAM_TOOL_CALL").unwrap(), args.join("\\n"))\n' +
+    '  @fs.write_text(@env.get_env_var("MOONCRAM_TOOL_CALL").unwrap(), args.join("\\n"))\n' +
     '  @sys.exit(99)\n}\n');
   const artifact = JSON.parse(run([
     "moon", "-C", project, "run", "--build-only", "--target", "native", stub,
@@ -184,11 +184,11 @@ export function testCheck({ executable, target, directory, docs, project }) {
 
 export function testGeneratedTargets({ cli, docs, project, target }) {
   const generated = join(docs, "generated-target.mbtx");
-  const source = 'fn main { println("generated") }\n';
+  const source = 'import { "moonbitlang/core/builtin" }\nfn main { println("generated") }\n';
   writePackage(join(project, "generate-target"), formatImports([
-    "moonbitlang/async", "moonbitlang/async/fs",
+    "moonbitlang/core/async", "moonbitlang/core/async/fs",
   ]) + MAIN_PACKAGE_CONFIG,
-  `async fn main { @fs.write_file("generated-target.mbtx", ${JSON.stringify(source)}) }\n`);
+  `async fn main { @fs.write_text("generated-target.mbtx", ${JSON.stringify(source)}) }\n`);
   const correct = block("$ moonx mooncram/integration/generate-target\n$ moonx ./generated-target.mbtx\ngenerated\n");
   const path = writeDocument(docs, "generated-target.md", correct);
   for (const command of ["test", "update"]) {

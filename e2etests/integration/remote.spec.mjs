@@ -36,7 +36,7 @@ export async function testRemotePackages({ executable, docs, project, directory,
   const cli = createCli(isolatedExecutable(executable, target, runner), project);
   const stub = join(project, "moonx-double");
   const helper = fs.readFileSync(join(ROOT, "e2etests/fixtures/moonx.mbt"), "utf8");
-  writePackage(stub, formatImports([...IMPORTS, "moonbitlang/async/process"]) +
+  writePackage(stub, formatImports([...IMPORTS, "moonbitlang/core/async/process"]) +
     MAIN_PACKAGE_CONFIG, helper + PROGRAM.replace("let args = @env.args()", "let args = remote_args()"));
   const artifact = JSON.parse(run([
     "moon", "-C", project, "run", "--build-only", "--target", "native", stub,

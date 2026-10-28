@@ -10,7 +10,7 @@ async fn remote_args() -> Array[String] {
       stdin=@stdio.stdin,
       stdout=@stdio.stdout,
       stderr=@stdio.stderr,
-    ))
+    ).exit_code)
   }
   assert_eq(raw[1:3].to_owned(), ["--target", "wasm"])
   assert_true(raw[3] == "mooncram/integration/cmd@1.2.3" || raw[3] == "fixture/tool@1.2.3" || raw[3] == "fixture/tool/cmd@2.0.0-rc.1+build.007")
@@ -22,24 +22,24 @@ async fn remote_args() -> Array[String] {
       @sys.exit(0)
     }
     "held-stderr" | "held-success" => {
-      let pid = @process.spawn_orphan(
+      let process = @process.spawn_orphan(
         @env.get_env_var("MOONCRAM_TEST_NODE").unwrap(),
         ["-e", "setTimeout(() => {}, 10000)"],
         stdout=@stdio.stdout, stderr=@stdio.stderr,
       )
-      @stdio.stderr.write("held-pid=\{pid}\nheld diagnostic\n")
+      @stdio.stderr.text.write("held-pid=\{process.pid}\nheld diagnostic\n")
       @sys.exit(if args[1] == "held-stderr" { 255 } else { 0 })
     }
     "reserved-output" => {
-      @stdio.stdout.write("stdout before failure\n")
-      @stdio.stderr.write("stderr-begin\n" + "e".repeat(70000) + "\nstderr-end\n")
+      @stdio.stdout.text.write("stdout before failure\n")
+      @stdio.stderr.text.write("stderr-begin\n" + "e".repeat(70000) + "\nstderr-end\n")
       @sys.exit(@string.parse_int(args[2]))
     }
     "reserved-after" => {
       while !@fs.exists(args[3] + ".started") {
         @async.sleep(10)
       }
-      @stdio.stderr.write("failure after sibling started\n")
+      @stdio.stderr.text.write("failure after sibling started\n")
       @sys.exit(@string.parse_int(args[2]))
     }
     "signal" | "signal-after" => {
@@ -50,7 +50,7 @@ async fn remote_args() -> Array[String] {
       } else {
         @async.sleep(100)
       }
-      @stdio.stderr.write("stderr before signal\n")
+      @stdio.stderr.text.write("stderr before signal\n")
       @process.run(
         @env.get_env_var("MOONCRAM_TEST_NODE").unwrap(),
         ["-e", "process.kill(process.ppid, 'SIGHUP')"],

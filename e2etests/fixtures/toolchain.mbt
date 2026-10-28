@@ -6,7 +6,7 @@ async fn main {
   let executable = @path.Path(args[0])
   let name = executable.basename().to_owned()
   let bin = executable.dirname()
-  @fs.write_file(
+  @fs.write_text(
     @env.get_env_var("MOONCRAM_TOOLCHAIN_LOG").unwrap(),
     Json::object({
       "tool": args[0].to_json(),
