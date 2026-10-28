@@ -45,6 +45,10 @@ let _embed_quickstart_md : String =
   #|Complete contents of `tests/hello.mbtx`:
   #|
   #|```mbt
+  #|import {
+  #|  "moonbitlang/core/builtin",
+  #|}
+  #|
   #|fn main {
   #|  println("Hello, MoonBit!")
   #|}

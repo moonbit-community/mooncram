@@ -7,8 +7,8 @@ let _embed_recipes_md : String =
   #|These examples supply the entire program and test document. Copy both files;
   #|no placeholder scripts or module configuration are needed. Install `mooncram`
   #|and a complete MoonBit toolchain, with its `bin` directory on `PATH`. The script
-  #|uses that installation's `moon` and `moonrun`, and pins `moonbitlang/async`
-  #|and `moonbitlang/x`; the first build needs access to download these dependencies.
+  #|uses that installation's `moon`, `moonrun`, and `moonbitlang/core/async`, and pins
+  #|`moonbitlang/x`; the first build needs access to download this dependency.
   #|
   #|```text
   #|demo/
@@ -23,33 +23,33 @@ let _embed_recipes_md : String =
   #|
   #|```mbt
   #|import {
-  #|  "moonbitlang/async@0.22.4",
-  #|  "moonbitlang/async@0.22.4/stdio",
+  #|  "moonbitlang/core/async",
+  #|  "moonbitlang/core/async/stdio",
   #|  "moonbitlang/core/env",
   #|  "moonbitlang/x@0.5.5/sys",
   #|}
   #|
   #|async fn main {
   #|  match @env.args().get(1).unwrap_or("hello") {
-  #|    "hello" => @stdio.stdout.write("Hello, MoonBit!\n")
+  #|    "hello" => @stdio.stdout.text.write("Hello, MoonBit!\n")
   #|    "fail" => {
-  #|      @stdio.stderr.write("error: invalid argument\n")
+  #|      @stdio.stderr.text.write("error: invalid argument\n")
   #|      @sys.exit(2)
   #|    }
   #|    "warn" => {
-  #|      @stdio.stdout.write("progress\n")
-  #|      @stdio.stderr.write("warning: using default\n")
+  #|      @stdio.stdout.text.write("progress\n")
+  #|      @stdio.stderr.text.write("warning: using default\n")
   #|    }
   #|    "version" => {
   #|      let version = @env.get_env_var("DEMO_VERSION").unwrap_or("1.2.3")
-  #|      @stdio.stdout.write("version: \{version}\n")
+  #|      @stdio.stdout.text.write("version: \{version}\n")
   #|    }
   #|    "env" => {
   #|      let name = @env.get_env_var("DEMO_NAME").unwrap_or("World")
-  #|      @stdio.stdout.write("Hello, \{name}!\n")
+  #|      @stdio.stdout.text.write("Hello, \{name}!\n")
   #|    }
   #|    "copy" => @stdio.stdout.write(@stdio.stdin.read_all())
-  #|    "prompt" => @stdio.stdout.write("ready> ")
+  #|    "prompt" => @stdio.stdout.text.write("ready> ")
   #|    _ => @sys.exit(3)
   #|  }
   #|}

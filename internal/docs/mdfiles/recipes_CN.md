@@ -2,9 +2,8 @@
 
 以下示例提供完整程序和测试文档，复制两个文件即可，无需占位脚本或模块配置。
 先安装 `mooncram` 和完整 MoonBit 工具链，将安装的 `bin` 目录加入 `PATH`。
-脚本使用同一安装中的 `moon` 和 `moonrun`。
-脚本固定了 `moonbitlang/async` 和 `moonbitlang/x` 的版本；
-首次构建需要下载依赖。
+脚本使用同一安装中的 `moon`、`moonrun` 和 `moonbitlang/core/async`。
+脚本固定了 `moonbitlang/x` 的版本，首次构建需要下载此依赖。
 
 ```text
 demo/
@@ -19,33 +18,33 @@ demo/
 
 ```mbt
 import {
-  "moonbitlang/async@0.22.4",
-  "moonbitlang/async@0.22.4/stdio",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/stdio",
   "moonbitlang/core/env",
   "moonbitlang/x@0.5.5/sys",
 }
 
 async fn main {
   match @env.args().get(1).unwrap_or("hello") {
-    "hello" => @stdio.stdout.write("Hello, MoonBit!\n")
+    "hello" => @stdio.stdout.text.write("Hello, MoonBit!\n")
     "fail" => {
-      @stdio.stderr.write("error: invalid argument\n")
+      @stdio.stderr.text.write("error: invalid argument\n")
       @sys.exit(2)
     }
     "warn" => {
-      @stdio.stdout.write("progress\n")
-      @stdio.stderr.write("warning: using default\n")
+      @stdio.stdout.text.write("progress\n")
+      @stdio.stderr.text.write("warning: using default\n")
     }
     "version" => {
       let version = @env.get_env_var("DEMO_VERSION").unwrap_or("1.2.3")
-      @stdio.stdout.write("version: \{version}\n")
+      @stdio.stdout.text.write("version: \{version}\n")
     }
     "env" => {
       let name = @env.get_env_var("DEMO_NAME").unwrap_or("World")
-      @stdio.stdout.write("Hello, \{name}!\n")
+      @stdio.stdout.text.write("Hello, \{name}!\n")
     }
     "copy" => @stdio.stdout.write(@stdio.stdin.read_all())
-    "prompt" => @stdio.stdout.write("ready> ")
+    "prompt" => @stdio.stdout.text.write("ready> ")
     _ => @sys.exit(3)
   }
 }

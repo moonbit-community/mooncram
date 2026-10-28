@@ -30,22 +30,22 @@ Complete contents of `tests/output.mbtx`:
 
 ```mbt
 import {
-  "moonbitlang/async@0.22.4",
-  "moonbitlang/async@0.22.4/stdio",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/stdio",
   "moonbitlang/core/env",
   "moonbitlang/x@0.5.5/sys",
 }
 
 async fn main {
   match @env.args().get(1).unwrap_or("result") {
-    "result" => @stdio.stdout.write("result\n")
+    "result" => @stdio.stdout.text.write("result\n")
     "special" => {
-      @stdio.stdout.write("$ this is output\n[2]\n```\n")
-      @stdio.stdout.write("\u001b[31mred\u001b[0m\n\nfinal text")
+      @stdio.stdout.text.write("$ this is output\n[2]\n```\n")
+      @stdio.stdout.text.write("\u001b[31mred\u001b[0m\n\nfinal text")
       @sys.exit(3)
     }
     "--invalid" => {
-      @stdio.stderr.write("error: invalid argument\n")
+      @stdio.stderr.text.write("error: invalid argument\n")
       @sys.exit(2)
     }
     _ => @sys.exit(3)

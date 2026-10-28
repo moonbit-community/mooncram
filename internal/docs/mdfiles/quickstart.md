@@ -41,6 +41,10 @@ demo/
 Complete contents of `tests/hello.mbtx`:
 
 ```mbt
+import {
+  "moonbitlang/core/builtin",
+}
+
 fn main {
   println("Hello, MoonBit!")
 }
