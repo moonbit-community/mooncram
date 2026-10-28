@@ -66,7 +66,7 @@ async test "root and same-name subpackage resolution matrix with source director
   @fs.mkdir(src)
   let sub = @files.resolve_from(src, "foo")
   @fs.mkdir(sub)
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(dir, "moon.mod"),
     "name = \"user/foo\"\nsource = \"src\"",
   )
@@ -76,7 +76,7 @@ async test "root and same-name subpackage resolution matrix with source director
   assert_eq(context.source_root, src)
   for root_main in [false, true] {
     for sub_main in [false, true] {
-      @fs.write_file(
+      @fs.write_text(
         @files.resolve_from(src, "moon.pkg"),
         if root_main {
           "pkgtype(kind: \"executable\")"
@@ -84,7 +84,7 @@ async test "root and same-name subpackage resolution matrix with source director
           ""
         },
       )
-      @fs.write_file(
+      @fs.write_text(
         @files.resolve_from(sub, "moon.pkg"),
         if sub_main {
           "pkgtype(kind: \"executable\")"
@@ -114,7 +114,7 @@ async test "root and same-name subpackage resolution matrix with source director
       }
     }
   }
-  @fs.write_file(@files.resolve_from(sub, "moon.pkg"), "pkgtype(kind: false)")
+  @fs.write_text(@files.resolve_from(sub, "moon.pkg"), "pkgtype(kind: false)")
   assert_async_error_contains(
     () => ignore(resolve_package(context, "user/foo/foo")),
     "invalid configuration",
@@ -125,16 +125,16 @@ async test "root and same-name subpackage resolution matrix with source director
 async test "deep packages and nested modules including symlinks stay within module boundaries" {
   let dir = @fs.realpath(@fs.tmpdir(prefix="mooncram-boundary"))
   defer @fs.rmdir(dir, recursive=true)
-  @fs.write_file(@files.resolve_from(dir, "moon.mod"), "name = \"user/foo\"")
+  @fs.write_text(@files.resolve_from(dir, "moon.mod"), "name = \"user/foo\"")
   let context = load_module(dir)
   let deep = @files.resolve_from(dir, "cmd/deep/boo")
   @fs.mkdir(deep, recursive=true)
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(deep, "moon.pkg"),
     "pkgtype(kind: \"executable\")",
   )
   assert_eq(resolve_package(context, "user/foo/cmd/deep/boo"), deep)
-  @fs.write_file(@files.resolve_from(dir, "cmd/moon.mod"), "")
+  @fs.write_text(@files.resolve_from(dir, "cmd/moon.mod"), "")
   assert_async_error_contains(
     () => ignore(resolve_package(context, "user/foo/cmd/deep/boo")),
     "nested modules",
@@ -146,7 +146,7 @@ async test "deep packages and nested modules including symlinks stay within modu
   )
   let outside = @fs.realpath(@fs.tmpdir(prefix="mooncram-outside"))
   defer @fs.rmdir(outside, recursive=true)
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(outside, "moon.pkg"),
     "pkgtype(kind: \"executable\")",
   )
@@ -160,11 +160,11 @@ async test "deep packages and nested modules including symlinks stay within modu
   @fs.mkdir(src)
   let sibling = @files.resolve_from(dir, "sibling")
   @fs.mkdir(sibling)
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(sibling, "moon.pkg"),
     "pkgtype(kind: \"executable\")",
   )
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(dir, "moon.mod"),
     "name = \"user/foo\"\nsource = \"src\"",
   )
@@ -189,26 +189,26 @@ async test "module declarations validate configuration-only fences before execut
   )
   let path = @files.resolve_from(dir, "moon.mod")
   for source in ["", "src"] {
-    @fs.write_file(path, "name = \"user/foo\"\nsource = \"\{source}\"")
+    @fs.write_text(path, "name = \"user/foo\"\nsource = \"\{source}\"")
     assert_true(validate_document_modules(doc, dir) is Some(_))
     assert_eq(load_module(dir).source_root, @files.resolve_from(dir, source))
   }
-  @fs.write_file(path, "name = \"user/bar\"")
+  @fs.write_text(path, "name = \"user/bar\"")
   assert_async_error_contains(
     () => ignore(validate_document_modules(doc, dir)),
     "test.md:4: module declaration 'user/foo' does not match 'user/bar'",
   )
-  @fs.write_file(path, "name =")
+  @fs.write_text(path, "name =")
   assert_async_error_contains(
     () => ignore(validate_document_modules(doc, dir)),
     "test.md:4: invalid configuration",
   )
-  @fs.write_file(path, "name = \"user/foo\"\nsource = \"../outside\"")
+  @fs.write_text(path, "name = \"user/foo\"\nsource = \"../outside\"")
   assert_async_error_contains(
     () => ignore(load_module(dir)),
     "source must stay inside",
   )
-  @fs.write_file(path, "name = \"user/foo\"\nsource = true")
+  @fs.write_text(path, "name = \"user/foo\"\nsource = true")
   assert_async_error_contains(
     () => ignore(load_module(dir)),
     "source must be a string",

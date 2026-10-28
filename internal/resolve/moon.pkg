@@ -2,8 +2,8 @@ import {
   "moonbit-community/mooncram/internal/diagnostic",
   "moonbit-community/mooncram/internal/files",
   "moonbit-community/mooncram/internal/markdown",
-  "moonbitlang/async/fs",
-  "moonbitlang/async/os_error",
+  "moonbitlang/core/async/fs",
+  "moonbitlang/core/async/os_error",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/moon_config",
   "moonbitlang/x/path",
@@ -12,5 +12,5 @@ import {
 supported_targets = "wasm+native"
 
 import {
-  "moonbitlang/async",
+  "moonbitlang/core/async",
 } for "wbtest"

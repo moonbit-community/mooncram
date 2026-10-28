@@ -10,8 +10,6 @@ priv struct Command {
 ///|
 /// Readers outlive the inner process group on failure, so reaping children
 /// does not cancel their diagnostics. Every group still has bounded lifetime.
-// Hidden/deprecated cleanup API for routes not consumed by a successful spawn.
-#warnings("-deprecated")
 async fn capture_pipeline(
   commands : Array[Command],
   cwd : String,
@@ -27,8 +25,8 @@ async fn capture_pipeline(
     )
     progress.tool = Some(commands[0].program)
   }
-  let inputs : Array[&@process.ProcessInput] = []
-  let outputs : Array[&@process.ProcessOutput] = []
+  let inputs : Array[@process.SharedProcessInput] = []
+  let outputs : Array[@process.SharedProcessOutput] = []
   let readers : Array[@process.ReadFromProcess] = []
   defer {
     for input in inputs {
@@ -41,7 +39,7 @@ async fn capture_pipeline(
       reader.close()
     }
   }
-  let (input, input_writer) = @process.write_to_process()
+  let (input, input_writer) = @process.write_to_process_shared()
   inputs.push(input)
   input_writer.close()
   for _ in 1..<commands.length() {
@@ -49,7 +47,7 @@ async fn capture_pipeline(
     inputs.push(input)
     outputs.push(output)
   }
-  let (out_reader, out_writer) = @process.read_from_process()
+  let (out_reader, out_writer) = @process.read_from_process_shared()
   readers.push(out_reader)
   outputs.push(out_writer)
   let labels = commands.mapi((i, command) => {
@@ -69,13 +67,15 @@ async fn capture_pipeline(
     commands[last].program,
   )
   progress.logs.push(stdout_log)
+  let mut captured : @output.Captured? = None
   @async.with_task_group(log_group => {
     let stdout = log_group.spawn(() => {
       capture_stream(out_reader, stdout_log, progress)
     })
     let errors = []
     try {
-      let exit_code = @async.with_task_group(process_group => {
+      let mut exit_code = 0
+      @async.with_task_group(process_group => {
         // Close unused routes as soon as processes have been cancelled/reaped,
         // before the bounded diagnostic drain starts.
         defer {
@@ -93,7 +93,7 @@ async fn capture_pipeline(
           progress.tool = Some(command.program)
           let is_last = i == last
           let stdout_writer = if is_last { out_writer } else { outputs[i] }
-          let (reader, stderr_writer) = @process.read_from_process()
+          let (reader, stderr_writer) = @process.read_from_process_shared()
           readers.push(reader)
           outputs.push(stderr_writer)
           let log = StreamCapture::new(
@@ -118,7 +118,7 @@ async fn capture_pipeline(
             stderr=stderr_writer,
             cancel_handler=@process.hard_cancel(),
           ) catch {
-            @os_error.OSError(_) as e => {
+            @os_error.OsError(_, ..) as e => {
               let error = @diagnostic.wrap(
                 e,
                 "failed to start '\{command.program}'",
@@ -127,6 +127,11 @@ async fn capture_pipeline(
             }
             e => raise e
           }
+          // Shared routes keep the parent's endpoints open until explicitly
+          // closed. Release them after spawning so readers can observe EOF.
+          inputs[i].close()
+          stdout_writer.close()
+          stderr_writer.close()
           processes.push(
             process_group.spawn(() => {
               let status = process.wait()
@@ -150,27 +155,25 @@ async fn capture_pipeline(
         progress.phase = phase
         progress.segment = if building { Some(labels[0]) } else { None }
         progress.tool = if building { Some(commands[0].program) } else { None }
-        let mut exit_code = 0
         for process in processes {
           let status = process.wait()
           if status != 0 {
             exit_code = status
           }
         }
-        exit_code
       })
       progress.phase = if building { "build" } else { "capture" }
       let diagnostic = StringBuilder()
       for stderr in errors {
         diagnostic.write_string(@output.normalize_output(stderr.wait()))
       }
-      {
+      captured = Some({
         output: @output.normalize_output(stdout.wait()),
         diagnostic: diagnostic.to_string(),
         exit_code,
-      }
+      })
     } catch {
-      @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
+      @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e => {
         let primary = progress.remember(e)
         // Only readers remain. A descendant may still hold a pipe open; never
         // let preserving logs delay cancellation indefinitely. The outer case
@@ -191,6 +194,7 @@ async fn capture_pipeline(
       e => raise e
     }
   })
+  captured.unwrap()
 }
 
 ///|

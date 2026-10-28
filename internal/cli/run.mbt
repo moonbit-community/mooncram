@@ -22,17 +22,17 @@ pub async fn run(args : Array[String]) -> Int32 {
     match parse_cli(args) {
       Run(cli) => run_cli(cli)
       DocsList => {
-        @stdio.stdout.write(render_docs_list() + "\n")
+        @stdio.stdout.text.write(render_docs_list() + "\n")
         0
       }
       DocsShow(name) => {
-        @stdio.stdout.write(render_doc_body(name))
+        @stdio.stdout.text.write(render_doc_body(name))
         0
       }
     }
   } catch {
-    @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
-      @stdio.stderr.write(@diagnostic.render(e))
+    @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e => {
+      @stdio.stderr.text.write(@diagnostic.render(e))
       2
     }
     e => raise e

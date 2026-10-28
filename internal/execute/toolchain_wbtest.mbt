@@ -10,7 +10,7 @@ async fn test_toolchain(root : String) -> String {
     @fs.mkdir(directory, recursive=true)
   }
   for name in ["moon", "moonc"] {
-    @fs.write_file(
+    @fs.write_text(
       @files.resolve_from(bin, tool_name(name)),
       "",
       permission=0o755,
@@ -70,7 +70,7 @@ async test "toolchain skips missing, non-directory and non-executable PATH candi
   let root = @fs.realpath(@fs.tmpdir(prefix="mooncram-toolchain"))
   defer @fs.rmdir(root, recursive=true)
   let bin = test_toolchain(@files.resolve_from(root, "valid"))
-  @fs.write_file(@files.resolve_from(root, "file"), "")
+  @fs.write_text(@files.resolve_from(root, "file"), "")
   @fs.mkdir(
     @files.resolve_from(root, "directory/" + tool_name("moon")),
     recursive=true,
@@ -78,7 +78,7 @@ async test "toolchain skips missing, non-directory and non-executable PATH candi
   @fs.mkdir(@files.resolve_from(root, "not-executable"))
   let entries = ["missing", "file", "directory"]
   if @path.sep != '\\' {
-    @fs.write_file(
+    @fs.write_text(
       @files.resolve_from(root, "not-executable/moon"),
       "",
       permission=0o644,
@@ -137,7 +137,7 @@ async test "invalid first installation fails without falling back and caches its
     let saved = invalid + ".saved"
     @fs.rename(invalid, saved)
     if as_file {
-      @fs.write_file(invalid, "")
+      @fs.write_text(invalid, "")
     }
     let tools = toolchain_with_path(root, path)
     let diagnostic = capture_toolchain_error(tools)
@@ -167,7 +167,7 @@ async test "invalid first installation fails without falling back and caches its
     )
   }
   let moon = @files.resolve_from(root, tool_name("moon"))
-  @fs.write_file(moon, "", permission=0o755)
+  @fs.write_text(moon, "", permission=0o755)
   assert_toolchain_error(
     toolchain_with_path(root, Some(root + @path.delimiter.to_string() + b)),
     "bin directory",

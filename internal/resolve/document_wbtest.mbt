@@ -2,16 +2,16 @@
 async test "shared targets use case directories and fence module scope with direct remote coordinates" {
   let root = @fs.realpath(@fs.tmpdir(prefix="mooncram-resolve"))
   defer @fs.rmdir(root, recursive=true)
-  @fs.write_file(@files.resolve_from(root, "moon.mod"), "name = \"user/foo\"")
+  @fs.write_text(@files.resolve_from(root, "moon.mod"), "name = \"user/foo\"")
   let docs = @files.resolve_from(root, "docs")
   let work = @files.resolve_from(root, "work")
   @fs.mkdir(docs)
   @fs.mkdir(work)
   let script = @files.resolve_from(work, "invalid.mbtx")
-  @fs.write_file(script, "not compilable")
+  @fs.write_text(script, "not compilable")
   let package_dir = @files.resolve_from(root, "cmd/deep")
   @fs.mkdir(package_dir, recursive=true)
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(package_dir, "moon.pkg"),
     "pkgtype(kind: \"executable\")\nsupported_targets = \"js\"",
   )
@@ -67,7 +67,7 @@ async test "shared targets use case directories and fence module scope with dire
     "local .mbtx file",
   )
   // Versioned coordinates bypass local package configuration entirely.
-  @fs.write_file(
+  @fs.write_text(
     @files.resolve_from(package_dir, "moon.pkg"),
     "pkgtype(kind: false)",
   )
@@ -80,7 +80,7 @@ async test "shared targets use case directories and fence module scope with dire
   )
   // An @ in a local script filename is still part of its path.
   let special = @files.resolve_from(work, "hello@world.mbtx")
-  @fs.write_file(special, "not compilable")
+  @fs.write_text(special, "not compilable")
   assert_true(
     context.resolve_target(first, "hello@world.mbtx") is Script(path) &&
     path == special,
@@ -99,7 +99,7 @@ async test "shared validation checks modules before directories including config
     () => ignore(validate_document(document, startup_cwd=root)),
     "requires moon.mod",
   )
-  @fs.write_file(@files.resolve_from(root, "moon.mod"), "name = \"user/foo\"")
+  @fs.write_text(@files.resolve_from(root, "moon.mod"), "name = \"user/foo\"")
   assert_async_error_contains(
     () => ignore(validate_document(document, startup_cwd=root)),
     "test.md:5: invalid working directory",

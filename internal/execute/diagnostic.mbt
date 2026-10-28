@@ -104,7 +104,7 @@ async fn capture_stream(
   progress : Progress,
 ) -> String {
   try {
-    while reader.read_some(max_len=8192) is Some(bytes) {
+    while reader.read() is Some(bytes) {
       log.bytes.write_bytes(bytes)
     }
     log.complete = true
@@ -118,7 +118,7 @@ async fn capture_stream(
         )
     }
   } catch {
-    @diagnostic.Failure(_) | @os_error.OSError(_) | @io.ReaderClosed as e => {
+    @diagnostic.Failure(_) | @os_error.OsError(_, ..) | @io.ReaderClosed as e => {
       let error = match e {
         @diagnostic.Failure(_) => e
         _ => @diagnostic.wrap(e, "failed to read captured \{log.stream}")

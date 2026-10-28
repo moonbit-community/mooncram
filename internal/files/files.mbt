@@ -33,7 +33,7 @@ pub async fn discover(paths : Array[String]) -> Array[String] {
   for path in paths {
     let absolute = @path.Path(path).resolve().to_string()
     visit(absolute) catch {
-      @os_error.OSError(_) as e =>
+      @os_error.OsError(_, ..) as e =>
         raise @diagnostic.context(
           @diagnostic.wrap(e, "failed to discover Markdown files"),
           file=path,
@@ -68,15 +68,15 @@ pub async fn write_document(
   let directory = @path.Path(path).dirname().to_string()
   let (temp, file) = create_sibling_temp(directory)
   defer (@fs.remove(temp) catch {
-    @os_error.OSError(_) => ()
+    @os_error.OsError(_, ..) => ()
     e => raise e
   })
   {
     defer file.close()
-    file.write(updated)
+    file.text.write(updated)
     file.sync()
   }
-  let current = @fs.read_file(path).text()
+  let current = @fs.read_text(path)
   if current != source {
     raise @diagnostic.failure(
       "source changed during execution; refusing to update \{path}",
@@ -91,7 +91,7 @@ async fn create_sibling_temp(directory : String) -> (String, @fs.File) {
   for attempt in 0..<100 {
     let name = resolve_from(directory, ".mooncram-\{stamp}-\{attempt}.tmp")
     try @fs.open(name, mode=WriteOnly, create_mode=CreateNew) catch {
-      @os_error.OSError(_) as e if e.is_EEXIST() => ()
+      @os_error.OsError(AlreadyExists, ..) => ()
       e => raise e
     } noraise {
       file => return (name, file)

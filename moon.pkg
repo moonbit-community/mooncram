@@ -1,6 +1,6 @@
 import {
   "moonbit-community/mooncram/internal/cli",
-  "moonbitlang/async",
+  "moonbitlang/core/async",
   "moonbitlang/core/env",
   "moonbitlang/x/sys",
 }

@@ -74,7 +74,7 @@ test "cleanup errors cannot replace the original failure context" {
 
 ///|
 async test "capture IO errors identify the operation and stream endpoint" {
-  let (reader, writer) = @process.read_from_process()
+  let (reader, writer) = @process.read_from_process_shared()
   reader.close()
   writer.close()
   let progress = Progress::new("/repo")

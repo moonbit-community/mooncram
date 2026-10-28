@@ -17,7 +17,7 @@ async test "working directory validation resolves all declarations including con
     assert_eq(directories.length(), 1)
     assert_eq(directories[2], @fs.realpath(workspace))
   }
-  @fs.write_file(@files.resolve_from(docs, "file"), "")
+  @fs.write_text(@files.resolve_from(docs, "file"), "")
   for name in ["missing", "file"] {
     let doc = @markdown.parse_document(
       path,

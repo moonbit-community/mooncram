@@ -32,9 +32,7 @@ fn tool_name(name : String) -> String {
 ///|
 async fn executable_file(path : String) -> Bool {
   try @fs.can_execute(path) && @fs.kind(path) == Regular catch {
-    @os_error.OSError(_) as e if e.is_ENOENT() ||
-      e.is_ENOTDIR() ||
-      e.is_EACCES() => false
+    @os_error.OsError(NotFound | NotDirectory | AccessDenied, ..) => false
     e => raise e
   }
 }
@@ -51,7 +49,7 @@ async fn Toolchain::resolve(
     }
   }
   try self.find(progress) catch {
-    @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
+    @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e => {
       let error = @diagnostic.context(
         @diagnostic.wrap(e, "failed to resolve MoonBit toolchain"),
         tool?=progress.tool,
@@ -94,7 +92,7 @@ async fn Toolchain::find(
       for directory in ["include", "lib/core"] {
         let required = @files.resolve_from(root, directory)
         let is_directory = try @fs.kind(required) == Directory catch {
-          @os_error.OSError(_) as e if e.is_ENOENT() || e.is_ENOTDIR() => false
+          @os_error.OsError(NotFound | NotDirectory, ..) => false
           e => raise e
         }
         if !is_directory {

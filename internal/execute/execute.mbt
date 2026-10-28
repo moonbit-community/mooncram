@@ -54,7 +54,7 @@ pub async fn execute_case(
     }
     capture_pipeline(commands, cwd, progress~)
   }) catch {
-    @diagnostic.Failure(_) | @os_error.OSError(_) as e =>
+    @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e =>
       raise progress.report(e)
     e => raise e
   }

@@ -10,8 +10,8 @@ async fn run_cli(cli : Cli) -> Int32 {
   let mut updated_cases = 0
   for file in files {
     try {
-      let source = @fs.read_file(file).text() catch {
-        @os_error.OSError(_) | @utf8.Malformed(_) as e =>
+      let source = @fs.read_text(file) catch {
+        @os_error.OsError(_, ..) | @utf8.Malformed(_) as e =>
           raise @diagnostic.wrap(e, "failed to read Markdown document")
         e => raise e
       }
@@ -47,7 +47,7 @@ async fn run_cli(cli : Cli) -> Int32 {
           )
           if !case.expected.matches(actual) {
             failed += 1
-            @stdio.stdout.write(
+            @stdio.stdout.text.write(
               @report.failure_report(file, case, actual, color),
             )
           }
@@ -55,10 +55,10 @@ async fn run_cli(cli : Cli) -> Int32 {
             captures.push(actual)
           }
         } catch {
-          @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
+          @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e => {
             document_error = true
             errors += 1
-            @stdio.stderr.write(
+            @stdio.stderr.text.write(
               @diagnostic.render(
                 @diagnostic.context(
                   e,
@@ -79,8 +79,8 @@ async fn run_cli(cli : Cli) -> Int32 {
           continue
         }
         if cli.command is Update(dry_run=true) {
-          @stdio.stdout.write("--- \{file}\n+++ \{file} (updated)\n")
-          @stdio.stdout.write(
+          @stdio.stdout.text.write("--- \{file}\n+++ \{file} (updated)\n")
+          @stdio.stdout.text.write(
             @report.diff_lines(
               @output.output_lines(source).0,
               @output.output_lines(updated).0,
@@ -90,7 +90,7 @@ async fn run_cli(cli : Cli) -> Int32 {
         } else {
           @files.write_document(document.path, document.source, updated) catch {
             @diagnostic.Failure(_)
-            | @os_error.OSError(_)
+            | @os_error.OsError(_, ..)
             | @utf8.Malformed(_) as e =>
               raise @diagnostic.wrap(e, "failed to update Markdown document")
             e => raise e
@@ -99,20 +99,22 @@ async fn run_cli(cli : Cli) -> Int32 {
         updated_cases += generated.changed_cases
       }
       if document_error && !captures.is_empty() {
-        @stdio.stderr.write(
+        @stdio.stderr.text.write(
           "Not updating \{file}: execution errors in this document\n",
         )
       }
     } catch {
-      @diagnostic.Failure(_) | @os_error.OSError(_) as e => {
+      @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e => {
         errors += 1
-        @stdio.stderr.write(@diagnostic.render(@diagnostic.context(e, file~)))
+        @stdio.stderr.text.write(
+          @diagnostic.render(@diagnostic.context(e, file~)),
+        )
       }
       e => raise e
     }
   }
   if total == 0 && errors == 0 {
-    @stdio.stderr.write("ERROR no mooncram cases found\n")
+    @stdio.stderr.text.write("ERROR no mooncram cases found\n")
     return 2
   }
   let summary = match cli.command {
@@ -123,7 +125,7 @@ async fn run_cli(cli : Cli) -> Int32 {
     }
     Test => "\{total} cases, \{failed} failed, \{errors} errors\n"
   }
-  @stdio.stdout.write(summary)
+  @stdio.stdout.text.write(summary)
   if errors > 0 {
     2
   } else if failed > 0 && cli.command is Test {

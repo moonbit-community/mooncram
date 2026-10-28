@@ -13,7 +13,7 @@ async fn validate_document_working_directories(
       }
       @fs.realpath(path)
     } catch {
-      @diagnostic.Failure(_) | @os_error.OSError(_) as e =>
+      @diagnostic.Failure(_) | @os_error.OsError(_, ..) as e =>
         raise @diagnostic.context(
           @diagnostic.wrap(e, "invalid working directory '\{path}'"),
           file=document.path,

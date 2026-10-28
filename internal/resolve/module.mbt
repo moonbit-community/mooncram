@@ -36,7 +36,9 @@ async fn validate_document_modules(
   }
   let (_, first_line) = document.module_declarations[0]
   let context = load_module(startup_cwd) catch {
-    @diagnostic.Failure(_) | @os_error.OSError(_) | @utf8.Malformed(_) as e =>
+    @diagnostic.Failure(_)
+    | @os_error.OsError(_, ..)
+    | @utf8.Malformed(_) as e =>
       raise @diagnostic.context(e, file=document.path, line=first_line)
     e => raise e
   }
@@ -62,7 +64,7 @@ async fn load_module(startup_cwd : String) -> ModuleContext {
       "module declaration requires moon.mod in startup cwd: " + root,
     )
   }
-  let config = config_json(@fs.read_file(path).text(), path, module_config=true)
+  let config = config_json(@fs.read_text(path), path, module_config=true)
   let name = match config {
     { "name": String(name), .. } if !name.is_empty() => name
     _ => raise @diagnostic.failure("moon.mod requires a nonempty name: " + path)
@@ -158,7 +160,7 @@ async fn callable_package(context : ModuleContext, path : String) -> Bool {
   if !@fs.exists(config) {
     return false
   }
-  callable_config(@fs.read_file(config).text(), config)
+  callable_config(@fs.read_text(config), config)
 }
 
 ///|

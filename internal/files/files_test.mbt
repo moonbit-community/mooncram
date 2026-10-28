@@ -4,12 +4,12 @@ async test "discovery sorts deduplicates and skips hidden build and symlink dire
   defer @fs.rmdir(dir, recursive=true)
   for sub in ["visible", ".hidden", "_build", "target"] {
     @fs.mkdir(@files.resolve_from(dir, sub))
-    @fs.write_file(@files.resolve_from(dir, sub + "/test.md"), "")
+    @fs.write_text(@files.resolve_from(dir, sub + "/test.md"), "")
   }
-  @fs.write_file(@files.resolve_from(dir, "a.md"), "")
-  @fs.write_file(@files.resolve_from(dir, "b.md"), "")
-  @fs.write_file(@files.resolve_from(dir, ".hidden.md"), "")
-  @fs.write_file(@files.resolve_from(dir, "ignore.txt"), "")
+  @fs.write_text(@files.resolve_from(dir, "a.md"), "")
+  @fs.write_text(@files.resolve_from(dir, "b.md"), "")
+  @fs.write_text(@files.resolve_from(dir, ".hidden.md"), "")
+  @fs.write_text(@files.resolve_from(dir, "ignore.txt"), "")
   @fs.symlink(target=dir, @files.resolve_from(dir, "cycle"))
   @fs.symlink(
     target=@files.resolve_from(dir, "a.md"),
@@ -29,16 +29,16 @@ async test "atomic document replacement rejects concurrent edits and cleans up" 
   let dir = @fs.tmpdir(prefix="mooncram-update")
   defer @fs.rmdir(dir, recursive=true)
   let path = @files.resolve_from(dir, "test.md")
-  @fs.write_file(path, "original")
+  @fs.write_text(path, "original")
   @files.write_document(path, "original", "updated")
-  assert_eq(@fs.read_file(path).text(), "updated")
+  assert_eq(@fs.read_text(path), "updated")
   assert_eq(@fs.readdir(dir, include_hidden=true), ["test.md"])
   try @files.write_document(path, "original", "would overwrite") catch {
     e => assert_true(@diagnostic.error_text(e).contains("source changed"))
   } noraise {
     _ => fail("concurrent modification should fail")
   }
-  assert_eq(@fs.read_file(path).text(), "updated")
+  assert_eq(@fs.read_text(path), "updated")
   assert_eq(@fs.readdir(dir, include_hidden=true), ["test.md"])
 }
 
@@ -48,7 +48,7 @@ async test "document replacement propagates temporary file creation errors" {
   defer @fs.rmdir(dir, recursive=true)
   let path = @files.resolve_from(dir, "missing/test.md")
   try @files.write_document(path, "original", "updated") catch {
-    @os_error.OSError(_) as e => assert_true(e.is_ENOENT())
+    @os_error.OsError(kind, ..) => assert_eq(kind, NotFound)
     e => raise e
   } noraise {
     _ => fail("creating a temporary file in a missing directory should fail")
