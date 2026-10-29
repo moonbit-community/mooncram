@@ -61,7 +61,9 @@ fn main {
 `tests/hello.mbtx` 的完整内容：
 
 ```mbt
+---
 import { "moonbitlang/core/env" }
+---
 
 fn main {
   let name = @env.args().get(1).unwrap_or("World")

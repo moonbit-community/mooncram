@@ -66,7 +66,9 @@ fn main {
 Complete contents of `tests/hello.mbtx`:
 
 ```mbt
+---
 import { "moonbitlang/core/env" }
+---
 
 fn main {
   let name = @env.args().get(1).unwrap_or("World")

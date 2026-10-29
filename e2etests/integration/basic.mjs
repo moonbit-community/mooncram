@@ -31,9 +31,9 @@ export const IMPORTS = [
   "moonbitlang/x/sys",
 ];
 const PACKAGE_IMPORTS = formatImports(IMPORTS);
-const SCRIPT_IMPORTS = PACKAGE_IMPORTS
+const SCRIPT_IMPORTS = "---\n" + PACKAGE_IMPORTS
   .replaceAll("moonbitlang/async", ASYNC_DEPENDENCY)
-  .replaceAll("moonbitlang/x/sys", `${X_DEPENDENCY}/sys`);
+  .replaceAll("moonbitlang/x/sys", `${X_DEPENDENCY}/sys`) + "---\n\n";
 const MODULE_CONFIG = 'name = "mooncram/integration"\n' +
   `import { "${ASYNC_DEPENDENCY}", "${X_DEPENDENCY}" }\n`;
 export const MAIN_PACKAGE_CONFIG = 'options("is-main": true)\n';

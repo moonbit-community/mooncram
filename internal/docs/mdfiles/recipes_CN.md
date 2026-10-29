@@ -18,12 +18,14 @@ demo/
 `tests/demo.mbtx` 的完整内容：
 
 ```mbt
+---
 import {
   "moonbitlang/async@0.22.4",
   "moonbitlang/async@0.22.4/stdio",
   "moonbitlang/core/env",
   "moonbitlang/x@0.5.5/sys",
 }
+---
 
 async fn main {
   match @env.args().get(1).unwrap_or("hello") {

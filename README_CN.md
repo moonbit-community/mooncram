@@ -70,7 +70,9 @@ tests/
 在 `tests/hello.mbtx` 中写一个简单的程序：
 
 ```mbt
+---
 import { "moonbitlang/core/builtin" }
+---
 
 fn main {
   println("Hello, MoonBit!")
@@ -220,7 +222,9 @@ acme [0-9]+\.[0-9]+\.[0-9]+ (regex)
 由被测程序自行读取环境，例如 `environment.mbtx`：
 
 ```mbt
+---
 import { "moonbitlang/core/env" }
+---
 
 fn main {
   let name = @env.get_env_var("NAME").unwrap_or("World")
