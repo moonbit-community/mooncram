@@ -1,4 +1,14 @@
 ///|
+let mooncram_fence_pattern : @string.Regex = re"`{3,}[ \t]*(mooncram|[^\r\n]*&)"
+
+///|
+fn may_contain_mooncram_fence(source : String) -> Bool {
+  // cmark decides which candidates are test fences and decodes character
+  // references in info strings, so any info string containing '&' must pass.
+  mooncram_fence_pattern.execute(source[:]) is Some(_)
+}
+
+///|
 fn source_lines(source : String) -> Array[SourceLine] {
   let lines = []
   let mut start = 0
@@ -99,6 +109,16 @@ fn parse_document_with_case_sensitivity(
   source : String,
   case_insensitive~ : Bool,
 ) -> Document raise {
+  guard may_contain_mooncram_fence(source) else {
+    return {
+      path,
+      source,
+      cases: [],
+      fences: [],
+      module_declarations: [],
+      working_directory_declarations: [],
+    }
+  }
   let markdown = @cmark.Doc::from_string(
     source,
     file=path,

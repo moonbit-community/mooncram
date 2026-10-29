@@ -76,7 +76,8 @@ export function testScriptsWithoutMoonx({ executable, docs, directory, project, 
   fs.mkdirSync(workspace);
   fs.copyFileSync(join(docs, SCRIPT_FILENAME), join(workspace, SCRIPT_FILENAME));
   fs.writeFileSync(join(workspace, "relative.txt"), "script cwd contents\n");
-  const rewritten = 'fn main { println("rebuilt after edit") }';
+  const rewrittenLines = ['import { "moonbitlang/core/builtin" }', '', 'fn main { println("rebuilt after edit") }'];
+  const rewritten = rewrittenLines.join("\n");
   const document = writeDocument(docs, "scripts-without-moonx.md", block(
     `#cwd(../script workspace)\n` +
     `$ ${SCRIPT_COMMAND} args '' -- 'with space'\n["","--","with space"]\n` +
@@ -85,7 +86,7 @@ export function testScriptsWithoutMoonx({ executable, docs, directory, project, 
     `$ MODE=upstream ${SCRIPT_COMMAND} check-env MODE upstream | MODE=downstream ${SCRIPT_COMMAND} check-env-echo downstream\nupstream\n` +
     `$ ${SCRIPT_COMMAND} status 255 0\n[255]\n` +
     `$ ${SCRIPT_COMMAND} hello\nHello, Moon Bit!\n` +
-    `$ ${SCRIPT_COMMAND} write-file ${quoteArgument(SCRIPT_FILENAME)} ${quoteArgument(rewritten)}\n` +
+    `$ ${SCRIPT_COMMAND} write-lines ${quoteArgument(SCRIPT_FILENAME)} ${rewrittenLines.map(quoteArgument).join(" ")}\n` +
     `$ ${SCRIPT_COMMAND}\nrebuilt after edit\n`,
   ));
   const result = cli(["test", document, "--target", "native"], { env });

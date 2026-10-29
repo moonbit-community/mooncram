@@ -38,6 +38,8 @@ demo/
 `tests/hello.mbtx` 的完整内容：
 
 ```mbt
+import { "moonbitlang/core/builtin" }
+
 fn main {
   println("Hello, MoonBit!")
 }

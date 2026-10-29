@@ -70,6 +70,8 @@ tests/
 在 `tests/hello.mbtx` 中写一个简单的程序：
 
 ```mbt
+import { "moonbitlang/core/builtin" }
+
 fn main {
   println("Hello, MoonBit!")
 }

@@ -184,7 +184,7 @@ export function testCheck({ executable, target, directory, docs, project }) {
 
 export function testGeneratedTargets({ cli, docs, project, target }) {
   const generated = join(docs, "generated-target.mbtx");
-  const source = 'fn main { println("generated") }\n';
+  const source = 'import { "moonbitlang/core/builtin" }\n\nfn main { println("generated") }\n';
   writePackage(join(project, "generate-target"), formatImports([
     "moonbitlang/async", "moonbitlang/async/fs",
   ]) + MAIN_PACKAGE_CONFIG,
