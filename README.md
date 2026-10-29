@@ -74,6 +74,8 @@ tests/
 In `tests/hello.mbtx`, write a small program:
 
 ```mbt
+import { "moonbitlang/core/builtin" }
+
 fn main {
   println("Hello, MoonBit!")
 }

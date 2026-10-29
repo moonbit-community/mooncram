@@ -6,6 +6,7 @@ import {
   "moonbit-community/cmark/cmark_base",
   "moonbitlang/core/cmp",
   "moonbitlang/core/debug",
+  "moonbitlang/core/string",
   "moonbitlang/async",
 }
 

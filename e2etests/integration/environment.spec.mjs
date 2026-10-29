@@ -150,8 +150,8 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   fs.writeFileSync(join(workspace, "relative.txt"), "configured contents\n");
   // A same-named script in each directory distinguishes script lookup from cwd.
   const selected = "selected.mbtx";
-  fs.writeFileSync(join(docs, selected), 'fn main { println("document script") }\n');
-  fs.writeFileSync(join(workspace, selected), 'fn main { println("workspace script") }\n');
+  fs.writeFileSync(join(docs, selected), 'import { "moonbitlang/core/builtin" }\n\nfn main { println("document script") }\n');
+  fs.writeFileSync(join(workspace, selected), 'import { "moonbitlang/core/builtin" }\n\nfn main { println("workspace script") }\n');
   const link = join(docs, "cwd-link");
   fs.symlinkSync(workspace, link, DIRECTORY_LINK_TYPE);
   const source = [
@@ -179,7 +179,7 @@ export function testWorkingDirectories({ cli, docs, directory, target }) {
   // Both directory and executable names use their literal spelling on disk.
   const literalDirectory = join(docs, '${WORKSPACE}');
   fs.mkdirSync(literalDirectory);
-  fs.writeFileSync(join(literalDirectory, '${SCRIPT}.mbtx'), 'fn main { println("literal path") }\n');
+  fs.writeFileSync(join(literalDirectory, '${SCRIPT}.mbtx'), 'import { "moonbitlang/core/builtin" }\n\nfn main { println("literal path") }\n');
   const literalCommand = '$ moonx ./${SCRIPT}.mbtx';
   const literalPrefix = '#cwd(${WORKSPACE})\n';
   const literalDocument = writeDocument(docs, "cwd-literal.md", block(literalPrefix + literalCommand + '\nwrong\n'));
