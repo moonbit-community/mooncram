@@ -52,7 +52,7 @@ mooncram --help
 # 最新的稳定版
 moonx moonbit-community/mooncram@latest --help
 # 指定版本
-moonx moonbit-community/mooncram@0.1.0 --help
+moonx moonbit-community/mooncram@0.1.1 --help
 ```
 
 下文统一使用安装后的 `mooncram` 命令。
