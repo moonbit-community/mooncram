@@ -74,7 +74,9 @@ tests/
 In `tests/hello.mbtx`, write a small program:
 
 ```mbt
+---
 import { "moonbitlang/core/builtin" }
+---
 
 fn main {
   println("Hello, MoonBit!")
@@ -233,7 +235,9 @@ for one command. The tested program reads the environment itself, for example
 in `environment.mbtx`:
 
 ```mbt
+---
 import { "moonbitlang/core/env" }
+---
 
 fn main {
   let name = @env.get_env_var("NAME").unwrap_or("World")

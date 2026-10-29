@@ -76,7 +76,7 @@ export function testScriptsWithoutMoonx({ executable, docs, directory, project, 
   fs.mkdirSync(workspace);
   fs.copyFileSync(join(docs, SCRIPT_FILENAME), join(workspace, SCRIPT_FILENAME));
   fs.writeFileSync(join(workspace, "relative.txt"), "script cwd contents\n");
-  const rewrittenLines = ['import { "moonbitlang/core/builtin" }', '', 'fn main { println("rebuilt after edit") }'];
+  const rewrittenLines = ['---', 'import { "moonbitlang/core/builtin" }', '---', '', 'fn main { println("rebuilt after edit") }'];
   const rewritten = rewrittenLines.join("\n");
   const document = writeDocument(docs, "scripts-without-moonx.md", block(
     `#cwd(../script workspace)\n` +

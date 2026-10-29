@@ -22,12 +22,14 @@ let _embed_recipes_md : String =
   #|Complete contents of `tests/demo.mbtx`:
   #|
   #|```mbt
+  #|---
   #|import {
   #|  "moonbitlang/async@0.22.4",
   #|  "moonbitlang/async@0.22.4/stdio",
   #|  "moonbitlang/core/env",
   #|  "moonbitlang/x@0.5.5/sys",
   #|}
+  #|---
   #|
   #|async fn main {
   #|  match @env.args().get(1).unwrap_or("hello") {
