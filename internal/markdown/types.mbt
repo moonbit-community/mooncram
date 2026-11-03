@@ -101,12 +101,13 @@ priv enum Container {
 ///
 /// The parser stores the literal path without checking the filesystem; document
 /// validation resolves it against the Markdown file's parent directory.
+#derive(Debug, Eq)
 pub struct WorkingDirectoryDeclaration {
   /// Nonempty absolute or document-relative directory spelling.
   directory : String
   /// One-based line of the directory declaration.
   line : Int32
-} derive(Debug, Eq)
+}
 
 ///|
 /// Expose the derived debug representation of the directory and source line.

@@ -31,12 +31,13 @@ pub struct StreamExpectation {
 
 ///|
 /// A captured output stream selected by a paired expectation marker.
+#derive(Eq)
 pub(all) enum Stream {
   /// Final pipeline segment's routed standard output (`Captured.output`).
   Stdout
   /// Unmerged stderr from all segments (`Captured.diagnostic`).
   Stderr
-} derive(Eq)
+}
 
 ///|
 /// Expose equality and inequality for stdout/stderr stream identity.
