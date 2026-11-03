@@ -9,10 +9,10 @@ async fn main {
   @fs.write_file(
     @env.get_env_var("MOONCRAM_TOOLCHAIN_LOG").unwrap(),
     Json::object({
-      "tool": args[0].to_json(),
-      "args": args[1:].to_owned().to_json(),
-      "path": @env.get_env_var("PATH").unwrap_or("").to_json(),
-      "cwd": @env.current_dir().unwrap().to_json(),
+      "tool": ToJson::to_json(args[0]),
+      "args": ToJson::to_json(args[1:].to_owned()),
+      "path": ToJson::to_json(@env.get_env_var("PATH").unwrap_or("")),
+      "cwd": ToJson::to_json(@env.current_dir().unwrap()),
     }).stringify() + "\n",
     append=true,
     create_mode=OpenOrCreate,
@@ -20,7 +20,7 @@ async fn main {
   if name == "moon" || name == "moon.exe" {
     assert_true(args.contains("--build-only"))
     let artifact = bin.join(@path.Path(if @path.sep == '\\' { "program.exe" } else { "program" })).to_string()
-    println(Json::object({ "artifacts_path": [artifact].to_json() }).stringify())
+    println(Json::object({ "artifacts_path": ToJson::to_json([artifact]) }).stringify())
   } else {
     if name == "moonx" || name == "moonx.exe" {
       assert_eq(args[1:3].to_owned(), ["--target", "wasm"])
