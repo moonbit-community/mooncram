@@ -44,10 +44,11 @@ pub struct ExpectedLine {
   // private fields
 }
 
+#derive(Eq)
 pub(all) enum Stream {
   Stdout
   Stderr
-} derive(Eq)
+}
 pub fn Stream::equal(Self, Self) -> Bool
 pub fn Stream::label(Self) -> String
 pub fn Stream::not_equal(Self, Self) -> Bool

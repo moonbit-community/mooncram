@@ -3,12 +3,13 @@
 ///
 /// Produced by `parse`. Each segment begins with
 /// `moonx`, followed by a nonempty target and optional program arguments.
+#derive(Debug, Eq)
 pub(all) struct PipelineSegment {
   /// `moonx`, target and program arguments, with quotes and escapes processed.
   argv : Array[String]
   /// Segment-only assignments; values override inherited variables.
   extra_env : Map[String, String]
-} derive(Debug, Eq)
+}
 
 ///|
 /// Expose the derived debug representation of all segment fields.

@@ -54,10 +54,11 @@ pub struct LineLayout {
   original : String
 }
 
+#derive(Eq, @debug.Debug)
 pub struct WorkingDirectoryDeclaration {
   directory : String
   line : Int32
-} derive(Eq, @debug.Debug)
+}
 pub fn WorkingDirectoryDeclaration::equal(Self, Self) -> Bool
 pub fn WorkingDirectoryDeclaration::not_equal(Self, Self) -> Bool
 pub fn WorkingDirectoryDeclaration::to_repr(Self) -> @debug.Repr
