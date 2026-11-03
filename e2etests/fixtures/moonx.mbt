@@ -18,7 +18,7 @@ async fn remote_args() -> Array[String] {
   let args = [raw[0]] + raw[5:].to_owned()
   match args.get(1).unwrap_or("hello") {
     "invocation" => {
-      println(raw[1:].to_owned().to_json().stringify())
+      println(ToJson::to_json(raw[1:].to_owned()).stringify())
       @sys.exit(0)
     }
     "held-stderr" | "held-success" => {

@@ -3,7 +3,7 @@ async fn main {
   let args = @env.args()
   match args.get(1).unwrap_or("hello") {
     "hello" => @stdio.stdout.write("Hello, Moon Bit!\n")
-    "args" => println(args[2:].to_owned().to_json().stringify())
+    "args" => println(ToJson::to_json(args[2:].to_owned()).stringify())
     "context" => {
       @stdio.stdout.write(@env.get_env_var("MODE").unwrap_or("missing") + "\n")
       @stdio.stdout.write(@env.get_env_var("MOONCRAM_INHERITED").unwrap_or("missing") + "\n")

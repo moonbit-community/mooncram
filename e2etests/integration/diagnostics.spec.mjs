@@ -72,7 +72,7 @@ export function testParseDiagnostics({ cli, docs }) {
     },
     {
       name: "regex", body: "$ moonx a\n[ (regex)\n", location: "3:1",
-      report: "invalid regex\n  3 | ⟦[⟧ (regex)\n  $ moonx a\n  cause: ParserError at position 1: Unclosed character class\n",
+      report: "invalid regex\n  3 | ⟦[⟧ (regex)\n  $ moonx a\n  cause: ParserError at position 0: Unclosed character class\n",
     },
     {
       name: "json", body: '$ moonx a\n"中😀\\q" (escaped)\n', location: "3:6",
