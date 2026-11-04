@@ -110,7 +110,26 @@ export function testUpdates({ cli, docs, target }) {
   assert.deepEqual(fs.readFileSync(update), updated);
   testUpdateRoundTrips({ cli, docs, target });
   testPassingNormalization({ cli, docs, target });
+  testEmptyFenceUpdates({ cli, docs, target });
   assert(!fs.readdirSync(docs).some(name => name.startsWith(".mooncram-")));
+}
+
+function testEmptyFenceUpdates({ cli, docs, target }) {
+  // Six blocks produce 18 edits, exposing same-position edit reordering.
+  const command = `$ ${SCRIPT_COMMAND} hello\n`;
+  const original = `\`\`\`\`mooncram\n${command}\`\`\`\`\n`.repeat(6);
+  const wanted = `\`\`\`mooncram\n${command}Hello, Moon Bit!\n\`\`\`\n`.repeat(6);
+  const document = writeDocument(docs, "empty-fences.md", original);
+  const dry = cli(["update", document, "--dry-run", "--target", target]);
+  assert(dry.stdout.includes("6 cases, would update 6, 0 errors"), dry.stdout);
+  assert.equal(fs.readFileSync(document, "utf8"), original);
+  const update = cli(["update", document, "--target", target]);
+  assert(update.stdout.includes("6 cases, updated 6, 0 errors"), update.stdout);
+  assert.equal(fs.readFileSync(document, "utf8"), wanted);
+  cli(["test", document, "--target", target]);
+  const again = cli(["update", document, "--target", target]);
+  assert(again.stdout.includes("updated 0"), again.stdout);
+  assert.equal(fs.readFileSync(document, "utf8"), wanted);
 }
 
 function testPassingNormalization({ cli, docs, target }) {
