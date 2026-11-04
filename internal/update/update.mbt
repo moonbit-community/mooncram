@@ -102,10 +102,26 @@ fn render_case(
 }
 
 ///|
-fn apply_edits(source : String, edits : Array[Edit]) -> String {
+// All ranges refer to the original source. At a shared start, insert before
+// consuming a replacement range so the source cursor never moves backwards.
+fn apply_edits(source : String, edits : Array[Edit]) -> String raise {
+  edits.sort_by((a, b) => {
+    if a.start == b.start {
+      a.end.compare(b.end)
+    } else {
+      a.start.compare(b.start)
+    }
+  })
   let result = StringBuilder()
   let mut offset = 0
   for edit in edits {
+    guard offset <= edit.start &&
+      edit.start <= edit.end &&
+      edit.end <= source.length() else {
+      raise @diagnostic.failure(
+        "invalid or overlapping update edit [\{edit.start}, \{edit.end}) after offset \{offset}",
+      )
+    }
     result.write_stringview(source[offset:edit.start])
     result.write_string(edit.text)
     offset = edit.end
@@ -182,7 +198,6 @@ pub fn generate(
     }
     return { source: document.source, changed_cases: 0, }
   }
-  edits.sort_by((a, b) => a.start.compare(b.start))
   let source = apply_edits(document.source, edits)
   validate_generated(document, source, captures)
   { source, changed_cases: changed.iter().filter(b => b).count(), }
