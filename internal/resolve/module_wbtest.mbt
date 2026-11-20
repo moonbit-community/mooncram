@@ -29,16 +29,20 @@ async fn assert_async_error_contains(
 
 ///|
 test "package configurations determine callability" {
-  for source in ["pkgtype(kind: \"executable\")", "options(\"is-main\": true)"] {
+  for
+    source in [
+      "pkgtype(kind: \"executable\")", "pkgtype = {\"kind\": \"executable\"}", "options(\"is-main\": true)",
+    ] {
     assert_true(callable_config(source, "moon.pkg"))
   }
   for
     source in ["", "pkgtype(kind: \"library\")", "options(\"is-main\": false)"] {
     assert_true(!callable_config(source, "moon.pkg"))
   }
+  // moonbitlang/parser#228 tracks validation of duplicate is-main with mixed values.
   for
     source in [
-      "pkgtype(kind: true)", "options(\"is-main\": \"yes\")", "options(\"is-main\":true, \"is-main\":false)",
+      "pkgtype(kind: true)", "options(\"is-main\": \"yes\")", "options(\"is-main\": true, \"is-main\": true)",
     ] {
     assert_error_contains(
       () => ignore(callable_config(source, "moon.pkg")),
@@ -188,8 +192,13 @@ async test "module declarations validate configuration-only fences before execut
     "test.md:4: module declaration requires moon.mod",
   )
   let path = @files.resolve_from(dir, "moon.mod")
-  for source in ["", "src"] {
-    @fs.write_file(path, "name = \"user/foo\"\nsource = \"\{source}\"")
+  for
+    (source, declaration) in [
+      ("", "source = \"\""),
+      ("src", "source = \"src\""),
+      ("src", "options(source: \"src\")"),
+    ] {
+    @fs.write_file(path, "name = \"user/foo\"\n\{declaration}")
     assert_true(validate_document_modules(doc, dir) is Some(_))
     assert_eq(load_module(dir).source_root, @files.resolve_from(dir, source))
   }

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const BUILD_DIRECTORY = join(ROOT, "_build");
 export const PROGRAM = fs.readFileSync(join(ROOT, "e2etests/fixtures/program.mbt"), "utf8");
 export const TARGETS = ["wasm", "native"];
 export const EXIT_CODE = { SUCCESS: 0, FAILURE: 1, ERROR: 2 };
@@ -18,8 +18,8 @@ export const EXECUTABLE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 export const TOOL_DIRECTORIES = (process.env.PATH ?? "").split(delimiter);
 export const CLEANUP_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
 // Keep these dependency versions in sync with moon.mod.
-const ASYNC_VERSION = "0.22.4";
-const X_VERSION = "0.5.5";
+const ASYNC_VERSION = "0.22.10";
+const X_VERSION = "0.5.8";
 const ASYNC_DEPENDENCY = `moonbitlang/async@${ASYNC_VERSION}`;
 const X_DEPENDENCY = `moonbitlang/x@${X_VERSION}`;
 export const IMPORTS = [
@@ -143,8 +143,7 @@ export function createCli(executable, project) {
 }
 
 export function createTemporaryDirectory(target) {
-  fs.mkdirSync(BUILD_DIRECTORY, { recursive: true });
-  return fs.mkdtempSync(join(BUILD_DIRECTORY, `integration-${target}-`));
+  return fs.mkdtempSync(join(tmpdir(), `mooncram-integration-${target}-`));
 }
 
 export function writePackage(directory, config, source, filename = "main.mbt") {

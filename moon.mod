@@ -26,9 +26,9 @@ preferred_target = "wasm"
 description = "A simple and powerful testing toolkit for MoonBit CLI applications and Script"
 
 import {
-  "moonbitlang/async@0.22.4",
-  "moonbit-community/cmark@0.4.12",
+  "moonbitlang/async@0.22.10",
+  "moonbit-community/cmark@0.4.17",
   "moonbit-community/chalk@0.0.1",
-  "moonbitlang/x@0.5.5",
-  "moonbitlang/moon_config@0.4.5",
+  "moonbitlang/x@0.5.8",
+  "moonbitlang/moon_config@0.4.6",
 }
