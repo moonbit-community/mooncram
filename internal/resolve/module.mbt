@@ -6,23 +6,33 @@ priv struct ModuleContext {
 }
 
 ///|
-fn config_json(
+fn parse_config(
   source : String,
   path : String,
   module_config~ : Bool,
-) -> Json raise {
-  let (ast, reports) = if module_config {
+) -> @moon_config.Ast raise {
+  let { ast, diagnostics, .. } = if module_config {
     @moon_config.parse_moon_mod(source, name=path)
   } else {
     @moon_config.parse_moon_pkg(source, name=path)
   }
-  if !reports.is_empty() {
+  if !diagnostics.errors.is_empty() {
     raise @diagnostic.wrap(
-      @diagnostic.failure(reports.map(r => Show::to_string(r)).join("\n")),
+      @diagnostic.failure(
+        diagnostics.errors.map(r => Show::to_string(r)).join("\n"),
+      ),
       "invalid configuration: \{path}",
     )
   }
-  ToJson::to_json(ast)
+  ast
+}
+
+///|
+fn config_field(config : @moon_config.Ast, key : String) -> @moon_config.Expr? {
+  match @moon_config.find_statements(config, key).0.get(0) {
+    Some(Assign({ value, .. }) | Expr(value)) => Some(value)
+    _ => @moon_config.find_field_in_options(config, key)
+  }
 }
 
 ///|
@@ -62,14 +72,18 @@ async fn load_module(startup_cwd : String) -> ModuleContext {
       "module declaration requires moon.mod in startup cwd: " + root,
     )
   }
-  let config = config_json(@fs.read_file(path).text(), path, module_config=true)
-  let name = match config {
-    { "name": String(name), .. } if !name.is_empty() => name
+  let config = parse_config(
+    @fs.read_file(path).text(),
+    path,
+    module_config=true,
+  )
+  let name = match config_field(config, "name") {
+    Some(String(str=name, ..)) if !name.is_empty() => name
     _ => raise @diagnostic.failure("moon.mod requires a nonempty name: " + path)
   }
-  let source = match config {
-    { "source"? : None | Some(Null), .. } => ""
-    { "source": String(source), .. } => source
+  let source = match config_field(config, "source") {
+    None => ""
+    Some(String(str=source, ..)) => source
     _ => raise @diagnostic.failure("moon.mod source must be a string: " + path)
   }
   let source_root = @files.resolve_from(root, source)
@@ -113,16 +127,19 @@ fn valid_package_name(name : String) -> Bool {
 
 ///|
 fn callable_config(source : String, path : String) -> Bool raise {
-  let config = config_json(source, path, module_config=false)
-  match config {
-    { "is-main"? : None | Some(True | False), .. } => ()
+  let config = parse_config(source, path, module_config=false)
+  let is_main = match config_field(config, "is-main") {
+    None => false
+    Some(Bool(value~, ..)) => value
     _ => raise @diagnostic.failure("is-main must be a boolean: " + path)
   }
-  match config {
-    { "pkgtype": { "kind": String("executable"), .. }, .. } => true
-    { "is-main": True, .. } => true
+  let executable = match config_field(config, "pkgtype") {
+    Some(Apply(args=fields, ..) | Map(fields~, ..)) =>
+      @moon_config.find_field(fields, "kind")
+      is Some(String(str="executable", ..))
     _ => false
   }
+  executable || is_main
 }
 
 ///|
