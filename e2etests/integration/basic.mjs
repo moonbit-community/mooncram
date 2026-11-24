@@ -143,7 +143,10 @@ export function createCli(executable, project) {
 }
 
 export function createTemporaryDirectory(target) {
-  return fs.mkdtempSync(join(tmpdir(), `mooncram-integration-${target}-`));
+  // Expand Windows short paths so fixtures match MoonBit's canonical paths.
+  return fs.realpathSync.native(
+    fs.mkdtempSync(join(tmpdir(), `mooncram-integration-${target}-`)),
+  );
 }
 
 export function writePackage(directory, config, source, filename = "main.mbt") {
